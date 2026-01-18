@@ -2,8 +2,6 @@
 
 **FUXI Server Forensics** 是一款基于 **Tauri**、**Rust** 和 **React** 构建的尖端赛博朋克风格服务器分析与取证工具。专为速度和隐蔽性设计，它提供了一个透明的“抬头显示器”（HUD）界面，悬浮在您的桌面之上，让您即时了解远程服务器的状态，而不会干扰您的工作空间。
 
-![FUXI Server Forensics](https://via.placeholder.com/800x450.png?text=FUXI+Server+Forensics+HUD)
-
 ## ✨ 主要功能
 
 - **🪟 透明 HUD 界面**：无边框、透明的窗口设计，与您的桌面工作流无缝融合。
