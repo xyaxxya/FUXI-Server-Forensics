@@ -11,8 +11,7 @@ import { Language } from "./translations";
 import { CommandProvider, useCommandStore } from "./store/CommandContext";
 
 function MainApp() {
-  // Temporary: Disable intro to debug crash
-  const [showIntro, setShowIntro] = useState(false);
+  const [showIntro, setShowIntro] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
   const [activeTab, setActiveTab] = useState("system");
   const [language, setLanguage] = useState<Language>('zh');
