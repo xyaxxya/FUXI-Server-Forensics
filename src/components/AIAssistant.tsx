@@ -97,12 +97,7 @@ export default function AIAssistant() {
     }
 
     // Add context about selected servers if any
-    let content = input;
-    if (selectedSessionIds.length > 0) {
-      content = `[Context: Operation targeting ${selectedSessionIds.length} servers: ${selectedSessionIds.join(", ")}]\n${input}`;
-    }
 
-    const userMsg: AIMessage = { role: "user", content: input }; // Display original input to user
     // But we send context-enhanced message to AI?
     // Actually, we should probably just send the input and let the system prompt or context handling do it.
     // But since sendToAI takes the whole history, we can inject a system message or modify the last message.
@@ -535,9 +530,9 @@ export default function AIAssistant() {
                         </div>
                       )}
 
+                      <div className={`prose prose-sm max-w-none ${msg.role === "user" ? "prose-invert [&_*]:text-white" : "prose-slate"}`}>
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
-                        className={`prose prose-sm max-w-none ${msg.role === "user" ? "prose-invert [&_*]:text-white" : "prose-slate"}`}
                         components={{
                           pre: ({ node, ...props }) => (
                             <div className="bg-slate-900 rounded-lg p-3 my-2 overflow-x-auto text-slate-200 shadow-inner">
@@ -545,9 +540,6 @@ export default function AIAssistant() {
                             </div>
                           ),
                           code: ({ node, className, children, ...props }) => {
-                            const match = /language-(\w+)/.exec(
-                              className || "",
-                            );
                             return !className ? (
                               <code
                                 className={`${msg.role === "user" ? "bg-white/20 text-white" : "bg-slate-200 text-pink-600"} px-1.5 py-0.5 rounded text-xs font-mono`}
@@ -565,6 +557,7 @@ export default function AIAssistant() {
                       >
                         {msg.content}
                       </ReactMarkdown>
+                      </div>
                     </div>
                   </motion.div>
                 ))}

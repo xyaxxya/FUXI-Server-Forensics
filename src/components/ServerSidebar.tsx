@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useCommandStore } from '../store/CommandContext';
-import { Server, Plus, Monitor, CheckSquare, Square, MoreVertical, LogOut, Trash2 } from 'lucide-react';
+import { Server, Plus, CheckSquare, Square, LogOut, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface ServerSidebarProps {
@@ -11,7 +11,6 @@ interface ServerSidebarProps {
 export default function ServerSidebar({ onAddSession, onDisconnect }: ServerSidebarProps) {
   const { 
     sessions, 
-    currentSession, 
     switchSession, 
     selectedSessionIds, 
     toggleSessionSelection,

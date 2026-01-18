@@ -19,7 +19,7 @@ function MainApp() {
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   
-  const { fetchAll, clearData, disconnectSSH, sessions } = useCommandStore();
+  const { fetchAll, clearData, disconnectSSH } = useCommandStore();
 
   const handleDisconnect = async (sessionId?: string) => {
     try {

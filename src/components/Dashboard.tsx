@@ -9,15 +9,10 @@ import {
   Search,
   Globe,
   X,
-  LogOut,
-  ArrowRightLeft,
-  Server,
-  User,
   HelpCircle,
   Info,
   Check,
   Database,
-  AlertTriangle,
 } from "lucide-react";
 import { translations, Language } from "../translations";
 import { commands, PluginCommand } from "../config/commands";
@@ -416,7 +411,6 @@ interface DashboardProps {
 export default function Dashboard({
   activeTab,
   language,
-  onAddSession,
 }: DashboardProps) {
   const [showAbout, setShowAbout] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -430,10 +424,7 @@ export default function Dashboard({
     startMonitoring,
     stopMonitoring,
     isMonitoring,
-    sessions,
     currentSession,
-    switchSession,
-    disconnectSSH,
     fetchAll,
     clearData,
   } = useCommandStore();
