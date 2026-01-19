@@ -194,7 +194,7 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
   const runCommand = async (id: string, cmd: string, sessionId?: string, timeout?: number) => {
     setLoading(prev => ({ ...prev, [id]: true }));
     try {
-      const res = await invoke<CommandResult>('exec_command', { cmd, session_id: sessionId, timeout });
+      const res = await invoke<CommandResult>('exec_command', { cmd, sessionId, timeout });
       setData(prev => ({ ...prev, [id]: res }));
       
       // Add to command history
@@ -249,7 +249,7 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
 
   const disconnectSSH = async (sessionId?: string): Promise<string> => {
     try {
-      const result = await invoke<string>('disconnect_ssh', { session_id: sessionId });
+      const result = await invoke<string>('disconnect_ssh', { sessionId });
       await updateSessions();
       return result;
     } catch (e: any) {
@@ -270,27 +270,50 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
 
   const switchSession = async (sessionId: string): Promise<string> => {
     try {
-      // Clear existing data to prevent showing stale data from previous session
       clearData();
       clearChartData();
       
-      const result = await invoke<string>('switch_session', { session_id: sessionId });
-      
-      // Manually update local state immediately to ensure UI responsiveness
-      setSessions(prev => prev.map(s => ({
-        ...s,
-        is_current: s.id === sessionId
-      })));
-      
-      // Find the session in the current state to update currentSession immediately
-      // Note: we need to find it from the previous state or current sessions list
-      const targetSession = sessions.find(s => s.id === sessionId);
-      if (targetSession) {
-          setCurrentSession({...targetSession, is_current: true});
+      setSessions(prev => {
+        const next = prev.map(s => ({
+          ...s,
+          is_current: s.id === sessionId
+        }));
+        const target = next.find(s => s.id === sessionId);
+        if (target) {
+          setCurrentSession({ ...target, is_current: true });
+        }
+        return next;
+      });
+
+      const result = await invoke<string>('switch_session', { sessionId });
+
+      const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+      let lastList: Session[] = [];
+      let lastCurrent: Session | null = null;
+
+      for (let attempt = 0; attempt < 3; attempt++) {
+        lastList = await listSessions();
+        lastCurrent = lastList.find(s => s.is_current) || null;
+        if (lastCurrent?.id === sessionId) break;
+        await sleep(120);
+        await invoke<string>('switch_session', { sessionId }).catch(() => undefined as any);
       }
 
-      // Then sync with backend to be sure
-      await updateSessions();
+      if (lastCurrent?.id !== sessionId) {
+        setSessions(lastList);
+        setCurrentSession(lastCurrent);
+        throw new Error(`Switch session failed: backend current=${lastCurrent?.id ?? 'null'} target=${sessionId}`);
+      }
+
+      setSessions(lastList);
+      setCurrentSession(lastCurrent);
+
+      if (isMonitoring && monitoredCommandsRef.current.length > 0) {
+        monitoredCommandsRef.current.forEach(id => {
+          const def = commands.find(c => c.id === id);
+          if (def) setTimeout(() => runCommand(id, def.command), 50);
+        });
+      }
       return result;
     } catch (e: any) {
       console.error('Failed to switch session:', e);

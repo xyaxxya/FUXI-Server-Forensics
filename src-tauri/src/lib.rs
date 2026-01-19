@@ -146,10 +146,11 @@ fn connect_ssh(
     };
 
     // Store session wrapped in Arc<Mutex>
-    let mut sessions = state.sessions.lock().unwrap();
-    sessions.insert(session_id.clone(), Arc::new(Mutex::new(session_info)));
+    {
+        let mut sessions = state.sessions.lock().unwrap();
+        sessions.insert(session_id.clone(), Arc::new(Mutex::new(session_info)));
+    }
 
-    // Set as current session
     *state.current_session_id.lock().unwrap() = Some(session_id.clone());
 
     Ok(session_id)
@@ -160,20 +161,30 @@ fn disconnect_ssh(
     state: State<'_, AppState>,
     session_id: Option<String>,
 ) -> Result<String, String> {
-    let id_to_disconnect = session_id.or_else(|| state.current_session_id.lock().unwrap().clone());
+    let id_to_disconnect = match session_id {
+        Some(id) => Some(id),
+        None => state.current_session_id.lock().unwrap().clone(),
+    };
 
     if let Some(id) = id_to_disconnect {
-        let mut sessions = state.sessions.lock().unwrap();
-        if sessions.remove(&id).is_some() {
-            // If we disconnected the current session, set current_session_id to None or another session
-            let mut current_session = state.current_session_id.lock().unwrap();
-            if *current_session == Some(id.clone()) {
-                *current_session = if sessions.is_empty() {
-                    None
+        let mut removed = false;
+        let mut next_current: Option<String> = None;
+        {
+            let mut sessions = state.sessions.lock().unwrap();
+            if sessions.remove(&id).is_some() {
+                removed = true;
+                if sessions.is_empty() {
+                    next_current = None;
                 } else {
-                    // Set to first session in the map
-                    sessions.keys().next().cloned()
-                };
+                    next_current = sessions.keys().next().cloned();
+                }
+            }
+        }
+
+        if removed {
+            let mut current_session = state.current_session_id.lock().unwrap();
+            if current_session.as_ref() == Some(&id) {
+                *current_session = next_current;
             }
             Ok(format!("Disconnected session {}", id))
         } else {
@@ -451,8 +462,8 @@ async fn batch_exec_command(
 
 #[tauri::command]
 fn list_sessions(state: State<'_, AppState>) -> Result<Vec<SessionSummary>, String> {
-    let sessions = state.sessions.lock().unwrap();
     let current_id = state.current_session_id.lock().unwrap().clone();
+    let sessions = state.sessions.lock().unwrap();
 
     let summaries: Vec<SessionSummary> = sessions
         .iter()
@@ -473,14 +484,15 @@ fn list_sessions(state: State<'_, AppState>) -> Result<Vec<SessionSummary>, Stri
 
 #[tauri::command]
 fn switch_session(state: State<'_, AppState>, session_id: String) -> Result<String, String> {
-    let sessions = state.sessions.lock().unwrap();
-
-    if sessions.contains_key(&session_id) {
-        *state.current_session_id.lock().unwrap() = Some(session_id.clone());
-        Ok(format!("Switched to session {}", session_id))
-    } else {
-        Err(format!("Session {} not found", session_id))
+    {
+        let sessions = state.sessions.lock().unwrap();
+        if !sessions.contains_key(&session_id) {
+            return Err(format!("Session {} not found", session_id));
+        }
     }
+
+    *state.current_session_id.lock().unwrap() = Some(session_id.clone());
+    Ok(format!("Switched to session {}", session_id))
 }
 
 #[tauri::command]

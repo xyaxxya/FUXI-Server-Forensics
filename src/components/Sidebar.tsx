@@ -128,7 +128,7 @@ export default function Sidebar({ activeTab, onTabChange, onDisconnect, language
                     transition={{ delay: 0.3 }}
                     className="flex items-center gap-2"
                 >
-                    <span className="text-xs font-bold text-blue-600 tracking-widest uppercase">NINJA</span>
+                    <span className="text-xs font-bold text-blue-600 tracking-widest uppercase">FUXI</span>
                     <span className="text-[9px] font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-600 px-1.5 py-0.5 rounded shadow-sm shadow-blue-500/20">PRO</span>
                 </motion.div>
             </div>
