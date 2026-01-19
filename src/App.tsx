@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import Login from "./components/Login";
 import Sidebar from "./components/Sidebar";
@@ -6,10 +6,11 @@ import ServerSidebar from "./components/ServerSidebar";
 import Dashboard from "./components/Dashboard";
 import Intro from "./components/Intro";
 import TaskSelectionModal from "./components/TaskSelectionModal";
-import AIAssistant from "./components/AIAssistant";
+import SettingsModal from "./components/SettingsModal";
 import { motion } from "framer-motion";
 import { Language } from "./translations";
 import { CommandProvider, useCommandStore } from "./store/CommandContext";
+import { AISettings, DEFAULT_SETTINGS } from "./lib/ai";
 
 function MainApp() {
   const [showIntro, setShowIntro] = useState(true);
@@ -19,6 +20,51 @@ function MainApp() {
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showServerSidebar, setShowServerSidebar] = useState(true);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [aiSettings, setAiSettings] = useState<AISettings>(DEFAULT_SETTINGS);
+
+  // Load AI settings on mount
+  useEffect(() => {
+    const saved = localStorage.getItem("ai_settings");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Migration: check if it's the old flat format
+        if ("apiKey" in parsed) {
+          setAiSettings({
+            ...DEFAULT_SETTINGS,
+            configs: {
+              ...DEFAULT_SETTINGS.configs,
+              zhipu: {
+                ...DEFAULT_SETTINGS.configs.zhipu,
+                apiKey: parsed.apiKey || "",
+                baseUrl:
+                  parsed.baseUrl || DEFAULT_SETTINGS.configs.zhipu.baseUrl,
+                model: parsed.model || DEFAULT_SETTINGS.configs.zhipu.model,
+              },
+            },
+          });
+        } else {
+          // New format
+          setAiSettings((prev) => ({
+            ...prev,
+            ...parsed,
+            configs: {
+              ...prev.configs,
+              ...parsed.configs, // Merge to keep defaults for new providers
+            },
+          }));
+        }
+      } catch (e) {
+        console.error("Failed to parse AI settings", e);
+      }
+    }
+  }, []);
+
+  // Save AI settings when changed
+  useEffect(() => {
+    localStorage.setItem("ai_settings", JSON.stringify(aiSettings));
+  }, [aiSettings]);
   
   const { fetchAll, clearData, disconnectSSH } = useCommandStore();
 
@@ -103,11 +149,17 @@ function MainApp() {
               onTabChange={setActiveTab} 
               onDisconnect={() => handleDisconnect()} 
               language={language}
-              onToggleLanguage={() => setLanguage(prev => prev === 'en' ? 'zh' : 'en')}
+              onOpenSettings={() => setShowSettingsModal(true)}
               onAddSession={() => setShowLoginModal(true)}
               onToggleServerSidebar={() => setShowServerSidebar(prev => !prev)}
             />
-            <Dashboard activeTab={activeTab} language={language} onAddSession={() => setShowLoginModal(true)} />
+            <Dashboard 
+              activeTab={activeTab} 
+              language={language} 
+              onAddSession={() => setShowLoginModal(true)}
+              aiSettings={aiSettings}
+              onOpenSettings={() => setShowSettingsModal(true)}
+            />
           </div>
 
           <TaskSelectionModal 
@@ -116,7 +168,15 @@ function MainApp() {
             onCancel={handleCancelTasks}
             language={language}
           />
-          <AIAssistant />
+
+          <SettingsModal 
+            isOpen={showSettingsModal} 
+            onClose={() => setShowSettingsModal(false)}
+            language={language}
+            onLanguageChange={setLanguage}
+            aiSettings={aiSettings}
+            onAiSettingsChange={setAiSettings}
+          />
         </>
       )}
 

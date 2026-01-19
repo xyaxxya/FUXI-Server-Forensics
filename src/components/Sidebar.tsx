@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { 
   Cpu, Network, Database, Container, Cloud, Terminal, 
-  Shield, LayoutDashboard, ChevronDown, Globe, LogOut
+  Shield, LayoutDashboard, ChevronDown, LogOut,
+  Bot, GalleryVerticalEnd, Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { translations, Language } from '../translations';
@@ -15,6 +16,7 @@ interface SidebarProps {
   onToggleLanguage: () => void;
   onAddSession?: () => void;
   onToggleServerSidebar?: () => void;
+  onOpenSettings: () => void;
 }
 
 interface MenuItem {
@@ -56,6 +58,14 @@ const menuGroups: MenuGroup[] = [
     ]
   },
   {
+    id: 'agent',
+    labelKey: 'agent',
+    items: [
+      { id: 'agent-general', icon: Bot, labelKey: 'agent_general' },
+      { id: 'agent-panel', icon: GalleryVerticalEnd, labelKey: 'agent_panel' },
+    ]
+  },
+  {
     id: 'tools',
     labelKey: 'tools',
     items: [
@@ -64,9 +74,9 @@ const menuGroups: MenuGroup[] = [
   }
 ];
 
-export default function Sidebar({ activeTab, onTabChange, onDisconnect, language, onToggleLanguage, onToggleServerSidebar }: SidebarProps) {
+export default function Sidebar({ activeTab, onTabChange, onDisconnect, language, onOpenSettings, onToggleServerSidebar }: SidebarProps) {
   const t = translations[language];
-  const [expandedGroups, setExpandedGroups] = useState<string[]>(['monitor', 'infrastructure', 'services', 'tools']);
+  const [expandedGroups, setExpandedGroups] = useState<string[]>(['monitor', 'infrastructure', 'services', 'agent', 'tools']);
 
   // Auto-expand group containing active tab
   useEffect(() => {
@@ -213,15 +223,15 @@ export default function Sidebar({ activeTab, onTabChange, onDisconnect, language
       {/* Footer Actions */}
       <div className="p-6 border-t border-slate-200/60 space-y-3 bg-white/50 backdrop-blur-sm">
         <button 
-          onClick={onToggleLanguage}
+          onClick={onOpenSettings}
           className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 transition-all group shadow-sm hover:shadow-md"
         >
           <div className="flex items-center gap-3">
              <div className="p-1.5 bg-slate-100 rounded-lg group-hover:bg-blue-100 transition-colors">
-                 <Globe size={16} className="text-slate-500 group-hover:text-blue-600 transition-colors" />
+                 <Settings size={16} className="text-slate-500 group-hover:text-blue-600 transition-colors" />
              </div>
              <span className="text-xs font-medium text-slate-600 group-hover:text-slate-900 transition-colors">
-               {language === 'en' ? 'Switch to 中文' : 'Switch to English'}
+               {t.settings}
              </span>
           </div>
         </button>

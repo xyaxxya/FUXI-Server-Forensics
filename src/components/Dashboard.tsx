@@ -20,6 +20,9 @@ import { useCommandStore } from "../store/CommandContext";
 import { ChartDisplay } from "./ChartDisplay";
 import TerminalXterm from "./TerminalXterm";
 import MySQLManager from "./tools/MySQLManager";
+import GeneralAgent from "./agents/GeneralAgent";
+import AgentPanel from "./agents/AgentPanel";
+import { AISettings } from "../lib/ai";
 
 // --- Types ---
 type TableData = { headers: string[]; rows: string[][] };
@@ -413,11 +416,15 @@ interface DashboardProps {
   activeTab: string;
   language: Language;
   onAddSession: () => void;
+  aiSettings: AISettings;
+  onOpenSettings?: () => void;
 }
 
 export default function Dashboard({
   activeTab,
   language,
+  aiSettings,
+  onOpenSettings,
 }: DashboardProps) {
   const [showAbout, setShowAbout] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -521,6 +528,26 @@ export default function Dashboard({
   };
 
   const t = translations[language];
+
+  if (activeTab === "agent-general") {
+    return (
+      <div className="flex-1 h-full p-4 md:p-6 flex flex-col bg-slate-50 overflow-hidden relative">
+        <GeneralAgent 
+          language={language} 
+          aiSettings={aiSettings} 
+          onOpenSettings={onOpenSettings}
+        />
+      </div>
+    );
+  }
+
+  if (activeTab === "agent-panel") {
+    return (
+      <div className="flex-1 h-full p-4 md:p-6 flex flex-col bg-slate-50 overflow-hidden relative">
+        <AgentPanel />
+      </div>
+    );
+  }
 
   if (activeTab === "terminal") {
     return (
