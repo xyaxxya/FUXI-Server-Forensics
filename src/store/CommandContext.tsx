@@ -9,6 +9,8 @@ interface CommandResult {
   cwd: string;
 }
 
+type CachedCommandResult = CommandResult & { ts: number };
+
 interface BatchCommandRequest {
   id: string;
   cmd: string;
@@ -98,11 +100,11 @@ interface CommandContextType {
 const CommandContext = createContext<CommandContextType | undefined>(undefined);
 
 export function CommandProvider({ children }: { children: React.ReactNode }) {
-  const [data, setData] = useState<Record<string, CommandResult>>({});
-  const [loading, setLoading] = useState<Record<string, boolean>>({});
+  const [dataBySession, setDataBySession] = useState<Record<string, Record<string, CachedCommandResult>>>({});
+  const [loadingBySession, setLoadingBySession] = useState<Record<string, Record<string, boolean>>>({});
   const [progress, setProgress] = useState(0);
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
-  const [chartData, setChartData] = useState<Record<string, ChartDataPoint[]>>({});
+  const [chartBySession, setChartBySession] = useState<Record<string, Record<string, ChartDataPoint[]>>>({});
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [monitorInterval, setMonitorInterval] = useState(3000); // Default 3 seconds
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -115,10 +117,10 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
   const monitoredCommandsRef = useRef<string[]>([]);
   
   // Previous network bytes for rate calculation
-  const prevNetworkBytes = useRef<{rx: number, tx: number, time: number} | null>(null);
+  const prevNetworkBytesBySession = useRef<Record<string, {rx: number, tx: number, time: number} | null>>({});
 
   // Process command output to extract numeric value for chart
-  const extractChartValue = (id: string, stdout: string): number | { rx: number, tx: number } | null => {
+  const extractChartValue = (sessionId: string, id: string, stdout: string): number | { rx: number, tx: number } | null => {
     try {
       if (id === 'network_stats') {
         const rxMatch = stdout.match(/RX:\s*(\d+)/);
@@ -128,16 +130,17 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
           const tx = parseInt(txMatch[1], 10);
           const now = Date.now();
           let result = null;
-          if (prevNetworkBytes.current) {
-            const dt = (now - prevNetworkBytes.current.time) / 1000;
+          const prev = prevNetworkBytesBySession.current[sessionId];
+          if (prev) {
+            const dt = (now - prev.time) / 1000;
             if (dt > 0) {
               result = {
-                rx: (rx - prevNetworkBytes.current.rx) / dt,
-                tx: (tx - prevNetworkBytes.current.tx) / dt
+                rx: (rx - prev.rx) / dt,
+                tx: (tx - prev.tx) / dt
               };
             }
           }
-          prevNetworkBytes.current = { rx, tx, time: now };
+          prevNetworkBytesBySession.current[sessionId] = { rx, tx, time: now };
           return result;
         }
         return null;
@@ -192,19 +195,32 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
   };
 
   const runCommand = async (id: string, cmd: string, sessionId?: string, timeout?: number) => {
-    setLoading(prev => ({ ...prev, [id]: true }));
+    const sid = sessionId || currentSession?.id;
+    if (!sid) {
+      throw new Error('No active session selected');
+    }
+
+    setLoadingBySession(prev => {
+      const bucket = prev[sid] || {};
+      return { ...prev, [sid]: { ...bucket, [id]: true } };
+    });
     try {
-      const res = await invoke<CommandResult>('exec_command', { cmd, sessionId, timeout });
-      setData(prev => ({ ...prev, [id]: res }));
+      const res = await invoke<CommandResult>('exec_command', { cmd, sessionId: sid, timeout });
+      const now = Date.now();
+      setDataBySession(prev => {
+        const bucket = prev[sid] || {};
+        return { ...prev, [sid]: { ...bucket, [id]: { ...res, ts: now } } };
+      });
       
       // Add to command history
-      addCommandToHistory(cmd, res.exit_code === 0, sessionId);
+      addCommandToHistory(cmd, res.exit_code === 0, sid);
       
       // Extract chart value and update chart data if it's a monitored command
-      const chartValue = extractChartValue(id, res.stdout);
+      const chartValue = extractChartValue(sid, id, res.stdout);
       if (chartValue !== null) {
-        setChartData(prev => {
-          const currentData = prev[id] || [];
+        setChartBySession(prev => {
+          const sessionBucket = prev[sid] || {};
+          const currentData = sessionBucket[id] || [];
           
           let val1: number;
           let val2: number | undefined;
@@ -219,19 +235,29 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
           const newPoint = { time: new Date().toISOString(), value: val1, value2: val2 };
           // Keep only the last 50 data points for performance
           const updatedData = [...currentData, newPoint].slice(-50);
-          return { ...prev, [id]: updatedData };
+          return { ...prev, [sid]: { ...sessionBucket, [id]: updatedData } };
         });
       }
     } catch (e: any) {
       console.error(`Command ${id} failed:`, e);
-      setData(prev => ({ 
-        ...prev, 
-        [id]: { stdout: '', stderr: e.toString(), exit_code: 1, cwd: '' } 
-      }));
+      const now = Date.now();
+      setDataBySession(prev => {
+        const bucket = prev[sid] || {};
+        return { 
+          ...prev, 
+          [sid]: { 
+            ...bucket, 
+            [id]: { stdout: '', stderr: e.toString(), exit_code: 1, cwd: '', ts: now } 
+          } 
+        };
+      });
       // Add to command history as failed
-      addCommandToHistory(cmd, false, sessionId);
+      addCommandToHistory(cmd, false, sid);
     } finally {
-      setLoading(prev => ({ ...prev, [id]: false }));
+      setLoadingBySession(prev => {
+        const bucket = prev[sid] || {};
+        return { ...prev, [sid]: { ...bucket, [id]: false } };
+      });
     }
   };
 
@@ -250,6 +276,26 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
   const disconnectSSH = async (sessionId?: string): Promise<string> => {
     try {
       const result = await invoke<string>('disconnect_ssh', { sessionId });
+
+      if (sessionId) {
+        setDataBySession(prev => {
+          const next = { ...prev };
+          delete next[sessionId];
+          return next;
+        });
+        setLoadingBySession(prev => {
+          const next = { ...prev };
+          delete next[sessionId];
+          return next;
+        });
+        setChartBySession(prev => {
+          const next = { ...prev };
+          delete next[sessionId];
+          return next;
+        });
+        delete prevNetworkBytesBySession.current[sessionId];
+      }
+
       await updateSessions();
       return result;
     } catch (e: any) {
@@ -270,9 +316,6 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
 
   const switchSession = async (sessionId: string): Promise<string> => {
     try {
-      clearData();
-      clearChartData();
-      
       setSessions(prev => {
         const next = prev.map(s => ({
           ...s,
@@ -344,6 +387,10 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
   };
 
   const fetchAll = async (targetIds?: string[], forceRefresh: boolean = false) => {
+    const sid = currentSession?.id;
+    if (!sid) {
+      return;
+    }
     setProgress(0);
     setCurrentTaskId(null);
     
@@ -353,9 +400,10 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
         : commands;
 
     // Filter out commands that already have data if forceRefresh is false
+    const sessionData = dataBySession[sid] || {};
     const commandsToRun = forceRefresh 
         ? targetCommands 
-        : targetCommands.filter(cmd => !data[cmd.id]);
+        : targetCommands.filter(cmd => !sessionData[cmd.id]);
 
     const total = commandsToRun.length;
     
@@ -374,7 +422,7 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
         // Use a temporary ID for prereq check
         try {
           // Short timeout for checks (5s)
-          const res = await invoke<CommandResult>('exec_command', { cmd: prereq, timeout: 5000 });
+          const res = await invoke<CommandResult>('exec_command', { cmd: prereq, sessionId: sid, timeout: 5000 });
           prereqResults[prereq] = res.exit_code === 0;
         } catch (e) {
           console.warn(`Prerequisite check failed: ${prereq}`, e);
@@ -389,15 +437,23 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
       if (prereqResults[cmd.prerequisite]) return true;
       
       // If prereq failed, mark command as skipped/failed immediately
-      setData(prev => ({ 
-        ...prev, 
-        [cmd.id]: { 
-          stdout: '', 
-          stderr: `Skipped: Prerequisite '${cmd.prerequisite}' failed`, 
-          exit_code: 126, // Command invoked cannot execute
-          cwd: '' 
-        } 
-      }));
+      const now = Date.now();
+      setDataBySession(prev => {
+        const bucket = prev[sid] || {};
+        return {
+          ...prev,
+          [sid]: {
+            ...bucket,
+            [cmd.id]: {
+              stdout: '',
+              stderr: `Skipped: Prerequisite '${cmd.prerequisite}' failed`,
+              exit_code: 126,
+              cwd: '',
+              ts: now
+            }
+          }
+        };
+      });
       return false;
     });
 
@@ -405,11 +461,12 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
     let completedRunnable = 0;
 
     const processCommandResult = (id: string, cmd: string, res: CommandResult) => {
-      addCommandToHistory(cmd, res.exit_code === 0);
-      const chartValue = extractChartValue(id, res.stdout);
+      addCommandToHistory(cmd, res.exit_code === 0, sid);
+      const chartValue = extractChartValue(sid, id, res.stdout);
       if (chartValue !== null) {
-        setChartData(prev => {
-          const currentData = prev[id] || [];
+        setChartBySession(prev => {
+          const sessionBucket = prev[sid] || {};
+          const currentData = sessionBucket[id] || [];
           
           let val1: number;
           let val2: number | undefined;
@@ -423,7 +480,7 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
 
           const newPoint = { time: new Date().toISOString(), value: val1, value2: val2 };
           const updatedData = [...currentData, newPoint].slice(-50);
-          return { ...prev, [id]: updatedData };
+          return { ...prev, [sid]: { ...sessionBucket, [id]: updatedData } };
         });
       }
     };
@@ -447,24 +504,28 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
       }));
 
       // Set loading state
-      setLoading(prev => {
-        const next = { ...prev };
-        batchDefs.forEach(def => next[def.id] = true);
-        return next;
+      setLoadingBySession(prev => {
+        const bucket = prev[sid] || {};
+        const nextBucket = { ...bucket };
+        batchDefs.forEach(def => nextBucket[def.id] = true);
+        return { ...prev, [sid]: nextBucket };
       });
 
       try {
         const results = await invoke<Record<string, CommandResult>>('batch_exec_command', { 
-          commands: batchRequest 
+          commands: batchRequest,
+          sessionId: sid
         });
         
         // Update data state
-        setData(prev => {
-           const next = { ...prev };
+        const now = Date.now();
+        setDataBySession(prev => {
+           const bucket = prev[sid] || {};
+           const nextBucket = { ...bucket };
            Object.entries(results).forEach(([id, res]) => {
-             next[id] = res;
+             nextBucket[id] = { ...res, ts: now };
            });
-           return next;
+           return { ...prev, [sid]: nextBucket };
         });
 
         // Process results (history, charts)
@@ -478,24 +539,28 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
       } catch (e: any) {
         console.error("Batch execution failed:", e);
         // Mark all in batch as failed
-        setData(prev => {
-            const next = { ...prev };
+        const now = Date.now();
+        setDataBySession(prev => {
+            const bucket = prev[sid] || {};
+            const nextBucket = { ...bucket };
             batchDefs.forEach(def => {
-                next[def.id] = { 
+                nextBucket[def.id] = { 
                     stdout: '', 
                     stderr: `Batch execution failed: ${e}`, 
                     exit_code: 1, 
-                    cwd: '' 
+                    cwd: '',
+                    ts: now
                 };
             });
-            return next;
+            return { ...prev, [sid]: nextBucket };
         });
       } finally {
         // Clear loading state
-        setLoading(prev => {
-            const next = { ...prev };
-            batchDefs.forEach(def => next[def.id] = false);
-            return next;
+        setLoadingBySession(prev => {
+            const bucket = prev[sid] || {};
+            const nextBucket = { ...bucket };
+            batchDefs.forEach(def => nextBucket[def.id] = false);
+            return { ...prev, [sid]: nextBucket };
         });
       }
       
@@ -530,12 +595,13 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
 
   // Effect for real-time monitoring
   useEffect(() => {
-    if (isMonitoring && monitoredCommandsRef.current.length > 0) {
+    const sid = currentSession?.id;
+    if (sid && isMonitoring && monitoredCommandsRef.current.length > 0) {
       // Initial run
       monitoredCommandsRef.current.forEach(id => {
         const cmd = commands.find(c => c.id === id);
         if (cmd) {
-          runCommand(id, cmd.command);
+          runCommand(id, cmd.command, sid);
         }
       });
       
@@ -544,7 +610,7 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
         monitoredCommandsRef.current.forEach(id => {
           const cmd = commands.find(c => c.id === id);
           if (cmd) {
-            runCommand(id, cmd.command);
+            runCommand(id, cmd.command, sid);
           }
         });
       }, monitorInterval);
@@ -556,29 +622,50 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
         monitorTimerRef.current = null;
       }
     };
-  }, [isMonitoring, monitorInterval]);
+  }, [isMonitoring, monitorInterval, currentSession?.id]);
 
-  const getCommandData = (id: string) => data[id] || null;
+  const activeSessionId = currentSession?.id;
+  const activeData = activeSessionId ? dataBySession[activeSessionId] || {} : {};
+  const activeLoading = activeSessionId ? loadingBySession[activeSessionId] || {} : {};
+  const activeChartData = activeSessionId ? chartBySession[activeSessionId] || {} : {};
+
+  const getCommandData = (id: string) => (activeData as any)[id] || null;
   
-  const getChartData = (id: string) => chartData[id] || [];
+  const getChartData = (id: string) => activeChartData[id] || [];
   
   const clearData = () => {
-      setData({});
-      setLoading({});
+      const sid = currentSession?.id;
+      if (!sid) {
+        setDataBySession({});
+        setLoadingBySession({});
+        setChartBySession({});
+        prevNetworkBytesBySession.current = {};
+      } else {
+        setDataBySession(prev => ({ ...prev, [sid]: {} }));
+        setLoadingBySession(prev => ({ ...prev, [sid]: {} }));
+        setChartBySession(prev => ({ ...prev, [sid]: {} }));
+        delete prevNetworkBytesBySession.current[sid];
+      }
       setProgress(0);
       setCurrentTaskId(null);
   };
   
   const clearChartData = (id?: string) => {
-    if (id) {
-      setChartData(prev => {
-        const newChartData = { ...prev };
-        delete newChartData[id];
-        return newChartData;
-      });
-    } else {
-      setChartData({});
+    const sid = currentSession?.id;
+    if (!sid) {
+      setChartBySession({});
+      return;
     }
+    if (!id) {
+      setChartBySession(prev => ({ ...prev, [sid]: {} }));
+      return;
+    }
+    setChartBySession(prev => {
+      const bucket = prev[sid] || {};
+      const nextBucket = { ...bucket };
+      delete nextBucket[id];
+      return { ...prev, [sid]: nextBucket };
+    });
   };
 
 
@@ -643,11 +730,11 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
   return (
     <CommandContext.Provider 
       value={{ 
-        data, 
-        loading, 
+        data: activeData as any, 
+        loading: activeLoading, 
         progress, 
         currentTaskId, 
-        chartData, 
+        chartData: activeChartData, 
         isMonitoring, 
         monitorInterval,
         sessions,

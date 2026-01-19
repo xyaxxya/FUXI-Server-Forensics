@@ -381,7 +381,14 @@ function CommandCard({
           <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500">
             <Activity size={16} />
           </div>
-          <span className="font-semibold text-slate-700">{title}</span>
+          <div className="flex flex-col leading-tight">
+            <span className="font-semibold text-slate-700">{title}</span>
+            {data?.ts && (
+              <span className="text-[10px] text-slate-400">
+                Updated {new Date(data.ts).toLocaleTimeString()}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <StatusBadge
