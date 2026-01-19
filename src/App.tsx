@@ -18,7 +18,7 @@ function MainApp() {
   const [language, setLanguage] = useState<Language>('zh');
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const [showServerSidebar, setShowServerSidebar] = useState(false);
+  const [showServerSidebar, setShowServerSidebar] = useState(true);
   
   const { fetchAll, clearData, disconnectSSH } = useCommandStore();
 
@@ -47,7 +47,7 @@ function MainApp() {
   const handleLoginSuccess = () => {
     setIsConnected(true);
     setLanguage('zh');
-    setShowServerSidebar(false);
+    setShowServerSidebar(true);
     // Show task modal instead of auto-executing
     setShowTaskModal(true);
   };
