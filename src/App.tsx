@@ -7,6 +7,7 @@ import Dashboard from "./components/Dashboard";
 import Intro from "./components/Intro";
 import TaskSelectionModal from "./components/TaskSelectionModal";
 import AIAssistant from "./components/AIAssistant";
+import { motion } from "framer-motion";
 import { Language } from "./translations";
 import { CommandProvider, useCommandStore } from "./store/CommandContext";
 
@@ -17,6 +18,7 @@ function MainApp() {
   const [language, setLanguage] = useState<Language>('zh');
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showServerSidebar, setShowServerSidebar] = useState(false);
   
   const { fetchAll, clearData, disconnectSSH } = useCommandStore();
 
@@ -45,6 +47,7 @@ function MainApp() {
   const handleLoginSuccess = () => {
     setIsConnected(true);
     setLanguage('zh');
+    setShowServerSidebar(false);
     // Show task modal instead of auto-executing
     setShowTaskModal(true);
   };
@@ -72,10 +75,29 @@ function MainApp() {
       ) : (
         <>
           <div className="relative z-10 flex h-full">
-            <ServerSidebar 
-              onAddSession={() => setShowLoginModal(true)}
-              onDisconnect={handleDisconnect}
-            />
+            <motion.div
+              animate={{
+                width: showServerSidebar ? 288 : 0,
+              }}
+              transition={{ duration: 0.26, ease: [0.2, 0.8, 0.2, 1] }}
+              className="h-full overflow-hidden flex-none"
+              style={{ willChange: "width" }}
+            >
+              <motion.div
+                animate={{
+                  x: showServerSidebar ? 0 : -288,
+                  opacity: showServerSidebar ? 1 : 0,
+                }}
+                transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}
+                className={showServerSidebar ? "h-full" : "h-full pointer-events-none"}
+                style={{ willChange: "transform, opacity" }}
+              >
+                <ServerSidebar 
+                  onAddSession={() => setShowLoginModal(true)}
+                  onDisconnect={handleDisconnect}
+                />
+              </motion.div>
+            </motion.div>
             <Sidebar 
               activeTab={activeTab} 
               onTabChange={setActiveTab} 
@@ -83,6 +105,7 @@ function MainApp() {
               language={language}
               onToggleLanguage={() => setLanguage(prev => prev === 'en' ? 'zh' : 'en')}
               onAddSession={() => setShowLoginModal(true)}
+              onToggleServerSidebar={() => setShowServerSidebar(prev => !prev)}
             />
             <Dashboard activeTab={activeTab} language={language} onAddSession={() => setShowLoginModal(true)} />
           </div>

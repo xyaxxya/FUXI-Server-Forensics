@@ -14,6 +14,7 @@ interface SidebarProps {
   language: Language;
   onToggleLanguage: () => void;
   onAddSession?: () => void;
+  onToggleServerSidebar?: () => void;
 }
 
 interface MenuItem {
@@ -63,7 +64,7 @@ const menuGroups: MenuGroup[] = [
   }
 ];
 
-export default function Sidebar({ activeTab, onTabChange, onDisconnect, language, onToggleLanguage }: SidebarProps) {
+export default function Sidebar({ activeTab, onTabChange, onDisconnect, language, onToggleLanguage, onToggleServerSidebar }: SidebarProps) {
   const t = translations[language];
   const [expandedGroups, setExpandedGroups] = useState<string[]>(['monitor', 'infrastructure', 'services', 'tools']);
 
@@ -102,8 +103,10 @@ export default function Sidebar({ activeTab, onTabChange, onDisconnect, language
         </div>
 
         <div className="flex items-center gap-4 group relative z-10 w-full">
-            <motion.div 
-                className="relative w-14 h-14 flex items-center justify-center bg-white rounded-2xl shadow-lg shadow-blue-500/10 border border-blue-50"
+            <motion.button
+                type="button"
+                onClick={onToggleServerSidebar}
+                className="relative w-14 h-14 flex items-center justify-center bg-white rounded-2xl shadow-lg shadow-blue-500/10 border border-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40"
                 whileHover={{ scale: 1.05, rotate: 2 }}
             >
                 <motion.img 
@@ -111,7 +114,7 @@ export default function Sidebar({ activeTab, onTabChange, onDisconnect, language
                     alt="Logo" 
                     className="w-10 h-10 object-contain relative z-10"
                 />
-            </motion.div>
+            </motion.button>
             
             <div className="flex flex-col overflow-hidden">
                 <motion.span 
