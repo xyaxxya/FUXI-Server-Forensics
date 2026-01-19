@@ -544,7 +544,7 @@ export default function Dashboard({
   if (activeTab === "agent-panel") {
     return (
       <div className="flex-1 h-full p-4 md:p-6 flex flex-col bg-slate-50 overflow-hidden relative">
-        <AgentPanel />
+        <AgentPanel language={language} aiSettings={aiSettings} />
       </div>
     );
   }

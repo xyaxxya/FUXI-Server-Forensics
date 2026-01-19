@@ -26,11 +26,13 @@ export interface AIProviderConfig {
 
 export interface AISettings {
   activeProvider: AIProviderId;
+  enablePlanning?: boolean;
   configs: Record<AIProviderId, AIProviderConfig>;
 }
 
 export const DEFAULT_SETTINGS: AISettings = {
   activeProvider: "zhipu",
+  enablePlanning: false,
   configs: {
     zhipu: {
       id: "zhipu",
@@ -71,10 +73,10 @@ export const DEFAULT_SETTINGS: AISettings = {
 };
 
 const SYSTEM_PROMPT = `
-你是一名电子取证智能分析大师（Digital Forensics Master），代号 FUXI Server Forensics。
-你是 Linux 服务器、数据库、Web 应用、Docker、Kubernetes 与集群取证领域的顶级专家。
+你是一名专业的电子数据取证顶级专家，代号 FUXI Server Forensics。
+Linux 服务器、数据库、Web 应用、各种面板、Docker、Kubernetes 与集群全部精通。
 
-你假定已获得合法取证权限。你的任务是基于事实与证据，对目标系统进行只读、最小干扰的电子取证分析，发现异常、还原行为、构建证据链。
+你已获得合法取证权限。你的任务是对目标系统进行执行了相关的Linux命令，来解决我提出的专业问题。
 
 行为约束如下：
 我问什么，你答什么；不主动扩展、不教学、不闲聊
@@ -88,17 +90,25 @@ const SYSTEM_PROMPT = `
 如果答案是关键信息、结论或值，直接将答案用 加粗 给出
 除非我明确要求解释，否则不解释
 
-能力范围：
-Linux / Shell / 日志 / 时间线取证
-数据库取证（MySQL、PostgreSQL、Redis、MongoDB 等）
-Web 与源码取证（Java、Python、PHP、Rust、Go、Node.js）
-Docker / 容器取证
-Kubernetes / 集群取证
 `;
+
+export interface Tool {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: "object";
+      properties: Record<string, any>;
+      required: string[];
+    };
+  };
+}
 
 export async function sendToAI(
   messages: AIMessage[],
   settings: AISettings,
+  customTools?: Tool[]
 ): Promise<AIMessage> {
   const config = settings.configs[settings.activeProvider];
 
@@ -106,7 +116,7 @@ export async function sendToAI(
     throw new Error(`${config.name} API Key is missing`);
   }
 
-  const tools = [
+  const defaultTools: Tool[] = [
     {
       type: "function",
       function: {
@@ -127,10 +137,45 @@ export async function sendToAI(
     },
   ];
 
+  const tools = customTools !== undefined ? customTools : defaultTools;
+
+  // Inject Planning Mode Instruction if enabled
+  let effectiveMessages = [...messages];
+  if (settings.enablePlanning) {
+      const planningInstruction = `
+重要提示：规划模式已启用。
+在执行任何操作之前，你必须严格遵循以下思考过程：
+
+1. **分析 (Analysis)**：简要分析用户的请求和当前上下文（使用中文）。
+2. **规划 (Plan)**：列出你将要采取的具体解决步骤（使用中文）。
+3. **执行 (Execution)**：只有在提供了分析和规划之后，才开始调用必要的工具。
+
+**关键要求**：
+- 你必须在响应的 content 字段中输出“分析”和“规划”部分。
+- 调用工具时，content 字段绝对不能通过为空。
+- 请将你的思考过程放在文本响应中，将具体命令放在工具调用中。
+`;
+      // Insert after system prompt or as a system message if one exists, otherwise prepend
+      const systemIndex = effectiveMessages.findIndex(m => m.role === 'system');
+      if (systemIndex !== -1) {
+          // Append to existing system prompt
+          effectiveMessages[systemIndex] = {
+              ...effectiveMessages[systemIndex],
+              content: effectiveMessages[systemIndex].content + "\n\n" + planningInstruction
+          };
+      } else {
+          // Prepend new system message (though usually there is one passed from caller, but just in case)
+          effectiveMessages.unshift({
+              role: 'system',
+              content: SYSTEM_PROMPT + "\n\n" + planningInstruction
+          });
+      }
+  }
+
   // Claude Specific Handling
   if (config.id === "claude") {
-    const systemMsg = messages.find((m) => m.role === "system");
-    const userMsgs = messages
+    const systemMsg = effectiveMessages.find((m) => m.role === "system");
+    const userMsgs = effectiveMessages
       .filter((m) => m.role !== "system")
       .map((m) => ({
         role: m.role === "tool" ? "user" : m.role, // Claude doesn't strictly have 'tool' role in input messages same way, but for simplicity mapping tool outputs needs care.
@@ -208,11 +253,16 @@ export async function sendToAI(
   }
 
   // OpenAI Compatible (Zhipu, OpenAI, Qwen, Kimi)
+  // Ensure system prompt is present
+  let finalMessages = effectiveMessages;
+  if (!finalMessages.some((m) => m.role === "system")) {
+    finalMessages = [{ role: "system", content: SYSTEM_PROMPT }, ...finalMessages];
+  }
+
   const payload = {
     model: config.model,
-    messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
-    tools,
-    tool_choice: "auto",
+    messages: finalMessages,
+    ...(tools.length > 0 ? { tools, tool_choice: "auto" } : {}),
   };
 
   try {

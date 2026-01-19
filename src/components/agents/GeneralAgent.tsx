@@ -13,14 +13,19 @@ import { invoke } from "@tauri-apps/api/core";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useCommandStore } from "../../store/CommandContext";
-import { AIMessage, AISettings, DEFAULT_SETTINGS, sendToAI } from "../../lib/ai";
+import { AIMessage, AISettings, sendToAI } from "../../lib/ai";
 import { translations, Language } from "../../translations";
+import ThinkingProcess, { ThinkingStep } from "./ThinkingProcess";
 
 interface GeneralAgentProps {
   language: Language;
   aiSettings: AISettings;
   onOpenSettings?: () => void;
 }
+
+type DisplayItem = 
+  | { type: 'message', message: AIMessage }
+  | { type: 'thinking', steps: ThinkingStep[], isFinished: boolean };
 
 export default function GeneralAgent({ language, aiSettings, onOpenSettings }: GeneralAgentProps) {
   const [messages, setMessages] = useState<AIMessage[]>([]);
@@ -41,10 +46,119 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
     });
   };
 
+  // Process messages into display items (Grouping thinking steps)
+  const getDisplayItems = (msgs: AIMessage[]): DisplayItem[] => {
+    const items: DisplayItem[] = [];
+    let currentThinking: ThinkingStep[] = [];
+    
+    const flushThinking = (isFinished: boolean) => {
+      if (currentThinking.length > 0) {
+        items.push({ type: 'thinking', steps: [...currentThinking], isFinished });
+        currentThinking = [];
+      }
+    };
+
+    for (let i = 0; i < msgs.length; i++) {
+      const msg = msgs[i];
+      
+      if (msg.role === 'user') {
+        flushThinking(true);
+        items.push({ type: 'message', message: msg });
+        continue;
+      }
+
+      if (msg.role === 'system') continue;
+
+      if (msg.role === 'assistant') {
+        // Detect if this is a "Thinking" block:
+        // 1. It has tool calls
+        // 2. OR it contains "Analysis" or "Plan" keywords (and likely followed by tools or is a plan step)
+        // 3. OR it's NOT the last message (heuristic: if there's a next message that is 'tool' or 'assistant' with tools)
+        // Note: checking next message is tricky in a loop, but we can check if it LOOKS like a plan.
+        
+        const content = msg.content || "";
+        const hasKeywords = content.includes("Analysis") || content.includes("Plan") || content.includes("分析") || content.includes("规划");
+        const hasTools = msg.tool_calls && msg.tool_calls.length > 0;
+        
+        // If it looks like a plan, treat as thinking.
+        const isThinking = hasTools || (hasKeywords && content.length < 500); // Simple heuristic: Plans aren't usually massive essays unless it's the final answer? Actually plans can be long.
+        // Better heuristic: If it has "Analysis" AND "Plan" headers as per our prompt.
+
+        if (isThinking) {
+          if (msg.content) {
+             currentThinking.push({
+               id: `thought-${i}`,
+               title: msg.content
+             });
+          }
+          
+          if (msg.tool_calls) {
+            msg.tool_calls.forEach((tc) => {
+               let args: any = {};
+               try {
+                  args = JSON.parse(tc.function.arguments);
+               } catch (e) {
+                  args = { command: tc.function.arguments };
+               }
+               
+               currentThinking.push({
+                 id: tc.id,
+                 title: args.command ? `Execute: ${args.command}` : `Call: ${tc.function.name}`,
+                 toolCall: {
+                   command: args.command || tc.function.name,
+                   args: args,
+                   isLoading: true 
+                 }
+               });
+            });
+          }
+        } else {
+          // Normal message (Final Answer)
+          flushThinking(true);
+          items.push({ type: 'message', message: msg });
+        }
+      } else if (msg.role === 'tool') {
+          // ... (existing tool logic)
+          // Find step
+          const stepIndex = currentThinking.findIndex(s => s.id === msg.tool_call_id);
+          if (stepIndex !== -1) {
+              const step = currentThinking[stepIndex];
+              if (step.toolCall) {
+                  step.toolCall.output = msg.content;
+                  step.toolCall.isLoading = false;
+                  if (msg.content.includes("Exit:") && !msg.content.includes("Exit: 0")) {
+                      step.toolCall.isError = true;
+                  } else if (msg.content.includes("Execution failed")) {
+                      step.toolCall.isError = true;
+                  }
+              }
+          } else {
+              // Fallback for orphan tool results
+              currentThinking.push({
+                  id: `tool-res-${i}`,
+                  title: "Tool Output",
+                  toolCall: {
+                      command: "Unknown",
+                      args: {},
+                      output: msg.content,
+                      isLoading: false
+                  }
+              });
+          }
+      }
+    }
+
+    // If still have thinking steps at the end, they are pending/active
+    flushThinking(false);
+    return items;
+  };
+
+  const displayItems = getDisplayItems(messages);
+
   // Scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading, status]);
+  }, [messages, loading, status, displayItems.length]);
 
   const handleClearChat = () => {
     if (messages.length > 0 && window.confirm(t.clear_chat_confirm)) {
@@ -284,9 +398,20 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
             </div>
           )}
 
-          {messages
-            .filter((m) => m.role !== "system")
-            .map((msg, idx) => (
+          {displayItems.map((item, idx) => {
+            if (item.type === 'thinking') {
+              return (
+                <ThinkingProcess
+                  key={`thinking-${idx}`}
+                  steps={item.steps}
+                  isFinished={item.isFinished}
+                  language={language}
+                />
+              );
+            }
+
+            const msg = item.message;
+            return (
               <motion.div
                 key={idx}
                 initial={{ opacity: 0, y: 10 }}
@@ -312,31 +437,9 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
                   className={`max-w-[85%] rounded-2xl px-5 py-3 text-sm shadow-sm ${
                     msg.role === "user"
                       ? "bg-blue-600 text-white rounded-tr-sm [&_*]:text-white"
-                      : msg.role === "tool"
-                        ? "bg-slate-900 text-slate-200 font-mono text-xs w-full overflow-x-auto custom-scrollbar rounded-tl-sm"
-                        : "bg-slate-50 text-slate-800 rounded-tl-sm border border-slate-100"
+                      : "bg-slate-50 text-slate-800 rounded-tl-sm border border-slate-100"
                   }`}
                 >
-                  {/* Render tool calls if any (for assistant) */}
-                  {msg.role === "assistant" && msg.tool_calls && (
-                    <div className="mb-2 space-y-2">
-                      {msg.tool_calls.map((tool, tIdx) => (
-                        <div
-                          key={tIdx}
-                          className="bg-slate-100 rounded border border-slate-200 p-2 text-xs font-mono text-slate-600"
-                        >
-                          <div className="font-bold text-indigo-600 flex items-center gap-1">
-                            <Terminal size={10} />
-                            Executing: {tool.function.name}
-                          </div>
-                          <div className="truncate opacity-75 mt-1">
-                            {tool.function.arguments}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
                   <div className={`prose prose-sm max-w-none ${msg.role === "user" ? "prose-invert [&_*]:text-white" : "prose-slate"}`}>
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
@@ -380,7 +483,8 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
                   </div>
                 </div>
               </motion.div>
-            ))}
+            );
+          })}
 
           {/* Status Indicator */}
           {status && (

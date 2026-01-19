@@ -13,7 +13,7 @@ interface SidebarProps {
   onTabChange: (tab: string) => void;
   onDisconnect: () => void;
   language: Language;
-  onToggleLanguage: () => void;
+  onToggleLanguage?: () => void;
   onAddSession?: () => void;
   onToggleServerSidebar?: () => void;
   onOpenSettings: () => void;
