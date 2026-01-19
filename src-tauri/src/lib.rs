@@ -320,6 +320,38 @@ async fn exec_command_stream(
     }
 }
 
+fn reconnect_ssh_session(session_info: &mut SessionInfo, timeout: u32) -> Result<(), String> {
+    let password = session_info
+        .pass
+        .clone()
+        .ok_or("SSH session lost and no password stored for reconnect".to_string())?;
+
+    let tcp =
+        TcpStream::connect(format!("{}:{}", session_info.ip, session_info.port)).map_err(|e| {
+            format!(
+                "SSH session lost and reconnect TCP failed ({}:{}): {}",
+                session_info.ip, session_info.port, e
+            )
+        })?;
+
+    let mut sess =
+        Session::new().map_err(|e| format!("Failed to create SSH session: {}", e))?;
+    sess.set_tcp_stream(tcp);
+    sess.handshake()
+        .map_err(|e| format!("SSH session lost and reconnect handshake failed: {}", e))?;
+    sess.userauth_password(&session_info.user, &password)
+        .map_err(|e| format!("SSH session lost and reconnect auth failed: {}", e))?;
+
+    if !sess.authenticated() {
+        return Err("SSH session lost and reconnect authentication failed".to_string());
+    }
+
+    sess.set_timeout(timeout);
+    session_info.session = sess;
+    session_info.cwd = "/".to_string();
+    Ok(())
+}
+
 // Helper function to execute a single command on a session
 fn execute_single_command(
     session_info: &mut SessionInfo,
@@ -327,8 +359,7 @@ fn execute_single_command(
     timeout: u32,
 ) -> Result<CommandResult, String> {
     let current_cwd = session_info.cwd.clone();
-    let sess = &mut session_info.session;
-    sess.set_timeout(timeout);
+    session_info.session.set_timeout(timeout);
 
     const MARKER: &str = "___CWD___";
     let wrapped_cmd = format!(
@@ -336,7 +367,16 @@ fn execute_single_command(
         current_cwd, cmd, MARKER
     );
 
-    let mut channel = sess.channel_session().map_err(|e| e.to_string())?;
+    let mut channel = match session_info.session.channel_session() {
+        Ok(ch) => ch,
+        Err(e) => {
+            reconnect_ssh_session(session_info, timeout)?;
+            session_info
+                .session
+                .channel_session()
+                .map_err(|e2| format!("{}; after reconnect: {}", e, e2))?
+        }
+    };
     channel.exec(&wrapped_cmd).map_err(|e| e.to_string())?;
 
     let mut s = String::new();
