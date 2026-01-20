@@ -28,6 +28,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AIMessage, AISettings, sendToAI, Tool } from "../../lib/ai";
 import { useCommandStore } from "../../store/CommandContext";
+import ThinkingProcess, { ThinkingStep } from "./ThinkingProcess";
 
 // --- Types ---
 
@@ -162,6 +163,64 @@ const parseSplitResult = (rawText: string): SplitItem[] | null => {
   return null;
 };
 
+// Convert history to ThinkingSteps
+const convertHistoryToSteps = (history: ChatMessage[]): ThinkingStep[] => {
+    const steps: ThinkingStep[] = [];
+    
+    // We iterate through history to reconstruct the flow
+    // A thinking step usually consists of:
+    // 1. Assistant message (Thought)
+    // 2. Tool Call (Action)
+    // 3. Tool Output (Observation) - this is separate in our history but logically part of the step
+    
+    // However, our history is flat. We need to group them.
+    // Logic: 
+    // - Assistant message starts a step (Title/Thought)
+    // - If followed by tool output (Tool role), attach it to that step.
+    // - But wait, the Assistant message *contains* the tool call request (in rawToolCalls).
+    // - And the NEXT message (Tool role) contains the output.
+    
+    let currentStep: ThinkingStep | null = null;
+    
+    history.forEach((msg, idx) => {
+        if (msg.role === "assistant") {
+            // New thought
+            if (currentStep) steps.push(currentStep);
+            
+            currentStep = {
+                id: `step-${idx}`,
+                title: msg.content || "Thinking...",
+                content: msg.content
+            };
+            
+            // Check for tool calls in this assistant message
+            if (msg.rawToolCalls && msg.rawToolCalls.length > 0) {
+                const tc = msg.rawToolCalls[0]; // Assuming single tool call for simplicity in display
+                const args = JSON.parse(tc.function.arguments);
+                
+                if (!currentStep.toolCall) {
+                    currentStep.toolCall = {
+                        command: args.command || tc.function.name,
+                        args: args,
+                        isLoading: true // Initially loading until we find the matching tool output
+                    };
+                }
+            }
+        } else if (msg.role === "tool") {
+            // Output for the current step's tool call
+            if (currentStep && currentStep.toolCall) {
+                currentStep.toolCall.output = msg.content;
+                currentStep.toolCall.isLoading = false;
+                currentStep.toolCall.isError = msg.content.includes("Error:");
+            }
+        }
+    });
+    
+    if (currentStep) steps.push(currentStep);
+    
+    return steps;
+};
+
 // --- Components ---
 
 export default function AgentPanel({ language = 'en', aiSettings }: AgentPanelProps) {
@@ -231,6 +290,7 @@ You are a task analyzer.
 3. IMPORTANT: Prioritize "Database" over "DataAnalysis". If the task involves analyzing data that is likely stored in a database (e.g. users, orders, logs in DB tables), classify it as "Database". Only use "DataAnalysis" for general file/csv/statistical analysis that doesn't explicitly imply a database query.
 4. Return the result as a raw JSON array of objects, where each object has "content" (string) and "type" (string).
 5. Do NOT include any markdown formatting or explanation. Just the JSON array.
+6. Do NOT output any thinking process. Just output the JSON result directly and immediately.
 
 Text to analyze:
 ${text}
@@ -319,7 +379,7 @@ ${text}
     try {
         let finalAnswer = "";
         let turnCount = 0;
-        const MAX_TURNS = 10; // Prevent infinite loops
+        const MAX_TURNS = aiSettings?.maxLoops || 10;
 
         while (turnCount < MAX_TURNS) {
             turnCount++;
@@ -368,7 +428,13 @@ ${text}
                                         cmd,
                                         sessionId: s.id
                                     });
-                                    const out = res.stdout || res.stderr || "(No Output)";
+                                    let out = res.stdout || res.stderr || "(No Output)";
+                                    
+                                    // Truncate output if too long to save tokens
+                                    if (out.length > 1000) {
+                                        out = out.substring(0, 1000) + t.output_truncated;
+                                    }
+                                    
                                     const exit = res.exit_code !== 0 ? ` [Exit: ${res.exit_code}]` : "";
                                     return `[${s.user}@${s.ip}]${exit}:\n${out}`;
                                 } catch (e: any) {
@@ -488,7 +554,7 @@ ${text}
         ];
 
         let turnCount = 0;
-        const MAX_TURNS = 10; 
+        const MAX_TURNS = aiSettings?.maxLoops || 10;
 
         while (turnCount < MAX_TURNS) {
             turnCount++;
@@ -527,7 +593,13 @@ ${text}
                             const results = await Promise.all(targetSessions.map(async (s) => {
                                 try {
                                     const res: any = await invoke("exec_command", { cmd, sessionId: s.id });
-                                    const out = res.stdout || res.stderr || "(No Output)";
+                                    let out = res.stdout || res.stderr || "(No Output)";
+                                    
+                                    // Truncate output if too long to save tokens
+                                    if (out.length > 1000) {
+                                        out = out.substring(0, 1000) + t.output_truncated;
+                                    }
+
                                     const exit = res.exit_code !== 0 ? ` [Exit: ${res.exit_code}]` : "";
                                     return `[${s.user}@${s.ip}]${exit}:\n${out}`;
                                 } catch (e: any) {
@@ -638,61 +710,60 @@ ${text}
                {t.noData}
              </div>
            ) : (
-             selectedQuestion.messages.map((msg, idx) => (
-               <div 
-                 key={idx} 
-                 className={`flex gap-4 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
-               >
-                 {/* Avatar */}
-                 <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm
-                   ${msg.role === "user" ? "bg-blue-600 text-white" : "bg-white border border-slate-200 text-blue-600"}`}
-                 >
-                   {msg.role === "user" ? <User size={20} /> : <Bot size={20} />}
-                 </div>
+             <>
+                {/* Render User Question First */}
+                {selectedQuestion.messages.filter(m => m.role === "user").map((msg, idx) => (
+                    <div key={`user-${idx}`} className="flex flex-row-reverse gap-4 mb-6">
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm bg-blue-600 text-white">
+                            <User size={20} />
+                        </div>
+                        <div className="flex flex-col max-w-[80%] items-end">
+                            <div className="px-5 py-3.5 rounded-2xl shadow-sm text-sm leading-relaxed bg-blue-600 text-white rounded-tr-sm [&_*]:text-white">
+                                {msg.content}
+                            </div>
+                        </div>
+                    </div>
+                ))}
 
-                 {/* Bubble */}
-                 <div className={`flex flex-col max-w-[80%] ${msg.role === "user" ? "items-end" : "items-start"}`}>
-                   <div className={`px-5 py-3.5 rounded-2xl shadow-sm text-sm leading-relaxed
-                     ${msg.role === "user" 
-                       ? "bg-blue-600 text-white rounded-tr-sm [&_*]:text-white" 
-                       : "bg-white border border-slate-200 text-slate-800 rounded-tl-sm"
-                     }
-                     ${msg.isThinking ? "animate-pulse" : ""}
-                   `}>
-                     {msg.role === "tool" ? (
-                         <details className="cursor-pointer group">
-                             <summary className="font-medium opacity-70 hover:opacity-100 flex items-center gap-2 select-none">
-                                 Tool Output
-                             </summary>
-                             <pre className="mt-2 text-xs bg-slate-900 text-slate-200 p-2 rounded overflow-x-auto">
-                                 {msg.content}
-                             </pre>
-                         </details>
-                     ) : (
-                       <div className={`markdown-content ${msg.role === "user" ? "prose-invert" : ""}`}>
-                         <ReactMarkdown 
-                            remarkPlugins={[remarkGfm]}
-                            components={{
-                                pre: ({node, ...props}) => (
-                                    <div className="bg-slate-900 rounded-lg p-3 my-2 overflow-x-auto text-slate-200 shadow-inner">
-                                        <pre {...props} />
-                                    </div>
-                                ),
-                                code: ({node, className, children, ...props}) => (
-                                    <code className={`${className} bg-black/10 px-1 py-0.5 rounded text-xs font-mono`} {...props}>
-                                        {children}
-                                    </code>
-                                )
-                            }}
-                         >
-                            {msg.content}
-                         </ReactMarkdown>
-                       </div>
-                     )}
-                   </div>
-                 </div>
-               </div>
-             ))
+                {/* Render Thinking Process */}
+                <ThinkingProcess 
+                    steps={convertHistoryToSteps(selectedQuestion.messages)} 
+                    isFinished={selectedQuestion.status === "completed" || selectedQuestion.status === "error"}
+                    language={language}
+                />
+
+                {/* Render Final Answer if completed */}
+                {(selectedQuestion.status === "completed" && selectedQuestion.finalAnswer) && (
+                    <div className="flex gap-4 mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm bg-green-600 text-white">
+                            <Bot size={20} />
+                        </div>
+                        <div className="flex flex-col max-w-[80%] items-start">
+                            <div className="px-6 py-4 rounded-2xl shadow-md text-sm leading-relaxed bg-white border border-slate-200 text-slate-800 rounded-tl-sm">
+                                <div className="markdown-content prose-invert">
+                                    <ReactMarkdown 
+                                        remarkPlugins={[remarkGfm]}
+                                        components={{
+                                            pre: ({node, ...props}) => (
+                                                <div className="bg-slate-900 rounded-lg p-3 my-2 overflow-x-auto text-slate-200 shadow-inner">
+                                                    <pre {...props} />
+                                                </div>
+                                            ),
+                                            code: ({node, className, children, ...props}) => (
+                                                <code className={`${className} bg-black/10 px-1 py-0.5 rounded text-xs font-mono`} {...props}>
+                                                    {children}
+                                                </code>
+                                            )
+                                        }}
+                                    >
+                                        {selectedQuestion.finalAnswer}
+                                    </ReactMarkdown>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+             </>
            )}
            <div ref={messagesEndRef} />
         </div>
@@ -788,7 +859,7 @@ ${text}
                 className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
               >
                 {isClassifying && <Loader2 size={14} className="animate-spin" />}
-                {isClassifying ? "Analyzing..." : t.add_to_queue}
+                {isClassifying ? t.analyzing : t.add_to_queue}
               </button>
             </div>
           </div>

@@ -27,12 +27,14 @@ export interface AIProviderConfig {
 export interface AISettings {
   activeProvider: AIProviderId;
   enablePlanning?: boolean;
+  maxLoops?: number; // New setting for maximum interaction loops
   configs: Record<AIProviderId, AIProviderConfig>;
 }
 
 export const DEFAULT_SETTINGS: AISettings = {
   activeProvider: "zhipu",
   enablePlanning: false,
+  maxLoops: 10, // Default to 10
   configs: {
     zhipu: {
       id: "zhipu",

@@ -50,7 +50,7 @@ export const translations = {
     add_questions_title: 'Add Questions (One per line)',
     add_questions_placeholder: 'e.g. Analyze the access log for IP 192.168.1.1\nCheck database user permissions\nScan Java jar file for vulnerabilities',
     add_to_queue: 'Add to Queue',
-    analysis_queue: 'Analysis Queue',
+    analyzing: 'Analyzing...',
     no_questions: 'No questions added yet.',
     pending_analysis: 'Pending Analysis',
     ai_thinking: 'AI Thinking...',
@@ -97,6 +97,7 @@ export const translations = {
     running_on_servers: 'Running on {0} servers: {1}',
     execution_failed: 'Execution failed: {0}',
     analyzing_results: 'Analyzing results...',
+    output_truncated: '\n\n...[Output Truncated]... (Please read critical info or use head/tail/grep)',
     
     // Settings
     settings: 'Settings',
@@ -160,6 +161,7 @@ export const translations = {
     add_questions_placeholder: '例如：\n分析 IP 192.168.1.1 的访问日志\n检查数据库用户权限\n扫描 Java jar 包漏洞',
     add_to_queue: '加入队列',
     analysis_queue: '分析队列',
+    analyzing: '正在识别...',
     no_questions: '暂无问题。',
     pending_analysis: '等待分析',
     ai_thinking: 'AI 思考中...',
@@ -206,6 +208,8 @@ export const translations = {
     running_on_servers: '正在 {0} 个服务器上运行: {1}',
     execution_failed: '执行失败: {0}',
     analyzing_results: '正在分析结果...',
+    output_truncated: '\n\n...[输出已截断]... (请读取关键信息或使用 head/tail/grep)',
+    max_loops_reached: '已达到最大对话轮数限制。',
 
     // Settings
     settings: '设置',
@@ -213,6 +217,8 @@ export const translations = {
     ai_settings: 'AI 配置',
     enable_planning: '开启规划模式',
     enable_planning_desc: '强制 AI 在执行操作前先进行详细的规划和推理。',
+    max_loops: '最大对话轮数',
+    max_loops_desc: '限制每次请求的 AI 最大交互轮数 (5-50)。',
     language: '语言',
     clear_chat: '清空对话',
     clear_chat_confirm: '确定要清空对话历史吗？',

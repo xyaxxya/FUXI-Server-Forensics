@@ -249,6 +249,9 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
                   sessionId: session.id,
                 });
                 output = res.stdout || res.stderr || "(无输出)";
+                 if (output.length > 1500) {
+                     output = output.substring(0, 1500) + t.output_truncated;
+                 }
                 if (res.exit_code !== 0) {
                   output += `\n(退出代码: ${res.exit_code})`;
                 }
@@ -264,9 +267,16 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
                       });
                       const sessionOutput =
                         res.stdout || res.stderr || "(无输出)";
+                      
+                      // Truncate output if too long
+                      let truncatedOutput = sessionOutput;
+                      if (truncatedOutput.length > 1000) {
+                          truncatedOutput = truncatedOutput.substring(0, 1000) + t.output_truncated;
+                      }
+
                       const exitInfo =
                         res.exit_code !== 0 ? ` (Exit: ${res.exit_code})` : "";
-                      return `[${session.user}@${session.ip}]${exitInfo}:\n${sessionOutput}`;
+                      return `[${session.user}@${session.ip}]${exitInfo}:\n${truncatedOutput}`;
                     } catch (e: any) {
                       return `[${session.user}@${session.ip}]: ${format(t.execution_failed, e.toString())}`;
                     }
@@ -293,7 +303,7 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
 
         // 4. Recursively call AI with tool outputs
         setStatus(t.analyzing_results);
-        await processConversation(newHistory);
+        await processConversation(newHistory, depth + 1);
       }
     } catch (error) {
       throw error;

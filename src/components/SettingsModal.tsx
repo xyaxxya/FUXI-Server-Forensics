@@ -149,28 +149,57 @@ export default function SettingsModal({
                     </div>
 
                     {/* Enable Planning Mode Toggle */}
-                    <div className="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100 mb-8 flex items-center justify-between">
-                      <div>
-                        <h4 className="font-bold text-indigo-900 text-sm flex items-center gap-2">
-                          <Sparkles size={16} className="text-indigo-600" />
-                          {t.enable_planning}
-                        </h4>
-                        <p className="text-xs text-indigo-700/70 mt-1">
-                          {t.enable_planning_desc}
-                        </p>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          className="sr-only peer"
-                          checked={aiSettings.enablePlanning || false}
-                          onChange={(e) => onAiSettingsChange({
-                            ...aiSettings,
-                            enablePlanning: e.target.checked
-                          })}
-                        />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                      </label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                        <div className="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100 flex items-center justify-between">
+                          <div>
+                            <h4 className="font-bold text-indigo-900 text-sm flex items-center gap-2">
+                              <Sparkles size={16} className="text-indigo-600" />
+                              {t.enable_planning}
+                            </h4>
+                            <p className="text-xs text-indigo-700/70 mt-1">
+                              {t.enable_planning_desc}
+                            </p>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input 
+                              type="checkbox" 
+                              className="sr-only peer"
+                              checked={aiSettings.enablePlanning || false}
+                              onChange={(e) => onAiSettingsChange({
+                                ...aiSettings,
+                                enablePlanning: e.target.checked
+                              })}
+                            />
+                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                          </label>
+                        </div>
+
+                        <div className="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100">
+                            <h4 className="font-bold text-indigo-900 text-sm flex items-center gap-2 mb-2">
+                              <Settings size={16} className="text-indigo-600" />
+                              {t.max_loops}
+                            </h4>
+                            <div className="flex items-center gap-4">
+                                <input 
+                                    type="range" 
+                                    min="5" 
+                                    max="50" 
+                                    step="1"
+                                    value={aiSettings.maxLoops || 10}
+                                    onChange={(e) => onAiSettingsChange({
+                                        ...aiSettings,
+                                        maxLoops: parseInt(e.target.value)
+                                    })}
+                                    className="w-full h-2 bg-indigo-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                                />
+                                <span className="font-mono font-bold text-indigo-700 bg-white px-2 py-1 rounded border border-indigo-100 min-w-[3rem] text-center">
+                                    {aiSettings.maxLoops || 10}
+                                </span>
+                            </div>
+                            <p className="text-xs text-indigo-700/70 mt-2">
+                                {t.max_loops_desc}
+                            </p>
+                        </div>
                     </div>
 
                     {/* Provider Tabs */}
