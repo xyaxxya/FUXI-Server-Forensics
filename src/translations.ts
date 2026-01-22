@@ -286,7 +286,7 @@ export const translations = {
     start_batch: '开始批量处理',
     processing: '处理中...',
     add_questions_title: '添加问题 (每行一个)',
-    add_questions_placeholder: '例如：\n分析 IP 192.168.1.1 的访问日志\n检查数据库用户权限\n扫描 Java jar 包漏洞',
+    add_questions_placeholder: '例如：\n平台共成功充值了多少金额？（答案格式：12340.56）\n一共发展了多少个用户作为直接下线？（答案格式：123）\nVIP6等级的积分限制是多少？（答案格式：123）',
     add_to_queue: '加入队列',
     analysis_queue: '分析队列',
     analyzing: '正在识别...',

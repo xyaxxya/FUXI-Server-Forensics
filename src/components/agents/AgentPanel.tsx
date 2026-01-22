@@ -58,6 +58,10 @@ export interface BatchQuestion {
   errorMessage?: string;
 }
 
+type DisplayItem = 
+  | { type: 'message', message: ChatMessage }
+  | { type: 'thinking', steps: ThinkingStep[], isFinished: boolean };
+
 interface AgentPanelProps {
   language?: Language;
   aiSettings?: AISettings;
@@ -164,64 +168,6 @@ const parseSplitResult = (rawText: string): SplitItem[] | null => {
   return null;
 };
 
-// Convert history to ThinkingSteps
-const convertHistoryToSteps = (history: ChatMessage[]): ThinkingStep[] => {
-    const steps: ThinkingStep[] = [];
-    
-    // We iterate through history to reconstruct the flow
-    // A thinking step usually consists of:
-    // 1. Assistant message (Thought)
-    // 2. Tool Call (Action)
-    // 3. Tool Output (Observation) - this is separate in our history but logically part of the step
-    
-    // However, our history is flat. We need to group them.
-    // Logic: 
-    // - Assistant message starts a step (Title/Thought)
-    // - If followed by tool output (Tool role), attach it to that step.
-    // - But wait, the Assistant message *contains* the tool call request (in rawToolCalls).
-    // - And the NEXT message (Tool role) contains the output.
-    
-    let currentStep: ThinkingStep | null = null;
-    
-    history.forEach((msg, idx) => {
-        if (msg.role === "assistant") {
-            // New thought
-            if (currentStep) steps.push(currentStep);
-            
-            currentStep = {
-                id: `step-${idx}`,
-                title: msg.content || "Thinking...",
-                content: msg.content
-            };
-            
-            // Check for tool calls in this assistant message
-            if (msg.rawToolCalls && msg.rawToolCalls.length > 0) {
-                const tc = msg.rawToolCalls[0]; // Assuming single tool call for simplicity in display
-                const args = JSON.parse(tc.function.arguments);
-                
-                if (!currentStep.toolCall) {
-                    currentStep.toolCall = {
-                        command: args.command || tc.function.name,
-                        args: args,
-                        isLoading: true // Initially loading until we find the matching tool output
-                    };
-                }
-            }
-        } else if (msg.role === "tool") {
-            // Output for the current step's tool call
-            if (currentStep && currentStep.toolCall) {
-                currentStep.toolCall.output = msg.content;
-                currentStep.toolCall.isLoading = false;
-                currentStep.toolCall.isError = msg.content.includes("Error:");
-            }
-        }
-    });
-    
-    if (currentStep) steps.push(currentStep);
-    
-    return steps;
-};
-
 // --- Components ---
 
 export default function AgentPanel({ language = 'en', aiSettings }: AgentPanelProps) {
@@ -239,6 +185,102 @@ export default function AgentPanel({ language = 'en', aiSettings }: AgentPanelPr
   // Chat input in detail view
   const [chatInput, setChatInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Helper to process messages into display items (groups thoughts and tools)
+  const getDisplayItems = (messages: ChatMessage[], status: QuestionStatus): DisplayItem[] => {
+    const items: DisplayItem[] = [];
+    let currentThinking: ThinkingStep[] = [];
+    
+    // Helper to flush current thinking steps
+    const flushThinking = (isFinished: boolean) => {
+      if (currentThinking.length > 0) {
+        items.push({ 
+          type: 'thinking', 
+          steps: [...currentThinking],
+          isFinished 
+        });
+        currentThinking = [];
+      }
+    };
+
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+
+      if (msg.role === 'system') continue;
+
+      if (msg.role === 'user') {
+        flushThinking(true);
+        items.push({ type: 'message', message: msg });
+      } else if (msg.role === 'assistant') {
+        const hasToolCalls = msg.rawToolCalls && msg.rawToolCalls.length > 0;
+        // Identify if this is a "thinking" step or a final answer
+        // Logic: If it has tool calls -> Thinking
+        // If it starts with "Thinking Process:" or similar (less reliable) -> Thinking
+        // Otherwise -> Message
+        
+        if (hasToolCalls) {
+          // This is a thinking step (Action)
+          // We can have multiple tool calls in one message
+          msg.rawToolCalls?.forEach(tc => {
+             const args = JSON.parse(tc.function.arguments);
+             currentThinking.push({
+               id: tc.id,
+               title: args.command ? `${t.execute}: ${args.command}` : `${t.call}: ${tc.function.name}`,
+               toolCall: {
+                 command: args.command || tc.function.name,
+                 args: args,
+                 isLoading: true // Will be updated by tool output
+               }
+             });
+          });
+        } else {
+           // Normal message (Final Answer or Just Text)
+           // But wait, sometimes "Thoughts" come as text before tool calls? 
+           // In our implementation, we usually send tool calls.
+           // Let's treat it as a message, flushing previous thinking
+           flushThinking(true);
+           items.push({ type: 'message', message: msg });
+        }
+      } else if (msg.role === 'tool') {
+          // Find the step that corresponds to this tool output
+          // In our simple model, we just look for the last step with matching ID or just the last step
+          // Since we process linearly, it should be in currentThinking
+          
+          const stepIndex = currentThinking.findIndex(s => s.id === msg.tool_call_id);
+          if (stepIndex !== -1) {
+              const step = currentThinking[stepIndex];
+              if (step.toolCall) {
+                  step.toolCall.output = msg.content;
+                  step.toolCall.isLoading = false;
+                  if (msg.content.includes("Exit:") && !msg.content.includes("Exit: 0")) {
+                      step.toolCall.isError = true;
+                  } else if (msg.content.includes("Execution failed")) {
+                      step.toolCall.isError = true;
+                  }
+              }
+          } else {
+              // Orphan tool output? Add as generic step
+              currentThinking.push({
+                  id: `tool-res-${i}`,
+                  title: t.tool_output,
+                  toolCall: {
+                      command: t.unknown,
+                      args: {},
+                      output: msg.content,
+                      isLoading: false
+                  }
+              });
+          }
+      }
+    }
+    
+    // Flush any remaining thinking steps
+    // If status is completed, then thinking is definitely finished
+    // If processing, it might be ongoing
+    flushThinking(status === 'completed' || status === 'error');
+    
+    return items;
+  };
 
   // Copy feedback state
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -714,58 +756,74 @@ ${text}
              </div>
            ) : (
              <>
-                {/* Render User Question First */}
-                {selectedQuestion.messages.filter(m => m.role === "user").map((msg, idx) => (
-                    <div key={`user-${idx}`} className="flex flex-row-reverse gap-4 mb-6">
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm bg-blue-600 text-white">
-                            <User size={20} />
-                        </div>
-                        <div className="flex flex-col max-w-[80%] items-end">
-                            <div className="px-5 py-3.5 rounded-2xl shadow-sm text-sm leading-relaxed bg-blue-600 text-white rounded-tr-sm [&_*]:text-white">
-                                {msg.content}
+                {getDisplayItems(selectedQuestion.messages, selectedQuestion.status).map((item, idx) => {
+                  if (item.type === 'message') {
+                     if (item.message.role === 'user') {
+                       return (
+                        <div key={`msg-${idx}`} className="flex flex-row-reverse gap-4 mb-6">
+                            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm bg-blue-600 text-white">
+                                <User size={20} />
                             </div>
-                        </div>
-                    </div>
-                ))}
-
-                {/* Render Thinking Process */}
-                <ThinkingProcess 
-                    steps={convertHistoryToSteps(selectedQuestion.messages)} 
-                    isFinished={selectedQuestion.status === "completed" || selectedQuestion.status === "error"}
-                    language={language}
-                />
-
-                {/* Render Final Answer if completed */}
-                {(selectedQuestion.status === "completed" && selectedQuestion.finalAnswer) && (
-                    <div className="flex gap-4 mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm bg-green-600 text-white">
-                            <Bot size={20} />
-                        </div>
-                        <div className="flex flex-col max-w-[80%] items-start">
-                            <div className="px-6 py-4 rounded-2xl shadow-md text-sm leading-relaxed bg-white border border-slate-200 text-slate-800 rounded-tl-sm">
-                                <div className="markdown-content prose-invert">
-                                    <ReactMarkdown 
-                                        remarkPlugins={[remarkGfm]}
-                                        components={{
-                                            pre: ({node, ...props}) => (
-                                                <div className="bg-slate-900 rounded-lg p-3 my-2 overflow-x-auto text-slate-200 shadow-inner">
-                                                    <pre {...props} />
-                                                </div>
-                                            ),
-                                            code: ({node, className, children, ...props}) => (
-                                                <code className={`${className} bg-black/10 px-1 py-0.5 rounded text-xs font-mono`} {...props}>
-                                                    {children}
-                                                </code>
-                                            )
-                                        }}
-                                    >
-                                        {selectedQuestion.finalAnswer}
-                                    </ReactMarkdown>
+                            <div className="flex flex-col max-w-[80%] items-end">
+                                <div className="px-5 py-3.5 rounded-2xl shadow-sm text-sm leading-relaxed bg-blue-600 text-white rounded-tr-sm [&_*]:text-white">
+                                    {item.message.content}
                                 </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                       );
+                     } else {
+                       // Assistant Message (Final Answer)
+                       return (
+                        <div key={`msg-${idx}`} className="flex gap-4 mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm bg-green-600 text-white">
+                                <Bot size={20} />
+                            </div>
+                            <div className="flex flex-col max-w-[80%] items-start">
+                                <div className="px-6 py-4 rounded-2xl shadow-md text-sm leading-relaxed bg-white border border-slate-200 text-slate-800 rounded-tl-sm">
+                                    <div className="markdown-content prose-invert">
+                                        <ReactMarkdown 
+                                            remarkPlugins={[remarkGfm]}
+                                            components={{
+                                                pre: ({node, ...props}) => (
+                                                    <div className="bg-slate-900 rounded-lg p-3 my-2 overflow-x-auto text-slate-200 shadow-inner">
+                                                        <pre {...props} />
+                                                    </div>
+                                                ),
+                                                code: ({node, className, children, ...props}) => (
+                                                    <code className={`${className} bg-black/10 px-1 py-0.5 rounded text-xs font-mono`} {...props}>
+                                                        {children}
+                                                    </code>
+                                                )
+                                            }}
+                                        >
+                                            {item.message.content}
+                                        </ReactMarkdown>
+                                    </div>
+                                    <button
+                                        onClick={(e) => handleCopy(e, `msg-${idx}`, item.message.content)}
+                                        className="mt-2 p-1.5 hover:bg-slate-100 text-slate-400 hover:text-blue-500 rounded transition-colors flex items-center gap-1 text-xs"
+                                        title={t.copy}
+                                    >
+                                        {copiedId === `msg-${idx}` ? <Check size={14} className="text-green-600"/> : <Copy size={14}/>}
+                                        {t.copy}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                       );
+                     }
+                  } else {
+                    // Thinking Process
+                    return (
+                        <ThinkingProcess 
+                            key={`think-${idx}`}
+                            steps={item.steps} 
+                            isFinished={item.isFinished}
+                            language={language}
+                        />
+                    );
+                  }
+                })}
              </>
            )}
            <div ref={messagesEndRef} />
