@@ -202,6 +202,36 @@ export default function SettingsModal({
                         </div>
                     </div>
 
+                    {/* Max Concurrent Tasks Slider */}
+                    <div className="mb-8">
+                        <div className="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100">
+                            <h4 className="font-bold text-indigo-900 text-sm flex items-center gap-2 mb-2">
+                              <Settings size={16} className="text-indigo-600" />
+                              {t.max_concurrent}
+                            </h4>
+                            <div className="flex items-center gap-4">
+                                <input 
+                                    type="range" 
+                                    min="1" 
+                                    max="10" 
+                                    step="1"
+                                    value={aiSettings.maxConcurrentTasks || 3}
+                                    onChange={(e) => onAiSettingsChange({
+                                        ...aiSettings,
+                                        maxConcurrentTasks: parseInt(e.target.value)
+                                    })}
+                                    className="w-full h-2 bg-indigo-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                                />
+                                <span className="font-mono font-bold text-indigo-700 bg-white px-2 py-1 rounded border border-indigo-100 min-w-[3rem] text-center">
+                                    {aiSettings.maxConcurrentTasks || 3}
+                                </span>
+                            </div>
+                            <p className="text-xs text-indigo-700/70 mt-2">
+                                {t.max_concurrent_desc}
+                            </p>
+                        </div>
+                    </div>
+
                     {/* Provider Tabs */}
                     <div className="flex gap-2 mb-8 p-1.5 bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto custom-scrollbar">
                       {(["zhipu", "openai", "qwen", "claude", "kimi"] as const).map(
@@ -254,7 +284,7 @@ export default function SettingsModal({
                               .baseUrl
                           }
                         />
-                        <p className="mt-2 text-xs text-slate-400">The base URL for the API endpoint (e.g., https://api.openai.com/v1)</p>
+                        <p className="mt-2 text-xs text-slate-400">{t.api_url_help}</p>
                       </div>
                       
                       <div>
@@ -279,7 +309,7 @@ export default function SettingsModal({
                           className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-mono text-sm"
                           placeholder={`${aiSettings.configs[aiSettings.activeProvider].name} API Key`}
                         />
-                        <p className="mt-2 text-xs text-slate-400">Your secret API key. This is stored locally on your device.</p>
+                        <p className="mt-2 text-xs text-slate-400">{t.api_key_help}</p>
                       </div>
 
                       <div>
@@ -307,7 +337,7 @@ export default function SettingsModal({
                               .model
                           }
                         />
-                        <p className="mt-2 text-xs text-slate-400">The specific model identifier to use (e.g., gpt-4, claude-3-opus)</p>
+                        <p className="mt-2 text-xs text-slate-400">{t.model_name_help}</p>
                       </div>
                     </div>
                   </div>

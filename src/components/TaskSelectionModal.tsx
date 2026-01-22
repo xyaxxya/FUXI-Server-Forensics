@@ -72,12 +72,12 @@ export default function TaskSelectionModal({ isOpen, onExecute, onCancel, langua
                 <Layers size={20} />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-slate-800">Task Execution Queue</h2>
-                <p className="text-sm text-slate-500">Select tasks to initialize system monitoring</p>
+                <h2 className="text-lg font-bold text-slate-800">{t.task_queue}</h2>
+                <p className="text-sm text-slate-500">{t.task_queue_desc}</p>
               </div>
             </div>
             <div className="text-sm font-medium text-slate-500">
-              {selectedIds.size} / {commands.length} Selected
+              {t.selected_count.replace('{0}', selectedIds.size.toString()).replace('{1}', commands.length.toString())}
             </div>
           </div>
 
@@ -133,7 +133,7 @@ export default function TaskSelectionModal({ isOpen, onExecute, onCancel, langua
               onClick={onCancel}
               className="px-6 py-2.5 rounded-xl text-slate-500 hover:bg-slate-100 font-medium transition-colors"
             >
-              Cancel
+              {t.cancel}
             </button>
             <button 
               onClick={handleExecute}
@@ -141,7 +141,7 @@ export default function TaskSelectionModal({ isOpen, onExecute, onCancel, langua
               className="px-8 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-medium shadow-lg shadow-blue-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <Play size={18} />
-              Execute Tasks
+              {t.execute_tasks}
             </button>
           </div>
         </motion.div>

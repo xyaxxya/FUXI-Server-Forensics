@@ -103,7 +103,7 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
                
                currentThinking.push({
                  id: tc.id,
-                 title: args.command ? `Execute: ${args.command}` : `Call: ${tc.function.name}`,
+                 title: args.command ? `${t.execute}: ${args.command}` : `${t.call}: ${tc.function.name}`,
                  toolCall: {
                    command: args.command || tc.function.name,
                    args: args,
@@ -136,9 +136,9 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
               // Fallback for orphan tool results
               currentThinking.push({
                   id: `tool-res-${i}`,
-                  title: "Tool Output",
+                  title: t.tool_output,
                   toolCall: {
-                      command: "Unknown",
+                      command: t.unknown,
                       args: {},
                       output: msg.content,
                       isLoading: false
@@ -207,7 +207,12 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
     }
   };
 
-  const processConversation = async (history: AIMessage[]) => {
+  const processConversation = async (history: AIMessage[], depth = 0) => {
+    if (depth > 10) {
+        setMessages(prev => [...prev, { role: 'assistant', content: t.max_loops_reached }]);
+        return;
+    }
+
     try {
       // 1. Get response from AI
       const response = await sendToAI(history, aiSettings);
@@ -248,12 +253,12 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
                   cmd,
                   sessionId: session.id,
                 });
-                output = res.stdout || res.stderr || "(无输出)";
+                output = res.stdout || res.stderr || t.no_output;
                  if (output.length > 1500) {
                      output = output.substring(0, 1500) + t.output_truncated;
                  }
                 if (res.exit_code !== 0) {
-                  output += `\n(退出代码: ${res.exit_code})`;
+                  output += `\n(${t.exit_code}: ${res.exit_code})`;
                 }
               } else {
                 // Multi-session execution
@@ -266,7 +271,7 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
                         sessionId: session.id,
                       });
                       const sessionOutput =
-                        res.stdout || res.stderr || "(无输出)";
+                        res.stdout || res.stderr || t.no_output;
                       
                       // Truncate output if too long
                       let truncatedOutput = sessionOutput;
@@ -275,7 +280,7 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
                       }
 
                       const exitInfo =
-                        res.exit_code !== 0 ? ` (Exit: ${res.exit_code})` : "";
+                        res.exit_code !== 0 ? ` (${t.exit_code}: ${res.exit_code})` : "";
                       return `[${session.user}@${session.ip}]${exitInfo}:\n${truncatedOutput}`;
                     } catch (e: any) {
                       return `[${session.user}@${session.ip}]: ${format(t.execution_failed, e.toString())}`;
