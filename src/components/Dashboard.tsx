@@ -535,35 +535,11 @@ export default function Dashboard({
 
   const t = translations[language];
 
-  if (activeTab === "agent-general") {
-    return (
-      <div className="flex-1 h-full p-4 md:p-6 flex flex-col bg-slate-50 overflow-hidden relative">
-        <GeneralAgent 
-          language={language} 
-          aiSettings={aiSettings} 
-          onOpenSettings={onOpenSettings}
-        />
-      </div>
-    );
-  }
-
-  if (activeTab === "agent-panel") {
-    return (
-      <div className="flex-1 h-full p-4 md:p-6 flex flex-col bg-slate-50 overflow-hidden relative">
-        <AgentPanel language={language} aiSettings={aiSettings} />
-      </div>
-    );
-  }
-
-  if (activeTab === "terminal") {
-    return (
-      <div className="flex-1 h-full p-6 flex flex-col bg-[#1e1e2e] overflow-hidden relative">
-        <div className="flex-1 bg-slate-900 rounded-lg overflow-hidden border border-slate-700 shadow-2xl relative z-10">
-          <TerminalXterm onClose={() => {}} language={language} />
-        </div>
-      </div>
-    );
-  }
+  // Helper booleans for view switching
+  const isGeneralAgent = activeTab === "agent-general";
+  const isAgentPanel = activeTab === "agent-panel";
+  const isTerminal = activeTab === "terminal";
+  const isMetrics = !isGeneralAgent && !isAgentPanel && !isTerminal;
 
   // Apply search filter
   const filteredCommands = (searchTerm ? commands : tabCommands).filter((c) => {
@@ -582,7 +558,30 @@ export default function Dashboard({
     : "";
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50 relative">
+    <>
+      {/* General Agent View - Persist State */}
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col bg-slate-50 overflow-hidden relative ${!isGeneralAgent ? 'hidden' : ''}`}>
+        <GeneralAgent 
+          language={language} 
+          aiSettings={aiSettings} 
+          onOpenSettings={onOpenSettings}
+        />
+      </div>
+
+      {/* Agent Panel View - Persist State */}
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col bg-slate-50 overflow-hidden relative ${!isAgentPanel ? 'hidden' : ''}`}>
+        <AgentPanel language={language} aiSettings={aiSettings} />
+      </div>
+
+      {/* Terminal View - Persist State */}
+      <div className={`flex-1 h-full p-6 flex flex-col bg-[#1e1e2e] overflow-hidden relative ${!isTerminal ? 'hidden' : ''}`}>
+        <div className="flex-1 bg-slate-900 rounded-lg overflow-hidden border border-slate-700 shadow-2xl relative z-10">
+          <TerminalXterm onClose={() => {}} language={language} />
+        </div>
+      </div>
+
+      {/* Main Dashboard Metrics View */}
+      <div className={`flex-1 flex flex-col h-screen overflow-hidden bg-slate-50 relative ${!isMetrics ? 'hidden' : ''}`}>
       {/* Background Watermark */}
       <div className="watermark-container pointer-events-none">
         {Array.from({ length: 30 }).map((_, i) => (
@@ -828,5 +827,6 @@ export default function Dashboard({
         v0.1.0-beta
       </div>
     </div>
+    </>
   );
 }

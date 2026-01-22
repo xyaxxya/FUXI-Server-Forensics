@@ -208,7 +208,8 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
   };
 
   const processConversation = async (history: AIMessage[], depth = 0) => {
-    if (depth > 10) {
+    const maxLoops = aiSettings.maxLoops || 25;
+    if (depth > maxLoops) {
         setMessages(prev => [...prev, { role: 'assistant', content: t.max_loops_reached }]);
         return;
     }

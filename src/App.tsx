@@ -22,6 +22,7 @@ function MainApp() {
   const [showServerSidebar, setShowServerSidebar] = useState(true);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [aiSettings, setAiSettings] = useState<AISettings>(DEFAULT_SETTINGS);
+  const [isAiSettingsLoaded, setIsAiSettingsLoaded] = useState(false);
 
   // Load AI settings on mount
   useEffect(() => {
@@ -59,12 +60,15 @@ function MainApp() {
         console.error("Failed to parse AI settings", e);
       }
     }
+    setIsAiSettingsLoaded(true);
   }, []);
 
   // Save AI settings when changed
   useEffect(() => {
-    localStorage.setItem("ai_settings", JSON.stringify(aiSettings));
-  }, [aiSettings]);
+    if (isAiSettingsLoaded) {
+      localStorage.setItem("ai_settings", JSON.stringify(aiSettings));
+    }
+  }, [aiSettings, isAiSettingsLoaded]);
   
   const { fetchAll, clearData, disconnectSSH } = useCommandStore();
 

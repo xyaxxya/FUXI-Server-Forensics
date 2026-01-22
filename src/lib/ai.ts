@@ -35,7 +35,7 @@ export interface AISettings {
 export const DEFAULT_SETTINGS: AISettings = {
   activeProvider: "zhipu",
   enablePlanning: false,
-  maxLoops: 10, // Default to 10
+  maxLoops: 25, // Default to 25
   maxConcurrentTasks: 3, // Default to 3
   configs: {
     zhipu: {

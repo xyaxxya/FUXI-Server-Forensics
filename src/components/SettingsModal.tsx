@@ -185,7 +185,7 @@ export default function SettingsModal({
                                     min="5" 
                                     max="50" 
                                     step="1"
-                                    value={aiSettings.maxLoops || 10}
+                                    value={aiSettings.maxLoops || 25}
                                     onChange={(e) => onAiSettingsChange({
                                         ...aiSettings,
                                         maxLoops: parseInt(e.target.value)
@@ -193,7 +193,7 @@ export default function SettingsModal({
                                     className="w-full h-2 bg-indigo-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                                 />
                                 <span className="font-mono font-bold text-indigo-700 bg-white px-2 py-1 rounded border border-indigo-100 min-w-[3rem] text-center">
-                                    {aiSettings.maxLoops || 10}
+                                    {aiSettings.maxLoops || 25}
                                 </span>
                             </div>
                             <p className="text-xs text-indigo-700/70 mt-2">
