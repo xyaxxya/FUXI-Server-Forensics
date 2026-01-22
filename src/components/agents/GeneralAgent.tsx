@@ -77,7 +77,7 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
         // Note: checking next message is tricky in a loop, but we can check if it LOOKS like a plan.
         
         const content = msg.content || "";
-        const hasKeywords = content.includes("Analysis") || content.includes("Plan") || content.includes("分析") || content.includes("规划");
+        const hasKeywords = content.includes("Analysis") || content.includes("Plan") || content.includes("分析") || content.includes("规划") || content.includes("思索") || content.includes("执行") || content.includes("反馈");
         const hasTools = msg.tool_calls && msg.tool_calls.length > 0;
         
         // If it looks like a plan, treat as thinking.
