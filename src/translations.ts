@@ -41,6 +41,9 @@ export const translations = {
     agent: 'Agent',
     agent_general: 'General Agent',
     agent_panel: 'Main Panel',
+    general_info: 'General Info',
+    general_info_placeholder: 'Enter additional context about the server (e.g., database credentials, environment details)...',
+    general_info_desc: 'Information entered here will be added to the system prompt.',
 
     // Agent Panel (Batch)
     batch_agent_title: 'Batch Analysis Agent',
@@ -279,6 +282,9 @@ export const translations = {
     agent: 'Agent智能体',
     agent_general: '通用智能体',
     agent_panel: '主答题面板',
+    general_info: '通用信息',
+    general_info_placeholder: '输入关于服务器的补充信息（如数据库账号密码、环境详情等）...',
+    general_info_desc: '此处输入的信息将被添加到系统提示词中。',
 
     // Agent Panel (Batch)
     batch_agent_title: '智能批量分析',

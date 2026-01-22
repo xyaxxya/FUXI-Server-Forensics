@@ -8,6 +8,7 @@ import {
   Loader2,
   Sparkles,
   Trash2,
+  Info,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import ReactMarkdown from "react-markdown";
@@ -32,6 +33,10 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string>("");
+  
+  // General Info Module
+  const [generalInfo, setGeneralInfo] = useState("");
+  const [showGeneralInfo, setShowGeneralInfo] = useState(false);
 
   const { currentSession, sessions, selectedSessionIds } = useCommandStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -216,7 +221,7 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
 
     try {
       // 1. Get response from AI
-      const response = await sendToAI(history, aiSettings);
+      const response = await sendToAI(history, aiSettings, undefined, generalInfo);
 
       // 2. Add AI response to history
       const newHistory = [...history, response];
@@ -255,8 +260,8 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
                   sessionId: session.id,
                 });
                 output = res.stdout || res.stderr || t.no_output;
-                 if (output.length > 1500) {
-                     output = output.substring(0, 1500) + t.output_truncated;
+                 if (output.length > 3000) {
+                     output = output.substring(0, 3000) + t.output_truncated;
                  }
                 if (res.exit_code !== 0) {
                   output += `\n(${t.exit_code}: ${res.exit_code})`;
@@ -344,6 +349,13 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
             </div>
           </div>
           <div className="flex items-center gap-1">
+            <button
+              onClick={() => setShowGeneralInfo(!showGeneralInfo)}
+              className={`p-2 rounded-lg transition-colors ${showGeneralInfo ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`}
+              title={t.general_info}
+            >
+              <Info size={20} />
+            </button>
             {messages.length > 0 && (
               <button
                 onClick={handleClearChat}
@@ -355,6 +367,38 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
             )}
           </div>
         </div>
+
+        {/* General Info Panel */}
+        <AnimatePresence>
+          {showGeneralInfo && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="border-b border-slate-200 bg-slate-50/50 overflow-hidden"
+            >
+              <div className="p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    {t.general_info}
+                    </label>
+                    <span className="text-[10px] text-slate-400">
+                        {generalInfo.length} chars
+                    </span>
+                </div>
+                <textarea
+                  value={generalInfo}
+                  onChange={(e) => setGeneralInfo(e.target.value)}
+                  placeholder={t.general_info_placeholder}
+                  className="w-full h-24 p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none custom-scrollbar"
+                />
+                <p className="text-[10px] text-slate-400">
+                  {t.general_info_desc}
+                </p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Chat Area */}
         <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-white custom-scrollbar scroll-smooth">

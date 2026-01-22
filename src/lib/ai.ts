@@ -111,7 +111,8 @@ export interface Tool {
 export async function sendToAI(
   messages: AIMessage[],
   settings: AISettings,
-  customTools?: Tool[]
+  customTools?: Tool[],
+  generalInfo?: string
 ): Promise<AIMessage> {
   const config = settings.configs[settings.activeProvider];
 
@@ -144,6 +145,25 @@ export async function sendToAI(
 
   // Inject Planning Mode Instruction if enabled
   let effectiveMessages = [...messages];
+
+  // Inject General Info if provided
+  if (generalInfo) {
+      const infoMsg = `\n\n**用户提供的补充上下文信息 (User Provided Context)**：\n${generalInfo}`;
+      
+      const systemIndex = effectiveMessages.findIndex(m => m.role === 'system');
+      if (systemIndex !== -1) {
+          effectiveMessages[systemIndex] = {
+              ...effectiveMessages[systemIndex],
+              content: effectiveMessages[systemIndex].content + infoMsg
+          };
+      } else {
+          effectiveMessages.unshift({
+              role: 'system',
+              content: SYSTEM_PROMPT + infoMsg
+          });
+      }
+  }
+
   if (settings.enablePlanning) {
       const planningInstruction = `
 重要提示：你已进入 **深度取证思考模式 (Deep Forensic Mode)**。
