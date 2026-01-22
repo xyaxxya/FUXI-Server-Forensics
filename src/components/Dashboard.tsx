@@ -34,37 +34,37 @@ const parsers: Record<
 > = {
   disk: (output) => {
     const lines = output.trim().split("\n");
-    const headers = ["Filesystem", "Size", "Used", "Avail", "Use%", "Mounted"];
+    const headers = ["th_filesystem", "th_size", "th_used", "th_avail", "th_use_percent", "th_mounted"];
     const rows = lines.map((line) => line.split("|"));
     return { headers, rows };
   },
   process: (output) => {
     const lines = output.trim().split("\n");
-    const headers = ["PID", "User", "%CPU", "%MEM", "Command"];
+    const headers = ["th_pid", "th_user", "th_cpu_percent", "th_mem_percent", "th_command"];
     const rows = lines.map((line) => line.split("|"));
     return { headers, rows };
   },
   network: (output) => {
     const lines = output.trim().split("\n");
-    const headers = ["Interface", "IP Address"];
+    const headers = ["th_interface", "th_ip_address"];
     const rows = lines.map((line) => line.split("|"));
     return { headers, rows };
   },
   ports: (output) => {
     const lines = output.trim().split("\n");
-    const headers = ["Protocol", "Local Address", "Process"];
+    const headers = ["th_protocol", "th_local_address", "th_process"];
     const rows = lines.map((line) => line.split("|"));
     return { headers, rows };
   },
   docker: (output) => {
     const lines = output.trim().split("\n");
-    const headers = ["ID", "Image", "Status", "Names"];
+    const headers = ["ID", "th_image", "th_status", "th_names"];
     const rows = lines.map((line) => line.split("|"));
     return { headers, rows };
   },
   simpleList: (output, args) => {
     const lines = output.trim().split("\n");
-    const headers = args || ["Value"];
+    const headers = args || ["th_value"];
     const rows = lines.map((line) => line.split("|"));
     return { headers, rows };
   },
@@ -77,13 +77,13 @@ const parsers: Record<
   },
   k8sNodes: (output) => {
     const lines = output.trim().split("\n");
-    const headers = ["Name", "Status", "Roles", "Version"];
+    const headers = ["th_name", "th_status", "th_roles", "th_version"];
     const rows = lines.map((line) => line.split("|"));
     return { headers, rows };
   },
   k8sPods: (output) => {
     const lines = output.trim().split("\n");
-    const headers = ["Namespace", "Name", "Status", "IP"];
+    const headers = ["th_namespace", "th_name", "th_status", "IP"];
     const rows = lines.map((line) => line.split("|"));
     return { headers, rows };
   },
@@ -92,7 +92,8 @@ const parsers: Record<
 
 // --- Helper Components ---
 
-function TableDisplay({ data }: { data: TableData }) {
+function TableDisplay({ data, language }: { data: TableData; language: Language }) {
+  const t = translations[language];
   return (
     <div className="overflow-x-auto custom-scrollbar">
       <table className="w-full text-left border-collapse">
@@ -103,7 +104,7 @@ function TableDisplay({ data }: { data: TableData }) {
                 key={i}
                 className="p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 whitespace-nowrap bg-slate-50/50"
               >
-                {h}
+                {t[h as keyof typeof t] || h}
               </th>
             ))}
           </tr>
@@ -130,12 +131,13 @@ function TableDisplay({ data }: { data: TableData }) {
   );
 }
 
-function StatusBadge({ status }: { status: "ok" | "error" | "loading" }) {
+function StatusBadge({ status, language }: { status: "ok" | "error" | "loading", language: Language }) {
+  const t = translations[language];
   if (status === "loading") {
     return (
       <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-medium border border-blue-100">
         <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-        Processing
+        {t.processing_status}
       </div>
     );
   }
@@ -143,14 +145,14 @@ function StatusBadge({ status }: { status: "ok" | "error" | "loading" }) {
     return (
       <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-50 text-red-600 text-xs font-medium border border-red-100">
         <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
-        Error
+        {t.error_status}
       </div>
     );
   }
   return (
     <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 text-green-600 text-xs font-medium border border-green-100">
       <Check size={12} />
-      OK
+      {t.ok_status}
     </div>
   );
 }
@@ -166,6 +168,7 @@ function CommandCard({
   isMonitoring,
   onStartMonitoring,
   onStopMonitoring,
+  language,
 }: {
   def: PluginCommand;
   data: any;
@@ -177,7 +180,9 @@ function CommandCard({
   isMonitoring: boolean;
   onStartMonitoring: (id: string) => void;
   onStopMonitoring: () => void;
+  language: Language;
 }) {
+  const t = translations[language];
   // Tooltip state
   const [showTooltip, setShowTooltip] = useState(false);
   const tooltipTimeout = useRef<any>(null);
@@ -213,14 +218,14 @@ function CommandCard({
         </div>
         <div>
           <h3 className="text-slate-800 font-medium mb-1">{title}</h3>
-          <p className="text-slate-400 text-sm">No data available</p>
+          <p className="text-slate-400 text-sm">{t.noData}</p>
         </div>
         <button
           onClick={onRefresh}
           className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-all flex items-center gap-2"
         >
           <RefreshCw size={14} />
-          Load Data
+          {t.load_data}
         </button>
       </div>
     );
@@ -228,7 +233,7 @@ function CommandCard({
     content = (
       <div className="flex flex-col items-center justify-center h-48 gap-3">
         <div className="w-8 h-8 border-2 border-blue-100 border-t-blue-500 rounded-full animate-spin" />
-        <span className="text-slate-400 text-sm">Fetching data...</span>
+        <span className="text-slate-400 text-sm">{t.fetching_data}</span>
       </div>
     );
   } else if (data) {
@@ -250,7 +255,7 @@ function CommandCard({
           </pre>
         );
       } else {
-        content = <TableDisplay data={parsedData} />;
+        content = <TableDisplay data={parsedData} language={language} />;
       }
     } else if (data?.stderr) {
       // Check if the error is a common "not found" error
@@ -269,10 +274,10 @@ function CommandCard({
           </div>
           <div>
             <h3 className="text-slate-800 font-medium mb-1">
-              未检测到 {title}
+              {t.serviceNotDetected}: {title}
             </h3>
             <p className="text-slate-400 text-sm">
-              该功能或配置不存在于当前系统
+              {language === 'zh' ? '该功能或配置不存在于当前系统' : 'Function or config not found on this system'}
             </p>
           </div>
         </div>
@@ -289,9 +294,9 @@ function CommandCard({
             <Info size={24} />
           </div>
           <div>
-            <h3 className="text-slate-800 font-medium mb-1">命令执行失败</h3>
+            <h3 className="text-slate-800 font-medium mb-1">{t.execution_failed}</h3>
             <p className="text-slate-400 text-sm">
-              无法执行该命令，请检查权限和命令语法
+              {language === 'zh' ? '无法执行该命令，请检查权限和命令语法' : 'Failed to execute command. Check permissions and syntax.'}
             </p>
           </div>
         </div>
@@ -330,7 +335,7 @@ function CommandCard({
               }`}
             >
               {isMonitoring ? <Pause size={14} /> : <Play size={14} />}
-              {isMonitoring ? "Stop Monitoring" : "Start Monitoring"}
+              {isMonitoring ? t.stop_monitoring : t.start_monitoring}
             </button>
           </div>
         </div>
@@ -346,7 +351,7 @@ function CommandCard({
           </pre>
         );
       } else {
-        content = <TableDisplay data={parsedData} />;
+        content = <TableDisplay data={parsedData} language={language} />;
       }
     }
   }
@@ -370,7 +375,7 @@ function CommandCard({
           >
             <div className="font-semibold mb-0.5 flex items-center gap-2">
               <Info size={12} className="text-blue-400" />
-              Function Description
+              {t.function_description}
             </div>
             <p className="text-slate-300 leading-relaxed">{description}</p>
             {/* Arrow */}
@@ -396,6 +401,7 @@ function CommandCard({
         <div className="flex items-center gap-3">
           <StatusBadge
             status={loading ? "loading" : data?.stderr ? "error" : "ok"}
+            language={language}
           />
           <button
             onClick={onRefresh}
@@ -553,7 +559,7 @@ export default function Dashboard({
     return (
       <div className="flex-1 h-full p-6 flex flex-col bg-[#1e1e2e] overflow-hidden relative">
         <div className="flex-1 bg-slate-900 rounded-lg overflow-hidden border border-slate-700 shadow-2xl relative z-10">
-          <TerminalXterm onClose={() => {}} />
+          <TerminalXterm onClose={() => {}} language={language} />
         </div>
       </div>
     );
@@ -600,14 +606,14 @@ export default function Dashboard({
             <div className="h-1 w-20 bg-blue-500 mt-2 rounded-full" />
           </motion.div>
           <p className="text-slate-500 text-base mt-3 font-medium">
-            System Overview & Monitoring Dashboard
+            {t.system_overview}
           </p>
           {/* Connection Status Indicator */}
           {currentSession && (
             <div className="flex items-center gap-2 mt-2 bg-white/50 backdrop-blur px-3 py-1.5 rounded-full border border-slate-200/50 w-fit shadow-sm">
               <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
               <span className="text-xs font-semibold text-slate-600">
-                Connected to{" "}
+                {t.connected_to}{" "}
                 <span className="text-blue-600">
                   {currentSession.user}@{currentSession.ip}
                 </span>
@@ -623,7 +629,7 @@ export default function Dashboard({
               <div className="flex items-center gap-2 mb-1">
                 <div className="w-3 h-3 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
                 <span className="text-xs font-semibold text-blue-600">
-                  Running: {currentTaskTitle}
+                  {t.running}: {currentTaskTitle}
                 </span>
               </div>
               <div className="w-32 h-1.5 bg-blue-100 rounded-full overflow-hidden">
@@ -641,7 +647,7 @@ export default function Dashboard({
             <div className="flex items-center gap-2 mr-4">
               <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
               <span className="text-xs font-semibold text-green-600">
-                Monitoring {monitoredCommandIds.length} metrics
+                {t.monitoring_metrics.replace('{0}', monitoredCommandIds.length.toString())}
               </span>
             </div>
           )}
@@ -655,7 +661,7 @@ export default function Dashboard({
             />
             <input
               type="text"
-              placeholder="Search metrics..."
+              placeholder={t.search_metrics}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all w-64 shadow-sm"
@@ -682,7 +688,7 @@ export default function Dashboard({
               >
                 <X size={24} />
               </button>
-              <MySQLManager onClose={() => setShowDatabaseModal(false)} />
+              <MySQLManager onClose={() => setShowDatabaseModal(false)} language={language} />
             </div>
           </div>
         )}
@@ -713,20 +719,20 @@ export default function Dashboard({
                   FUXI Server Forensics
                 </h2>
                 <p className="text-slate-500 mb-8">
-                  Advanced System Intelligence & Forensics Tool
+                  {t.about_title}
                 </p>
 
                 <div className="space-y-4 text-left">
                   <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                     <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">
-                      Author
+                      {t.author}
                     </div>
-                    <div className="text-slate-700 font-medium">yiyi</div>
+                    <div className="text-slate-700 font-medium">yiyi、mid2dog</div>
                   </div>
 
                   <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                     <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">
-                      Tech Stack
+                      {t.tech_stack}
                     </div>
                     <div className="flex flex-wrap gap-2 mt-2">
                       <span className="px-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-600 font-medium">
@@ -753,7 +759,7 @@ export default function Dashboard({
               </div>
 
               <div className="bg-slate-50 p-4 text-center text-xs text-slate-400 border-t border-slate-100">
-                v0.1.0 • Built with ❤️ for Security
+                {t.built_with}
               </div>
             </motion.div>
           </div>
@@ -769,7 +775,7 @@ export default function Dashboard({
               className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg shadow-sm transition-colors font-medium text-sm"
             >
               <Database size={16} />
-              <span>Manage Database</span>
+              <span>{t.manage_database}</span>
             </button>
           </div>
         )}
@@ -781,15 +787,14 @@ export default function Dashboard({
               <Cloud className="text-blue-400" size={48} />
             </div>
             <h3 className="text-2xl font-bold text-slate-800 mb-2">
-              No Data Available
+              {t.no_metrics_title}
             </h3>
             <p className="text-slate-500 max-w-md mx-auto mb-8 text-lg">
-              There are no metrics to display for this category. Try selecting a
-              different tab or running a custom command.
+              {t.no_metrics_desc}
             </p>
             <button className="px-8 py-4 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/30 transition-all flex items-center gap-3 transform hover:scale-105 active:scale-95">
               <RefreshCw size={20} />
-              <span>Reload System</span>
+              <span>{t.reload_system}</span>
             </button>
           </div>
         ) : (
@@ -811,6 +816,7 @@ export default function Dashboard({
                 }
                 onStartMonitoring={handleStartMonitoring}
                 onStopMonitoring={handleStopMonitoring}
+                language={language}
               />
             ))}
           </div>

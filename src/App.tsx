@@ -141,6 +141,7 @@ function MainApp() {
                 <ServerSidebar 
                   onAddSession={() => setShowLoginModal(true)}
                   onDisconnect={handleDisconnect}
+                  language={language}
                 />
               </motion.div>
             </motion.div>

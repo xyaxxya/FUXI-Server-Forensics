@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronRight, Terminal, Check, Loader2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { translations, Language } from "../../translations";
 
 export interface ThinkingStep {
@@ -94,8 +96,10 @@ export default function ThinkingProcess({ steps, isFinished, language }: Thinkin
                   <div className="space-y-2">
                     {/* Thought Text */}
                     {step.title && (
-                      <div className="text-sm text-slate-700 leading-relaxed">
-                        {step.title}
+                      <div className="text-sm text-slate-700 leading-relaxed prose prose-sm max-w-none prose-p:my-0 prose-ul:my-0 prose-li:my-0">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {step.title}
+                        </ReactMarkdown>
                       </div>
                     )}
 
@@ -106,6 +110,7 @@ export default function ThinkingProcess({ steps, isFinished, language }: Thinkin
                         output={step.toolCall.output} 
                         isError={step.toolCall.isError}
                         isLoading={step.toolCall.isLoading}
+                        language={language}
                       />
                     )}
                   </div>
@@ -119,8 +124,9 @@ export default function ThinkingProcess({ steps, isFinished, language }: Thinkin
   );
 }
 
-function ToolExecutionBlock({ command, output, isError, isLoading }: { command: string, output?: string, isError?: boolean, isLoading?: boolean }) {
+function ToolExecutionBlock({ command, output, isError, isLoading, language }: { command: string, output?: string, isError?: boolean, isLoading?: boolean, language: Language }) {
   const [showOutput, setShowOutput] = useState(false);
+  const t = translations[language];
 
   return (
     <div className="mt-1 border border-slate-200 rounded-md overflow-hidden bg-white">
@@ -136,7 +142,7 @@ function ToolExecutionBlock({ command, output, isError, isLoading }: { command: 
         {isLoading && <Loader2 size={12} className="animate-spin text-blue-500" />}
         {output && (
             <span className="text-[10px] text-slate-400 border border-slate-200 px-1.5 py-0.5 rounded">
-                {showOutput ? "Hide" : "Show"} Output
+                {showOutput ? t.hide_output : t.show_output}
             </span>
         )}
       </button>

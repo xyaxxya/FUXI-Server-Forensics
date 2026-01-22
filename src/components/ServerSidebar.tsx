@@ -3,10 +3,12 @@ import { useCommandStore } from '../store/CommandContext';
 import { Server, Plus, CheckSquare, Square, LogOut, Trash2, Activity, Terminal } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
+import { translations, Language } from '../translations';
 
 interface ServerSidebarProps {
   onAddSession: () => void;
   onDisconnect: (sessionId: string) => void;
+  language?: Language;
 }
 
 // ------------------------------------------------------------------
@@ -18,16 +20,19 @@ const ServerCard = ({
   isActive, 
   onClick, 
   onToggleSelect, 
-  onDelete 
+  onDelete,
+  language = 'en'
 }: { 
   session: any, 
   isSelected: boolean, 
   isActive: boolean, 
   onClick: () => void, 
   onToggleSelect: (e: React.MouseEvent) => void,
-  onDelete: (e: React.MouseEvent) => void
+  onDelete: (e: React.MouseEvent) => void,
+  language?: Language
 }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const t = translations[language];
 
   return (
     <motion.div
@@ -101,7 +106,7 @@ const ServerCard = ({
               )}></span>
             </span>
             <span className={isActive ? "text-green-600 font-bold" : "text-slate-500"}>
-              {isActive ? 'Active' : 'Connected'}
+              {isActive ? t.active_status : t.connected_status}
             </span>
           </div>
         </div>
@@ -116,7 +121,7 @@ const ServerCard = ({
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 10 }}
             className="relative z-20 p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-            title="Disconnect"
+            title={t.disconnect}
           >
             <LogOut size={16} />
           </motion.button>
@@ -134,7 +139,7 @@ const ServerCard = ({
 // ------------------------------------------------------------------
 // Main Component
 // ------------------------------------------------------------------
-export default function ServerSidebar({ onAddSession, onDisconnect }: ServerSidebarProps) {
+export default function ServerSidebar({ onAddSession, onDisconnect, language = 'en' }: ServerSidebarProps) {
   const { 
     sessions, 
     switchSession, 
@@ -149,6 +154,7 @@ export default function ServerSidebar({ onAddSession, onDisconnect }: ServerSide
   const [switchError, setSwitchError] = useState<string | null>(null);
   
   const sessionToDeleteObj = sessions.find(s => s.id === sessionToDelete);
+  const t = translations[language];
 
   // Handle switching with visual feedback
   const handleSessionClick = async (sessionId: string) => {
@@ -205,9 +211,9 @@ export default function ServerSidebar({ onAddSession, onDisconnect }: ServerSide
                 <Terminal size={20} />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-slate-800 tracking-tight">SERVERS</h2>
+                <h2 className="text-sm font-bold text-slate-800 tracking-tight">{t.servers_title}</h2>
                 <div className="text-[10px] text-slate-500 font-medium tracking-wide">
-                  {sessions.length} CONNECTED
+                  {t.connected_count.replace('{0}', sessions.length.toString())}
                 </div>
               </div>
             </div>
@@ -217,7 +223,7 @@ export default function ServerSidebar({ onAddSession, onDisconnect }: ServerSide
               whileTap={{ scale: 0.95 }}
               onClick={onAddSession}
               className="p-2.5 rounded-xl bg-white/60 text-blue-500 border border-slate-200 shadow-sm hover:shadow hover:border-blue-200 transition-all"
-              title="Add New Server"
+              title={t.new_connection}
             >
               <Plus size={18} />
             </motion.button>
@@ -234,7 +240,7 @@ export default function ServerSidebar({ onAddSession, onDisconnect }: ServerSide
               ) : (
                 <Square size={16} className="text-slate-400 group-hover:text-blue-400" />
               )}
-              <span>Select All Context</span>
+              <span>{t.select_all_context}</span>
             </button>
           </div>
           {switchError && (
@@ -252,14 +258,14 @@ export default function ServerSidebar({ onAddSession, onDisconnect }: ServerSide
                 <Server size={32} className="opacity-50" />
               </div>
               <div className="text-center">
-                <p className="text-sm font-semibold text-slate-600">No connections</p>
-                <p className="text-xs text-slate-500 mt-1 max-w-[150px]">Add a server to start monitoring</p>
+                <p className="text-sm font-semibold text-slate-600">{t.no_connections}</p>
+                <p className="text-xs text-slate-500 mt-1 max-w-[150px]">{t.add_server_hint}</p>
               </div>
               <button 
                 onClick={onAddSession}
                 className="mt-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-blue-500/20 transition-all hover:scale-105 active:scale-95"
               >
-                Connect Server
+                {t.connect_server_btn}
               </button>
             </div>
           ) : (
@@ -276,6 +282,7 @@ export default function ServerSidebar({ onAddSession, onDisconnect }: ServerSide
                     toggleSessionSelection(session.id);
                   }}
                   onDelete={(e) => handleDeleteClick(e, session.id)}
+                  language={language}
                 />
               ))}
             </AnimatePresence>
@@ -309,9 +316,9 @@ export default function ServerSidebar({ onAddSession, onDisconnect }: ServerSide
                   </div>
                   
                   <div>
-                    <h3 className="font-bold text-slate-800 text-sm mb-1">Disconnect Server?</h3>
+                    <h3 className="font-bold text-slate-800 text-sm mb-1">{t.disconnect_confirm_title}</h3>
                     <p className="text-xs text-slate-500 leading-relaxed">
-                      Are you sure you want to disconnect from <br/>
+                      {t.disconnect_confirm_desc} <br/>
                       <span className="text-slate-700 font-mono bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
                         {sessionToDeleteObj?.ip}
                       </span>?
@@ -323,13 +330,13 @@ export default function ServerSidebar({ onAddSession, onDisconnect }: ServerSide
                       onClick={() => setSessionToDelete(null)}
                       className="px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors border border-transparent hover:border-slate-200"
                     >
-                      Cancel
+                      {t.cancel}
                     </button>
                     <button 
                       onClick={confirmDelete}
                       className="px-3 py-2 text-xs font-bold bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-lg shadow-md shadow-red-500/20 transition-all hover:scale-105 active:scale-95"
                     >
-                      Disconnect
+                      {t.disconnect}
                     </button>
                   </div>
                 </div>

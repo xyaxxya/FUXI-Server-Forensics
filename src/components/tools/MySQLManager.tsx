@@ -7,9 +7,11 @@ import {
   Play, RotateCw, Save, FileCode, Layout
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { translations, Language } from '../../translations';
 
 interface MySQLManagerProps {
   onClose: () => void;
+  language?: Language;
 }
 
 interface SshConfig {
@@ -50,7 +52,8 @@ interface Tab {
   page: number; // For pagination
 }
 
-export default function MySQLManager({ onClose }: MySQLManagerProps) {
+export default function MySQLManager({ onClose, language = 'en' }: MySQLManagerProps) {
+  const t = translations[language];
   // State
   const [connections, setConnections] = useState<DBConfig[]>(() => {
     const saved = localStorage.getItem('db_connections');
@@ -80,7 +83,7 @@ export default function MySQLManager({ onClose }: MySQLManagerProps) {
   const handleCreate = () => {
     setEditingConfig({
       id: crypto.randomUUID(),
-      name: 'New Connection',
+      name: t.new_connection,
       user: 'root',
       pass: '',
       host: '127.0.0.1',
@@ -111,7 +114,7 @@ export default function MySQLManager({ onClose }: MySQLManagerProps) {
   };
 
   const handleDeleteConnection = (id: string) => {
-    if (confirm('Are you sure you want to delete this connection?')) {
+    if (confirm(t.delete_connection_confirm)) {
         setConnections(prev => prev.filter(c => c.id !== id));
         if (editingConfig?.id === id) setEditingConfig(null);
     }
@@ -133,10 +136,10 @@ export default function MySQLManager({ onClose }: MySQLManagerProps) {
             database: editingConfig.database || 'mysql',
             sshConfig: sshConfig
         });
-        alert("Connection Successful!");
+        alert(t.connection_successful);
         await invoke('disconnect_db', { id: tempId });
     } catch (e: any) {
-        alert("Connection Failed: " + e.toString());
+        alert(t.connection_failed_prefix + e.toString());
     } finally {
         setConnecting(false);
     }
@@ -297,8 +300,8 @@ export default function MySQLManager({ onClose }: MySQLManagerProps) {
               <Database size={20} />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-800">Database Manager</h2>
-              <p className="text-xs text-slate-500">Direct Connection & SSH Tunneling</p>
+              <h2 className="text-lg font-bold text-slate-800">{t.db_manager_title}</h2>
+              <p className="text-xs text-slate-500">{t.db_manager_subtitle}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
@@ -317,7 +320,7 @@ export default function MySQLManager({ onClose }: MySQLManagerProps) {
                   onClick={handleCreate}
                   className="w-full flex items-center justify-center gap-2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
                 >
-                  <Plus size={16} /> New Connection
+                  <Plus size={16} /> {t.new_connection}
                 </button>
                 <div className="space-y-1 mt-2">
                   {connections.map(c => (
@@ -329,7 +332,7 @@ export default function MySQLManager({ onClose }: MySQLManagerProps) {
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleConnect(c); }}
                         className="p-1.5 bg-green-100 text-green-600 rounded opacity-0 group-hover:opacity-100 hover:bg-green-200 transition-all"
-                        title="Connect"
+                        title={t.ok_status || "Connect"}
                       >
                         <ArrowRight size={14} />
                       </button>
@@ -342,9 +345,9 @@ export default function MySQLManager({ onClose }: MySQLManagerProps) {
                  <div className="p-2 border-b bg-green-50 flex items-center justify-between">
                     <span className="text-xs font-bold text-green-700 flex items-center gap-1">
                       <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                      Connected
+                      {t.connected}
                     </span>
-                    <button onClick={handleDisconnect} className="text-xs text-red-500 hover:underline">Disconnect</button>
+                    <button onClick={handleDisconnect} className="text-xs text-red-500 hover:underline">{t.disconnect}</button>
                  </div>
                  <div className="flex-1 overflow-y-auto p-2">
                     {databases.map(db => (
@@ -383,7 +386,7 @@ export default function MySQLManager({ onClose }: MySQLManagerProps) {
             {editingConfig ? (
                <div className="p-8 max-w-2xl mx-auto w-full overflow-y-auto">
                   <div className="flex justify-between items-center mb-6">
-                      <h3 className="text-xl font-bold text-slate-800">Connection Settings</h3>
+                      <h3 className="text-xl font-bold text-slate-800">{t.connection_settings}</h3>
                       {connections.some(c => c.id === editingConfig.id) && (
                           <button onClick={() => handleDeleteConnection(editingConfig.id)} className="text-red-500 hover:bg-red-50 p-2 rounded">
                               <Trash2 size={18}/>
@@ -392,7 +395,7 @@ export default function MySQLManager({ onClose }: MySQLManagerProps) {
                   </div>
                   <div className="space-y-6">
                     <div className="space-y-4 p-4 border rounded-lg bg-slate-50">
-                      <label className="block text-sm font-medium text-slate-700">Connection Name</label>
+                      <label className="block text-sm font-medium text-slate-700">{t.connection_name}</label>
                       <input 
                         className="w-full p-2 border rounded bg-white" 
                         value={editingConfig.name} 
@@ -401,28 +404,28 @@ export default function MySQLManager({ onClose }: MySQLManagerProps) {
                       
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-slate-700">Host</label>
+                          <label className="block text-sm font-medium text-slate-700">{t.host}</label>
                           <input className="w-full p-2 border rounded bg-white" value={editingConfig.host} onChange={e => setEditingConfig({...editingConfig, host: e.target.value})} />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-slate-700">Port</label>
+                          <label className="block text-sm font-medium text-slate-700">{t.port}</label>
                           <input type="number" className="w-full p-2 border rounded bg-white" value={editingConfig.port} onChange={e => setEditingConfig({...editingConfig, port: parseInt(e.target.value)})} />
                         </div>
                       </div>
                       
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-slate-700">Username</label>
+                          <label className="block text-sm font-medium text-slate-700">{t.username}</label>
                           <input className="w-full p-2 border rounded bg-white" value={editingConfig.user} onChange={e => setEditingConfig({...editingConfig, user: e.target.value})} />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-slate-700">Password</label>
+                          <label className="block text-sm font-medium text-slate-700">{t.password}</label>
                           <input type="password" className="w-full p-2 border rounded bg-white" value={editingConfig.pass} onChange={e => setEditingConfig({...editingConfig, pass: e.target.value})} />
                         </div>
                       </div>
                       
                       <div>
-                          <label className="block text-sm font-medium text-slate-700">Database (Optional)</label>
+                          <label className="block text-sm font-medium text-slate-700">{t.database_optional}</label>
                           <input className="w-full p-2 border rounded bg-white" value={editingConfig.database} onChange={e => setEditingConfig({...editingConfig, database: e.target.value})} />
                       </div>
                     </div>
@@ -438,7 +441,7 @@ export default function MySQLManager({ onClose }: MySQLManagerProps) {
                           className="w-4 h-4 text-blue-600"
                         />
                         <label htmlFor="useSsh" className="font-bold text-slate-700 flex items-center gap-2 cursor-pointer">
-                          <Shield size={16} /> Use SSH Tunnel
+                          <Shield size={16} /> {t.use_ssh_tunnel}
                         </label>
                       </div>
                       
@@ -452,26 +455,26 @@ export default function MySQLManager({ onClose }: MySQLManagerProps) {
                           })()}
                           <div className="grid grid-cols-3 gap-4">
                             <div className="col-span-2">
-                              <label className="block text-sm font-medium text-slate-700">SSH Host</label>
+                              <label className="block text-sm font-medium text-slate-700">{t.ssh_host}</label>
                               <input className="w-full p-2 border rounded bg-white" value={editingConfig.ssh?.ip || ''} onChange={e => setEditingConfig({...editingConfig, ssh: {...editingConfig.ssh!, ip: e.target.value}})} />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-slate-700">Port</label>
+                              <label className="block text-sm font-medium text-slate-700">{t.port}</label>
                               <input type="number" className="w-full p-2 border rounded bg-white" value={editingConfig.ssh?.port || 22} onChange={e => setEditingConfig({...editingConfig, ssh: {...editingConfig.ssh!, port: parseInt(e.target.value)}})} />
                             </div>
                           </div>
                           <div className="grid grid-cols-2 gap-4">
                             <div>
-                              <label className="block text-sm font-medium text-slate-700">SSH User</label>
+                              <label className="block text-sm font-medium text-slate-700">{t.ssh_user}</label>
                               <input className="w-full p-2 border rounded bg-white" value={editingConfig.ssh?.user || ''} onChange={e => setEditingConfig({...editingConfig, ssh: {...editingConfig.ssh!, user: e.target.value}})} />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-slate-700">SSH Password</label>
+                              <label className="block text-sm font-medium text-slate-700">{t.ssh_password}</label>
                               <input type="password" className="w-full p-2 border rounded bg-white" value={editingConfig.ssh?.pass || ''} onChange={e => setEditingConfig({...editingConfig, ssh: {...editingConfig.ssh!, pass: e.target.value}})} />
                             </div>
                           </div>
                           <div>
-                            <label className="block text-sm font-medium text-slate-700">Private Key Path (Optional)</label>
+                            <label className="block text-sm font-medium text-slate-700">{t.private_key_path}</label>
                             <input className="w-full p-2 border rounded bg-white" value={editingConfig.ssh?.private_key || ''} onChange={e => setEditingConfig({...editingConfig, ssh: {...editingConfig.ssh!, private_key: e.target.value}})} placeholder="/path/to/id_rsa" />
                           </div>
                         </div>
@@ -485,12 +488,12 @@ export default function MySQLManager({ onClose }: MySQLManagerProps) {
                         className="px-4 py-2 bg-slate-200 text-slate-700 rounded hover:bg-slate-300 transition-colors flex items-center gap-2"
                       >
                          {connecting ? <Loader2 size={16} className="animate-spin" /> : <RotateCw size={16} />}
-                         Test Connection
+                         {t.test_connection}
                       </button>
                       <div className="flex gap-3">
-                          <button onClick={() => setEditingConfig(null)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded">Cancel</button>
+                          <button onClick={() => setEditingConfig(null)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded">{t.cancel}</button>
                           <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 shadow-sm flex items-center gap-2">
-                              <Save size={16}/> Save
+                              <Save size={16}/> {t.save}
                           </button>
                       </div>
                     </div>
@@ -517,9 +520,9 @@ export default function MySQLManager({ onClose }: MySQLManagerProps) {
                         </div>
                     ))}
                     <button 
-                        onClick={() => createTab('query', 'New Query', '')}
+                        onClick={() => createTab('query', t.new_query, '')}
                         className="px-3 py-2 text-slate-500 hover:bg-slate-200 border-r"
-                        title="New Query"
+                        title={t.new_query}
                     >
                         <Plus size={16}/>
                     </button>
@@ -537,10 +540,10 @@ export default function MySQLManager({ onClose }: MySQLManagerProps) {
                                     disabled={activeTab.loading || (activeTab.type === 'query' && !activeTab.query)}
                                 >
                                     {activeTab.loading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} 
-                                    {activeTab.type === 'query' ? 'Run' : 'Refresh'}
+                                    {activeTab.type === 'query' ? t.run : t.refresh}
                                 </button>
                                 {activeTab.type === 'table' && (
-                                    <span className="text-xs text-slate-400 ml-2">Displaying top 100 rows</span>
+                                    <span className="text-xs text-slate-400 ml-2">{t.displaying_top_100}</span>
                                 )}
                             </div>
 
@@ -585,12 +588,12 @@ export default function MySQLManager({ onClose }: MySQLManagerProps) {
                                         {activeTab.loading ? (
                                             <div className="flex flex-col items-center">
                                                 <Loader2 size={32} className="animate-spin mb-2 text-blue-500"/>
-                                                <p>Executing query...</p>
+                                                <p>{t.executing_query}</p>
                                             </div>
                                         ) : (
                                             <>
                                                 <Layout size={48} className="mb-4 opacity-20" />
-                                                <p>No results to display</p>
+                                                <p>{t.no_results}</p>
                                             </>
                                         )}
                                     </div>
@@ -601,16 +604,16 @@ export default function MySQLManager({ onClose }: MySQLManagerProps) {
                             <div className="p-1 px-3 bg-slate-100 border-t text-xs text-slate-500 flex gap-4 shrink-0">
                                 {activeTab.result ? (
                                     <>
-                                        <span>Rows: {activeTab.result.rows.length}</span>
-                                        <span>Affected: {activeTab.result.affected_rows}</span>
-                                        {activeTab.result.last_insert_id && <span>Insert ID: {activeTab.result.last_insert_id}</span>}
+                                        <span>{t.rows}: {activeTab.result.rows.length}</span>
+                                        <span>{t.affected}: {activeTab.result.affected_rows}</span>
+                                        {activeTab.result.last_insert_id && <span>{t.insert_id}: {activeTab.result.last_insert_id}</span>}
                                     </>
                                 ) : (
-                                    <span>Ready</span>
+                                    <span>{t.ready}</span>
                                 )}
                                 {activeTab.error && (
                                     <span className="text-red-500 font-medium flex items-center gap-1">
-                                        <X size={12}/> Error: {activeTab.error}
+                                        <X size={12}/> {t.error_status || "Error"}: {activeTab.error}
                                     </span>
                                 )}
                             </div>
@@ -618,7 +621,7 @@ export default function MySQLManager({ onClose }: MySQLManagerProps) {
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
                             <Database size={48} className="mb-4 opacity-20" />
-                            <p>Select a table or create a new query</p>
+                            <p>{t.select_table_hint}</p>
                         </div>
                     )}
                  </div>
@@ -628,11 +631,11 @@ export default function MySQLManager({ onClose }: MySQLManagerProps) {
                 <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
                   <Server size={32} />
                 </div>
-                <h3 className="text-lg font-medium text-slate-600">No Connection Selected</h3>
-                <p className="text-sm mt-1">Select a connection from the sidebar or create a new one.</p>
+                <h3 className="text-lg font-medium text-slate-600">{t.no_connection_selected}</h3>
+                <p className="text-sm mt-1">{t.no_connection_desc}</p>
                 {connecting && (
                    <div className="mt-4 flex items-center gap-2 text-blue-600">
-                     <Loader2 size={16} className="animate-spin" /> Connecting...
+                     <Loader2 size={16} className="animate-spin" /> {t.connecting}
                    </div>
                 )}
                 {globalError && (

@@ -169,9 +169,9 @@ export default function Login({ onLogin, onClose }: LoginProps) {
                 }}
               />
             </div>
-            <h2 className="text-2xl font-bold text-slate-800">Secure Access</h2>
+            <h2 className="text-2xl font-bold text-slate-800">连接服务器</h2>
             <p className="text-slate-500 text-sm mt-1">
-              Establish secure SSH connection
+              建立初始SSH连接
             </p>
           </div>
 
@@ -184,7 +184,7 @@ export default function Login({ onLogin, onClose }: LoginProps) {
                 />
                 <input
                   type="text"
-                  placeholder="Host Address"
+                  placeholder="主机地址"
                   value={ip}
                   onChange={(e) => setIp(e.target.value)}
                   onFocus={() => setShowHistory(true)}
@@ -216,7 +216,7 @@ export default function Login({ onLogin, onClose }: LoginProps) {
                       <div className="max-h-60 overflow-y-auto custom-scrollbar">
                         <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
                           <History size={12} />
-                          <span>Recent Connections</span>
+                          <span>最近连接</span>
                         </div>
                         {history.map((item, index) => (
                           <div
@@ -235,7 +235,7 @@ export default function Login({ onLogin, onClose }: LoginProps) {
                             <button
                               onClick={(e) => deleteHistoryItem(e, index)}
                               className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                              title="Remove from history"
+                              title="删除记录"
                             >
                               <Trash2 size={14} />
                             </button>
@@ -257,7 +257,7 @@ export default function Login({ onLogin, onClose }: LoginProps) {
               <div className="col-span-1 relative">
                 <input
                   type="text"
-                  placeholder="Port"
+                  placeholder="端口"
                   value={port}
                   onChange={(e) => setPort(e.target.value)}
                   className="w-full px-4 py-3 bg-slate-50/50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all placeholder:text-slate-400 text-center"
@@ -272,7 +272,7 @@ export default function Login({ onLogin, onClose }: LoginProps) {
               />
               <input
                 type="text"
-                placeholder="Username"
+                placeholder="用户名"
                 value={user}
                 onChange={(e) => setUser(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 bg-slate-50/50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all placeholder:text-slate-400"
@@ -285,7 +285,7 @@ export default function Login({ onLogin, onClose }: LoginProps) {
               </div>
               <input
                 type="password"
-                placeholder="Password"
+                placeholder="密码"
                 value={pass}
                 onChange={(e) => setPass(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 bg-slate-50/50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all placeholder:text-slate-400"
@@ -306,7 +306,7 @@ export default function Login({ onLogin, onClose }: LoginProps) {
                 className="text-sm text-slate-600 cursor-pointer select-none"
                 onClick={() => setRememberPassword(!rememberPassword)}
               >
-                Remember Password
+                记住密码
               </span>
             </div>
 
@@ -326,17 +326,24 @@ export default function Login({ onLogin, onClose }: LoginProps) {
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
                 <>
-                  <span>Connect</span>
+                  <span>连接</span>
                   <ArrowRight size={18} />
                 </>
               )}
+            </button>
+
+            <button
+              onClick={onLogin}
+              className="w-full py-3.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-800 rounded-xl font-medium transition-all flex items-center justify-center gap-2 mt-3"
+            >
+              <span>直接进入主界面</span>
             </button>
           </div>
         </div>
 
         <div className="text-center mt-8">
           <p className="text-slate-400 text-xs">
-            FUXI Server Forensics Client v0.1.0
+            FUXI Server Forensics 客户端 v0.1.0
           </p>
         </div>
       </motion.div>

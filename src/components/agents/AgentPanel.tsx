@@ -29,6 +29,7 @@ import remarkGfm from "remark-gfm";
 import { AIMessage, AISettings, sendToAI, Tool } from "../../lib/ai";
 import { useCommandStore } from "../../store/CommandContext";
 import ThinkingProcess, { ThinkingStep } from "./ThinkingProcess";
+import { pLimit } from "../../lib/p-limit";
 
 // --- Types ---
 
@@ -491,7 +492,6 @@ ${text}
     }
   };
 
-  // Batch Processing
   const startBatchProcessing = async () => {
     if (!aiSettings) {
         alert("Please configure AI settings first.");
@@ -502,8 +502,11 @@ ${text}
     
     const pendingQuestions = questions.filter(q => q.status === "pending");
     
-    // Concurrent processing
-    await Promise.all(pendingQuestions.map(q => processQuestion(q)));
+    // Concurrent processing with limit
+    const limit = pLimit(aiSettings.maxConcurrentTasks || 3);
+    const tasks = pendingQuestions.map(q => limit(() => processQuestion(q)));
+    
+    await Promise.all(tasks);
     
     setIsProcessing(false);
   };

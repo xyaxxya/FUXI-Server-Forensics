@@ -5,8 +5,9 @@ import 'xterm/css/xterm.css';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useCommandStore } from '../store/CommandContext';
+import { translations, Language } from '../translations';
 
-export default function TerminalXterm({ onClose, sessionId }: { onClose: () => void, sessionId?: string }) {
+export default function TerminalXterm({ onClose, sessionId, language }: { onClose: () => void, sessionId?: string, language: Language }) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -14,6 +15,7 @@ export default function TerminalXterm({ onClose, sessionId }: { onClose: () => v
   const { sessions, currentSession } = useCommandStore();
   const [connecting, setConnecting] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const t = translations[language];
 
   // Use passed sessionId or fallback to currentSession (for backward compatibility)
   const targetSessionId = sessionId || currentSession?.id;
@@ -43,16 +45,16 @@ export default function TerminalXterm({ onClose, sessionId }: { onClose: () => v
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    term.writeln('\x1b[1;34mInitializing Secure Shell (SSH) PTY Session...\x1b[0m');
+    term.writeln(`\x1b[1;34m${t.initializing_ssh}\x1b[0m`);
 
     // 2. Start PTY Session
     const startPty = async () => {
       try {
         if (!targetSessionId || !targetSession) {
-            throw new Error("No active session selected");
+            throw new Error(t.no_active_session_selected);
         }
 
-        term.writeln(`\r\nConnecting to ${targetSession.user}@${targetSession.ip}...\r\n`);
+        term.writeln(`\r\n${t.connecting_to.replace('{0}', `${targetSession.user}@${targetSession.ip}`)}\r\n`);
 
         try {
              // Now we pass session_id instead of raw credentials
@@ -64,7 +66,7 @@ export default function TerminalXterm({ onClose, sessionId }: { onClose: () => v
              
              ptyIdRef.current = ptyId;
              setConnecting(false);
-             term.writeln('\x1b[32mConnected!\x1b[0m\r\n');
+             term.writeln(`\x1b[32m${t.connected}\x1b[0m\r\n`);
              term.clear();
              
              // 3. Setup Events
@@ -72,16 +74,16 @@ export default function TerminalXterm({ onClose, sessionId }: { onClose: () => v
 
         } catch (e: any) {
              const errorMsg = e.toString();
-             term.writeln(`\r\n\x1b[31mConnection failed: ${errorMsg}\x1b[0m`);
+             term.writeln(`\r\n\x1b[31m${t.connection_failed.replace('{0}', errorMsg)}\x1b[0m`);
              setError(errorMsg);
              
              if (errorMsg.includes("No password stored")) {
-                 term.writeln('\r\n\x1b[33mHint: Try reconnecting the session from the dashboard to update credentials.\x1b[0m');
+                 term.writeln(`\r\n\x1b[33m${t.reconnect_hint}\x1b[0m`);
              }
         }
 
       } catch (e: any) {
-        term.writeln(`\r\n\x1b[31mError: ${e.message}\x1b[0m`);
+        term.writeln(`\r\n\x1b[31m${t.error_status}: ${e.message}\x1b[0m`);
       }
     };
 
@@ -135,11 +137,11 @@ export default function TerminalXterm({ onClose, sessionId }: { onClose: () => v
         <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${connecting ? 'bg-yellow-400 animate-pulse' : error ? 'bg-red-500' : 'bg-green-400'}`}></div>
             <span className="text-xs font-mono text-slate-300">
-                {targetSession ? `${targetSession.user}@${targetSession.ip}` : 'Terminal'} (xterm.js)
+                {targetSession ? `${targetSession.user}@${targetSession.ip}` : t.terminal_title} (xterm.js)
             </span>
         </div>
         <button onClick={onClose} className="text-slate-400 hover:text-white text-xs uppercase font-bold tracking-wider">
-            Close
+            {t.terminal_close}
         </button>
       </div>
       <div className="flex-1 relative p-1">
