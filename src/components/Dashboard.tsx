@@ -87,6 +87,24 @@ const parsers: Record<
     const rows = lines.map((line) => line.split("|"));
     return { headers, rows };
   },
+  memory: (output) => {
+    const lines = output.trim().split("\n");
+    const headers = ["th_type", "th_total", "th_used", "th_free", "th_shared", "th_buff_cache", "th_avail"];
+    const rows = lines.map((line) => line.split("|"));
+    return { headers, rows };
+  },
+  boot: (output) => {
+    const lines = output.trim().split("\n");
+    const headers = ["th_unit", "th_state", "th_preset"];
+    const rows = lines.map((line) => line.split("|"));
+    return { headers, rows };
+  },
+  diskIO: (output) => {
+    const lines = output.trim().split("\n");
+    const headers = ["th_device", "th_read_sec", "th_write_sec", "th_read_kb", "th_write_kb", "th_util"];
+    const rows = lines.map((line) => line.split("|"));
+    return { headers, rows };
+  },
   raw: (output) => output,
 };
 

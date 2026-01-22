@@ -121,8 +121,10 @@ export const systemCommands: PluginCommand[] = [
     cn_name: 'CPU 信息', 
     description: 'Detailed CPU information including model, cores, and speed', 
     cn_description: 'CPU 详细信息，包括型号、核心数和速度', 
-    command: "cat /proc/cpuinfo | grep -E 'model name|cpu cores|cpu MHz|cache size' | head -n 8 | paste - - - - | awk '{print $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12}'", 
-    icon: Activity 
+    command: "lscpu | grep -E 'Model name|CPU\\(s\\):|CPU MHz|L3 cache' | awk -F: '{print $1\"|\"$2}' || grep -E 'model name|cpu cores|cpu MHz|cache size' /proc/cpuinfo | head -n 4 | awk -F: '{print $1\"|\"$2}'", 
+    icon: Activity,
+    parserType: 'simpleList',
+    parserArgs: ['th_name', 'th_value']
   },
   // 新增：内存详细信息
   { 
@@ -132,8 +134,9 @@ export const systemCommands: PluginCommand[] = [
     cn_name: '内存详情', 
     description: 'Detailed memory information including buffers and cache', 
     cn_description: '内存详细信息，包括缓冲区和缓存', 
-    command: "free -h", 
-    icon: Activity 
+    command: "free -h | awk 'NR==2{print \"Mem|\"$2\"|\"$3\"|\"$4\"|\"$5\"|\"$6\"|\"$7} NR==3{print \"Swap|\"$2\"|\"$3\"|\"$4\"|||\"}'", 
+    icon: Activity,
+    parserType: 'memory'
   },
   // 新增：交换分区使用情况
   { 
@@ -143,8 +146,9 @@ export const systemCommands: PluginCommand[] = [
     cn_name: '交换分区使用', 
     description: 'Swap partition usage statistics', 
     cn_description: '交换分区使用情况统计', 
-    command: "free -h | grep Swap", 
-    icon: Activity 
+    command: "free -h | grep Swap | awk '{print \"Swap|\"$2\"|\"$3\"|\"$4\"|||\"}'", 
+    icon: Activity,
+    parserType: 'memory'
   },
   // 新增：系统进程统计
   { 
@@ -176,9 +180,10 @@ export const systemCommands: PluginCommand[] = [
     cn_name: '开机启动项', 
     description: 'Enabled system services on boot', 
     cn_description: '开机启用的系统服务', 
-    command: "systemctl list-unit-files --type=service --state=enabled | head -n 10 || chkconfig --list | grep '3:on' | head -n 10", 
+    command: "systemctl list-unit-files --type=service --state=enabled | head -n 20 | awk 'NR>1 && $1!=\"\" && $1!=\"UNIT\" {print $1\"|\"$2\"|\"$3}'", 
     icon: Server, 
-    checkExists: true 
+    checkExists: true,
+    parserType: 'boot'
   },
   // 新增：当前登录用户
   { 
@@ -188,8 +193,10 @@ export const systemCommands: PluginCommand[] = [
     cn_name: '当前登录用户', 
     description: 'Users currently logged into the system', 
     cn_description: '当前登录到系统的用户', 
-    command: "who", 
-    icon: Server 
+    command: "who | awk '{print $1\"|\"$2\"|\"$3\" \"$4\"|\"$5}'", 
+    icon: Server,
+    parserType: 'simpleList',
+    parserArgs: ['th_user', 'th_terminal', 'th_time', 'th_ip_address']
   },
   // 新增：文件系统I/O统计
   { 
@@ -199,9 +206,10 @@ export const systemCommands: PluginCommand[] = [
     cn_name: '磁盘 I/O', 
     description: 'Disk input/output statistics', 
     cn_description: '磁盘输入/输出统计', 
-    command: "iostat -x | head -n 15", 
+    command: "iostat -dx | awk 'NR>1 && $1!=\"Device\" && $1!=\"\" {print $1\"|\"$2\"|\"$8\"|\"$3\"|\"$9\"|\"$NF}'", 
     icon: Database, 
-    checkExists: true 
+    checkExists: true,
+    parserType: 'diskIO'
   },
   // 新增：系统温度（如果支持）
   { 
@@ -223,8 +231,10 @@ export const systemCommands: PluginCommand[] = [
     cn_name: '文件打开数', 
     description: 'Current and maximum file handles', 
     cn_description: '当前和最大文件打开数', 
-    command: "cat /proc/sys/fs/file-nr", 
-    icon: Activity 
+    command: "cat /proc/sys/fs/file-nr | awk '{print \"Allocated|\"$1 \"\\nUnused|\"$2 \"\\nMax|\"$3}'", 
+    icon: Activity,
+    parserType: 'simpleList',
+    parserArgs: ['th_type', 'th_value']
   },
   // 新增：系统限制
   { 
@@ -234,7 +244,9 @@ export const systemCommands: PluginCommand[] = [
     cn_name: '系统限制', 
     description: 'System resource limits', 
     cn_description: '系统资源限制', 
-    command: "ulimit -a", 
-    icon: Server 
+    command: "ulimit -a | awk -F') ' '{print $1\") |\" $2}'", 
+    icon: Server,
+    parserType: 'simpleList',
+    parserArgs: ['th_limit', 'th_value']
   }
 ];

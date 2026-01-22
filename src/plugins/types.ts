@@ -2,7 +2,7 @@ import { LucideIcon } from 'lucide-react';
 
 export type CommandCategory = 'system' | 'network' | 'web' | 'security' | 'database' | 'docker' | 'k8s';
 
-export type ParserType = 'disk' | 'process' | 'network' | 'ports' | 'docker' | 'k8sNodes' | 'k8sPods' | 'simpleList' | 'lsOutput' | 'authLog' | 'raw';
+export type ParserType = 'disk' | 'process' | 'network' | 'ports' | 'docker' | 'k8sNodes' | 'k8sPods' | 'simpleList' | 'lsOutput' | 'authLog' | 'raw' | 'memory' | 'boot' | 'diskIO';
 
 export interface PluginCommand {
   id: string;

@@ -36,8 +36,7 @@ export const networkCommands: PluginCommand[] = [
     cn_name: '监听端口', 
     description: 'Currently listening TCP/UDP ports and associated processes', 
     cn_description: '当前正在监听的 TCP/UDP 端口及对应进程', 
-    // 使用 ss 命令获取监听端口信息
-    command: "ss -tulpn | awk 'NR>1 {print $1 \"|\" $5 \"|\" $7}' | head -n 10", 
+    command: "netstat -anltp | awk 'NR>1 {print $7 \"|\" $1 \"|\" $5}' | head -n 10",
     icon: Server, 
     parserType: 'ports' 
   },
