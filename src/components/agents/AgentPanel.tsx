@@ -31,6 +31,8 @@ import { useCommandStore } from "../../store/CommandContext";
 import ThinkingProcess, { ThinkingStep } from "./ThinkingProcess";
 import { pLimit } from "../../lib/p-limit";
 
+import JarConfigArtifact from "./JarConfigArtifact";
+
 // --- Types ---
 
 export type QuestionType = "Basic" | "Database" | "Java" | "DataAnalysis";
@@ -60,7 +62,49 @@ export interface BatchQuestion {
 
 type DisplayItem = 
   | { type: 'message', message: ChatMessage }
-  | { type: 'thinking', steps: ThinkingStep[], isFinished: boolean };
+  | { type: 'thinking', steps: ThinkingStep[], isFinished: boolean }
+  | { type: 'artifact', component: React.ReactNode };
+
+const JAR_ANALYSIS_SCRIPT = `
+param([string]$JarPath)
+$Extensions = @(".yml", ".yaml", ".properties", ".xml", ".json", ".conf")
+$Keywords = @("jdbc", "database", "datasource", "password", "secret", "redis", "mongo", "elasticsearch")
+if (-not (Test-Path $JarPath)) { Write-Output "{ ""error"": ""File not found: $JarPath"" }"; exit 1 }
+$TempDir = Join-Path $env:TEMP ("fuxi_jar_" + [Guid]::NewGuid().ToString())
+New-Item -ItemType Directory -Path $TempDir | Out-Null
+try {
+    Expand-Archive -Path $JarPath -DestinationPath $TempDir -Force
+    $Results = @()
+    $Files = Get-ChildItem -Path $TempDir -Recurse | Where-Object { $_.Extension -in $Extensions }
+    foreach ($File in $Files) {
+        $Content = Get-Content -Path $File.FullName -Raw -ErrorAction SilentlyContinue
+        if (-not $Content) { continue }
+        $IsConfig = $false
+        if ($File.Name -match "application|bootstrap|setting|config|persistence|context") { $IsConfig = $true }
+        if (-not $IsConfig) { foreach ($Keyword in $Keywords) { if ($Content -match $Keyword) { $IsConfig = $true; break } } }
+        if ($IsConfig) {
+            $RelPath = $File.FullName.Substring($TempDir.Length + 1)
+            $Results += @{ path = $RelPath; content = $Content; size = $File.Length }
+        }
+    }
+    $JsonOutput = @{ jar_path = $JarPath; timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss"); files = $Results }
+    Write-Output ($JsonOutput | ConvertTo-Json -Depth 5 -Compress)
+} catch { Write-Output "{ ""error"": ""$($_.Exception.Message)"" }" } finally { if (Test-Path $TempDir) { Remove-Item -Path $TempDir -Recurse -Force } }
+`;
+
+const encodePowerShellScript = (script: string): string => {
+  const bytes = new Uint8Array(script.length * 2);
+  for (let i = 0; i < script.length; i++) {
+    const charCode = script.charCodeAt(i);
+    bytes[i * 2] = charCode & 0xff;
+    bytes[i * 2 + 1] = (charCode >>> 8) & 0xff;
+  }
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+};
 
 interface AgentPanelProps {
   language?: Language;
@@ -242,6 +286,16 @@ export default function AgentPanel({ language = 'en', aiSettings }: AgentPanelPr
            items.push({ type: 'message', message: msg });
         }
       } else if (msg.role === 'tool') {
+          // Identify Artifacts
+          if (msg.content.startsWith('{"jar_path":')) {
+            try {
+              const data = JSON.parse(msg.content);
+              items.push({ type: 'artifact', component: <JarConfigArtifact data={data} /> });
+            } catch (e) {
+              console.error("Failed to parse Jar artifact", e);
+            }
+          }
+
           // Find the step that corresponds to this tool output
           // In our simple model, we just look for the last step with matching ID or just the last step
           // Since we process linearly, it should be in currentThinking
@@ -429,6 +483,20 @@ ${text}
               required: ["command"]
             }
           }
+        },
+        {
+          type: "function",
+          function: {
+            name: "analyze_jar_config",
+            description: "Analyze a JAR file to find configuration files (YAML, Properties, XML, JSON) and extract sensitive information (JDBC, Passwords) WITHOUT using 'strings' command.",
+            parameters: {
+              type: "object",
+              properties: {
+                jar_path: { type: "string", description: "Absolute path to the JAR file on the local system" }
+              },
+              required: ["jar_path"]
+            }
+          }
         }
     ];
 
@@ -498,6 +566,18 @@ ${text}
                                 }
                             }));
                             output = results.join("\n\n---\n\n");
+                        }
+                    } else if (functionName === "analyze_jar_config") {
+                        const jarPath = args.jar_path;
+                        try {
+                            const encodedScript = encodePowerShellScript(JAR_ANALYSIS_SCRIPT);
+                            const safePath = jarPath.replace(/'/g, "''");
+                            const cmd = `powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encodedScript} -JarPath '${safePath}'`;
+                            
+                            const res: any = await invoke("exec_local_command", { cmd });
+                            output = res || "(No Output)";
+                        } catch (e: any) {
+                             output = `Error analyzing JAR: ${e}`;
                         }
                     } else {
                         output = "Error: Unknown tool.";
@@ -825,6 +905,12 @@ ${text}
                         </div>
                        );
                      }
+                  } else if (item.type === 'artifact') {
+                    return (
+                        <div key={`artifact-${idx}`} className="my-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                             {item.component}
+                        </div>
+                    );
                   } else {
                     // Thinking Process
                     return (

@@ -334,8 +334,7 @@ fn reconnect_ssh_session(session_info: &mut SessionInfo, timeout: u32) -> Result
             )
         })?;
 
-    let mut sess =
-        Session::new().map_err(|e| format!("Failed to create SSH session: {}", e))?;
+    let mut sess = Session::new().map_err(|e| format!("Failed to create SSH session: {}", e))?;
     sess.set_tcp_stream(tcp);
     sess.handshake()
         .map_err(|e| format!("SSH session lost and reconnect handshake failed: {}", e))?;
@@ -973,6 +972,35 @@ async fn exec_sql(
 // Need to update exec_sql signature to async to use pool properly without blocking main loop?
 // Actually mysql crate is blocking. If I make the function `async`, I should wrap the blocking call.
 
+#[tauri::command]
+async fn exec_local_command(cmd: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(target_os = "windows")]
+        let output = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &cmd])
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        #[cfg(not(target_os = "windows"))]
+        let output = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&cmd)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+        if output.status.success() {
+            Ok(stdout)
+        } else {
+            Ok(format!("Execution failed (Exit code: {}):\nStdout: {}\nStderr: {}", output.status, stdout, stderr))
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -992,6 +1020,7 @@ pub fn run() {
             exec_command,
             batch_exec_command,
             exec_command_stream,
+            exec_local_command,
             list_sessions,
             switch_session,
             start_pty_session,
