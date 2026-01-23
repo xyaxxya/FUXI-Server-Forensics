@@ -7,7 +7,7 @@ import { listen } from '@tauri-apps/api/event';
 import { useCommandStore } from '../store/CommandContext';
 import { translations, Language } from '../translations';
 import FileManager from './FileManager';
-import { FolderOpen, X } from 'lucide-react';
+import { FolderOpen, X, RefreshCw } from 'lucide-react';
 
 export default function TerminalXterm({ onClose, sessionId, language }: { onClose: () => void, sessionId?: string, language: Language }) {
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -18,6 +18,7 @@ export default function TerminalXterm({ onClose, sessionId, language }: { onClos
   const [connecting, setConnecting] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showFileManager, setShowFileManager] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const t = translations[language];
 
   // Use passed sessionId or fallback to currentSession (for backward compatibility)
@@ -27,6 +28,10 @@ export default function TerminalXterm({ onClose, sessionId, language }: { onClos
 
   useEffect(() => {
     if (!terminalRef.current) return;
+
+    // Reset state on re-run (retry)
+    setConnecting(true);
+    setError(null);
 
     // 1. Initialize Xterm
     const term = new Terminal({
@@ -146,7 +151,7 @@ export default function TerminalXterm({ onClose, sessionId, language }: { onClos
       }
       term.dispose();
     };
-  }, [targetSessionId]);
+  }, [targetSessionId, retryCount]);
 
   const setupPtyEvents = async (term: Terminal, ptyId: string) => {
       // Listen for incoming data
@@ -185,6 +190,13 @@ export default function TerminalXterm({ onClose, sessionId, language }: { onClos
             </div>
         </div>
         <div className="flex items-center gap-1">
+            <button 
+                onClick={() => setRetryCount(c => c + 1)}
+                className="p-2 text-slate-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-lg transition-all duration-300"
+                title="Reconnect SSH Session"
+            >
+                <RefreshCw size={16} />
+            </button>
             <button 
                 onClick={() => setShowFileManager(!showFileManager)} 
                 className={`p-2 rounded-lg transition-all duration-300 ${showFileManager ? 'bg-sky-500/20 text-sky-300 shadow-[0_0_10px_rgba(14,165,233,0.2)]' : 'text-slate-400 hover:text-white hover:bg-white/10'}`}

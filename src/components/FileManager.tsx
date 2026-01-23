@@ -13,6 +13,7 @@ interface FileEntry {
 
 export default function FileManager({ sessionId, initialPath = "/" }: { sessionId: string, initialPath?: string }) {
     const [path, setPath] = useState(initialPath);
+    const [inputPath, setInputPath] = useState(initialPath);
     const [files, setFiles] = useState<FileEntry[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -38,19 +39,23 @@ export default function FileManager({ sessionId, initialPath = "/" }: { sessionI
 
     useEffect(() => {
         loadFiles(path);
+        setInputPath(path);
     }, [path, sessionId]);
-
-    const handleNavigate = (entry: FileEntry) => {
-        if (entry.is_dir) {
-            const newPath = path === '/' ? `/${entry.name}` : `${path}/${entry.name}`;
-            setPath(newPath);
-        }
-    };
 
     const handleUp = () => {
         if (path === '/') return;
         const parent = path.substring(0, path.lastIndexOf('/')) || '/';
         setPath(parent);
+    };
+
+    const handlePathKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            let newPath = inputPath.trim();
+            if (!newPath.startsWith('/')) {
+                newPath = '/' + newPath;
+            }
+            setPath(newPath);
+        }
     };
 
     const formatSize = (bytes: number) => {
@@ -162,10 +167,11 @@ export default function FileManager({ sessionId, initialPath = "/" }: { sessionI
         }
     };
 
-    const handleEdit = async () => {
-        if (!contextMenu) return;
-        const file = contextMenu.file;
-        setContextMenu(null);
+    const handleEdit = async (targetFile?: FileEntry) => {
+        const file = targetFile || contextMenu?.file;
+        if (!file) return;
+        
+        if (contextMenu) setContextMenu(null);
         if (file.is_dir) return;
 
         setUploading(true); // Reuse loading spinner
@@ -182,6 +188,15 @@ export default function FileManager({ sessionId, initialPath = "/" }: { sessionI
             setError(`Failed to open file: ${e.toString()} (Binary files cannot be edited)`);
         } finally {
             setUploading(false);
+        }
+    };
+
+    const handleNavigate = (entry: FileEntry) => {
+        if (entry.is_dir) {
+            const newPath = path === '/' ? `/${entry.name}` : `${path}/${entry.name}`;
+            setPath(newPath);
+        } else {
+            handleEdit(entry);
         }
     };
 
@@ -281,8 +296,9 @@ export default function FileManager({ sessionId, initialPath = "/" }: { sessionI
                     <span className="text-sky-500 mr-2">/</span>
                     <input 
                         type="text" 
-                        value={path} 
-                        readOnly 
+                        value={inputPath} 
+                        onChange={(e) => setInputPath(e.target.value)}
+                        onKeyDown={handlePathKeyDown}
                         className="flex-1 bg-transparent border-none text-xs text-slate-300 focus:outline-none font-medium tracking-wide"
                     />
                 </div>
