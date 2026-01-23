@@ -162,7 +162,7 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
 
   // Scroll to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, loading, status, displayItems.length]);
 
   const handleClearChat = () => {

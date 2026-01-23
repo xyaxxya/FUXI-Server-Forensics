@@ -346,7 +346,7 @@ export default function AgentPanel({ language = 'en', aiSettings }: AgentPanelPr
   // Scroll to bottom of chat
   useEffect(() => {
     if (selectedQuestionId && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
   }, [selectedQuestionId, selectedQuestion?.messages]);
 

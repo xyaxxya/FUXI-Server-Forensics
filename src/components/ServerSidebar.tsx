@@ -43,36 +43,29 @@ const ServerCard = ({
       transition={{ type: "spring", stiffness: 400, damping: 30 }}
       className={cn(
         "group relative flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all duration-300",
-        "border overflow-hidden backdrop-blur-md",
-        // Active State (Clean Tech: Frosted, Elevated, Clear)
+        "border",
         isActive 
-          ? "bg-white/90 border-blue-200 shadow-lg shadow-blue-100/50 ring-1 ring-blue-100 z-10 scale-[1.02]" 
-          : "bg-white/40 border-white/60 hover:bg-white/70 hover:border-white/80 hover:shadow-md hover:-translate-y-0.5"
+          ? "bg-white/60 border-sky-300/50 shadow-lg shadow-sky-500/10 ring-1 ring-sky-100/50 z-10 backdrop-blur-md" 
+          : "bg-white/10 border-white/20 hover:bg-white/30 hover:border-white/40 backdrop-blur-sm"
       )}
       onClick={onClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Shimmer Effect (Clean Tech: Subtle Light Sweep) */}
-      <div className={cn(
-        "absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-700",
-        "bg-gradient-to-r from-transparent via-white/40 to-transparent -skew-x-12 translate-x-[-100%] group-hover:animate-shimmer"
-      )} />
-
       {/* Active Indicator (Left Border Glow) */}
       {isActive && (
         <motion.div 
           layoutId="active-indicator"
-          className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r-full bg-gradient-to-b from-blue-400 to-cyan-400 shadow-[0_0_8px_rgba(59,130,246,0.4)]" 
+          className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.4)]" 
         />
       )}
 
-      {/* Checkbox (AI Context) - Floating effect on hover */}
+      {/* Checkbox */}
       <div 
         onClick={onToggleSelect}
         className={cn(
-          "relative z-20 flex-shrink-0 transition-colors p-1.5 rounded-md",
-          isSelected ? "text-blue-500 bg-blue-50" : "text-slate-400 hover:text-blue-400 hover:bg-slate-100"
+          "relative z-20 flex-shrink-0 transition-colors p-1 rounded-md",
+          isSelected ? "text-sky-500" : "text-slate-400 hover:text-sky-400"
         )}
       >
         {isSelected ? (
@@ -95,17 +88,17 @@ const ServerCard = ({
         
         <div className="flex items-center gap-3 text-[10px] uppercase tracking-wider font-medium text-slate-400">
           <div className="flex items-center gap-1.5">
-             <span className="relative flex h-2 w-2">
+             <span className="relative flex h-1.5 w-1.5">
               <span className={cn(
                 "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
-                isActive ? "bg-green-400" : "bg-emerald-400"
+                isActive ? "bg-emerald-400" : "bg-slate-400"
               )}></span>
               <span className={cn(
-                "relative inline-flex rounded-full h-2 w-2",
-                isActive ? "bg-green-500" : "bg-emerald-500"
+                "relative inline-flex rounded-full h-1.5 w-1.5",
+                isActive ? "bg-emerald-500" : "bg-slate-400"
               )}></span>
             </span>
-            <span className={isActive ? "text-green-600 font-bold" : "text-slate-500"}>
+            <span className={isActive ? "text-emerald-600 font-bold" : "text-slate-500"}>
               {isActive ? t.active_status : t.connected_status}
             </span>
           </div>
@@ -117,21 +110,16 @@ const ServerCard = ({
         {isHovered && (
           <motion.button
             onClick={onDelete}
-            initial={{ opacity: 0, x: 10 }}
+            initial={{ opacity: 0, x: 5 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 10 }}
-            className="relative z-20 p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+            exit={{ opacity: 0, x: 5 }}
+            className="relative z-20 p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
             title={t.disconnect}
           >
-            <LogOut size={16} />
+            <LogOut size={14} />
           </motion.button>
         )}
       </AnimatePresence>
-
-      {/* Decorative background pulse for active state */}
-      {isActive && (
-        <div className="absolute inset-0 bg-gradient-to-tr from-blue-50/50 via-transparent to-transparent pointer-events-none" />
-      )}
     </motion.div>
   );
 };
@@ -158,9 +146,6 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
 
   // Handle switching with visual feedback
   const handleSessionClick = async (sessionId: string) => {
-    // Prevent re-clicking active session if desired, but allowing it can be good for "refreshing" view
-    // if (currentSession?.id === sessionId) return;
-
     try {
       setIsSwitching(true);
       setSwitchError(null);
@@ -169,7 +154,6 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
       console.error("Failed to switch session:", error);
       setSwitchError(String(error));
     } finally {
-      // Ensure loading state persists long enough to feel smooth
       setTimeout(() => setIsSwitching(false), 300);
     }
   };
@@ -195,20 +179,17 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
   };
 
   return (
-    <div className="w-72 h-full flex flex-col relative z-30 font-sans border-r border-slate-200/60 bg-slate-50/80 backdrop-blur-2xl transition-colors duration-300">
+    <div className="w-full h-full flex flex-col relative z-30 font-sans glass transition-colors duration-300">
       
-      {/* Decorative Top Gradient */}
-      <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-blue-50/50 to-transparent pointer-events-none" />
-
       {/* Content Layer */}
       <div className="relative flex flex-col h-full z-10">
         
         {/* Header Section */}
-        <div className="p-5 pb-2">
-          <div className="flex items-center justify-between mb-6">
+        <div className="p-4 pb-2">
+          <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="bg-white p-2.5 rounded-xl shadow-sm border border-slate-100 text-blue-500 ring-1 ring-slate-50">
-                <Terminal size={20} />
+              <div className="bg-white/80 p-2 rounded-xl shadow-sm border border-slate-100 text-sky-500">
+                <Terminal size={18} />
               </div>
               <div>
                 <h2 className="text-sm font-bold text-slate-800 tracking-tight">{t.servers_title}</h2>
@@ -219,26 +200,26 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
             </div>
             
             <motion.button 
-              whileHover={{ scale: 1.05, backgroundColor: "rgba(255, 255, 255, 0.8)" }}
+              whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={onAddSession}
-              className="p-2.5 rounded-xl bg-white/60 text-blue-500 border border-slate-200 shadow-sm hover:shadow hover:border-blue-200 transition-all"
+              className="p-2 rounded-xl bg-white/60 text-sky-500 border border-slate-200 hover:border-sky-200 transition-all glass-button"
               title={t.new_connection}
             >
-              <Plus size={18} />
+              <Plus size={16} />
             </motion.button>
           </div>
 
           {/* Bulk Actions Bar */}
-          <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-white/40 border border-slate-200/60 backdrop-blur-sm">
+          <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-white/30 border border-slate-200/50 backdrop-blur-sm">
              <button 
               onClick={toggleSelectAll}
               className="flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors group"
             >
               {selectedSessionIds.length === sessions.length && sessions.length > 0 ? (
-                <CheckSquare size={16} className="text-blue-500" />
+                <CheckSquare size={14} className="text-sky-500" />
               ) : (
-                <Square size={16} className="text-slate-400 group-hover:text-blue-400" />
+                <Square size={14} className="text-slate-400 group-hover:text-sky-400" />
               )}
               <span>{t.select_all_context}</span>
             </button>
@@ -251,11 +232,11 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
         </div>
 
         {/* Scrollable Server List */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar px-3 py-2 space-y-2.5">
+        <div className="flex-1 overflow-y-auto custom-scrollbar px-3 py-2 space-y-2">
           {sessions.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-slate-400 space-y-4">
-              <div className="p-5 rounded-full bg-slate-100 border border-slate-200">
-                <Server size={32} className="opacity-50" />
+            <div className="flex flex-col items-center justify-center h-48 text-slate-400 space-y-3">
+              <div className="p-4 rounded-full bg-slate-100/50 border border-slate-200/50">
+                <Server size={24} className="opacity-50" />
               </div>
               <div className="text-center">
                 <p className="text-sm font-semibold text-slate-600">{t.no_connections}</p>
@@ -263,7 +244,7 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
               </div>
               <button 
                 onClick={onAddSession}
-                className="mt-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-blue-500/20 transition-all hover:scale-105 active:scale-95"
+                className="mt-1 px-4 py-2 bg-sky-500 hover:bg-sky-400 text-white text-xs font-bold rounded-xl shadow-lg shadow-sky-500/20 transition-all"
               >
                 {t.connect_server_btn}
               </button>
@@ -290,29 +271,26 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
         </div>
 
         {/* Footer Info */}
-        <div className="p-4 border-t border-slate-200/60 bg-slate-50/50 backdrop-blur-sm">
+        <div className="p-3 border-t border-white/20 bg-white/10">
            <div className="flex items-center justify-between text-[10px] font-medium text-slate-400">
              <span>FUXI FORENSICS</span>
              <span className="bg-slate-200/50 px-1.5 py-0.5 rounded text-slate-500">v1.2.1</span>
            </div>
         </div>
 
-        {/* Delete Confirmation Modal (Clean Glass) */}
+        {/* Delete Confirmation Modal */}
         <AnimatePresence>
           {sessionToDelete && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/20 backdrop-blur-[2px] p-4">
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/20 backdrop-blur-sm p-4">
               <motion.div 
                 initial={{ scale: 0.9, opacity: 0, y: 10 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}
                 exit={{ scale: 0.9, opacity: 0, y: 10 }}
-                className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xl shadow-slate-200/50 w-full max-w-[260px] relative overflow-hidden"
+                className="bg-white/90 border border-white/60 rounded-2xl p-5 shadow-xl shadow-slate-200/50 w-full max-w-[240px] relative overflow-hidden glass-heavy"
               >
-                {/* Decorative glow */}
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-400 to-orange-400" />
-                
-                <div className="flex flex-col items-center text-center gap-4">
-                  <div className="p-3 bg-red-50 rounded-full text-red-500 shadow-sm">
-                    <Trash2 size={24} />
+                <div className="flex flex-col items-center text-center gap-3">
+                  <div className="p-2 bg-red-50 rounded-full text-red-500 shadow-sm">
+                    <Trash2 size={20} />
                   </div>
                   
                   <div>
@@ -325,16 +303,16 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 w-full mt-1">
+                  <div className="grid grid-cols-2 gap-2 w-full mt-1">
                     <button 
                       onClick={() => setSessionToDelete(null)}
-                      className="px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors border border-transparent hover:border-slate-200"
+                      className="px-2 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                     >
                       {t.cancel}
                     </button>
                     <button 
                       onClick={confirmDelete}
-                      className="px-3 py-2 text-xs font-bold bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-lg shadow-md shadow-red-500/20 transition-all hover:scale-105 active:scale-95"
+                      className="px-2 py-1.5 text-xs font-bold bg-red-500 hover:bg-red-600 text-white rounded-lg shadow-md shadow-red-500/20 transition-all"
                     >
                       {t.disconnect}
                     </button>
@@ -346,7 +324,7 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
         </AnimatePresence>
       </div>
       
-      {/* Global Loading Overlay for Sidebar (when switching) */}
+      {/* Global Loading Overlay for Sidebar */}
       <AnimatePresence>
         {isSwitching && (
            <motion.div 
@@ -355,8 +333,8 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
              exit={{ opacity: 0 }}
              className="absolute inset-0 z-40 bg-white/30 backdrop-blur-[1px] cursor-wait flex items-center justify-center"
            >
-             <div className="bg-white p-3 rounded-full shadow-lg border border-slate-100">
-               <Activity className="animate-spin text-blue-500" size={20} />
+             <div className="bg-white/80 p-2 rounded-full shadow-lg border border-white/50">
+               <Activity className="animate-spin text-sky-500" size={18} />
              </div>
            </motion.div>
         )}

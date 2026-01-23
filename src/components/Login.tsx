@@ -123,19 +123,8 @@ export default function Login({ onLogin, onClose }: LoginProps) {
 
   return (
     <div
-      className={`relative w-full flex flex-col items-center justify-center ${isModal ? "" : "h-full p-8 bg-[#f5f9ff]"}`}
+      className={`relative w-full flex flex-col items-center justify-center ${isModal ? "" : "h-full p-8 bg-transparent"}`}
     >
-      {/* Watermark for Login - Only show in full page mode */}
-      {!isModal && (
-        <div className="watermark-container">
-          {Array.from({ length: 50 }).map((_, i) => (
-            <span key={i} className="watermark-text">
-              SERVER-FORENSICS-ACCESS
-            </span>
-          ))}
-        </div>
-      )}
-
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

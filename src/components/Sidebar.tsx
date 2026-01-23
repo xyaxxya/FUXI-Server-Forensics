@@ -95,34 +95,20 @@ export default function Sidebar({ activeTab, onTabChange, onDisconnect, language
   };
 
   return (
-    <div className="w-80 h-full flex flex-col border-r border-slate-200/60 bg-white/90 backdrop-blur-2xl z-20 transition-all duration-300 relative shadow-2xl">
-      {/* Header Area */}
-      <div className="p-8 flex items-center justify-between relative overflow-hidden" data-tauri-drag-region>
-        {/* Animated Background Elements for Header */}
-        <div className="absolute top-0 left-0 w-full h-full opacity-40 pointer-events-none overflow-hidden" data-tauri-drag-region>
-            <motion.div 
-                className="absolute -top-10 -right-10 w-32 h-32 bg-blue-400/30 rounded-full blur-2xl"
-                animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.6, 0.3] }}
-                transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-            />
-            <motion.div 
-                className="absolute bottom-0 left-0 w-24 h-24 bg-purple-400/30 rounded-full blur-2xl"
-                animate={{ scale: [1.2, 1, 1.2], opacity: [0.3, 0.5, 0.3] }}
-                transition={{ duration: 7, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-            />
-        </div>
-
-        <div className="flex items-center gap-4 group relative z-10 w-full">
-            <motion.button
-                type="button"
+    <div className="w-64 h-full flex flex-col glass transition-all duration-300 relative z-20">
+      {/* Header */}
+      <div className="p-6 pb-2 shrink-0" data-tauri-drag-region>
+        <div className="flex items-center gap-4 mb-2">
+            <motion.button 
                 onClick={onToggleServerSidebar}
-                className="relative w-14 h-14 flex items-center justify-center bg-white rounded-2xl shadow-lg shadow-blue-500/10 border border-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40"
-                whileHover={{ scale: 1.05, rotate: 2 }}
+                className="relative w-12 h-12 flex items-center justify-center bg-white/50 rounded-2xl shadow-sm border border-white/60 focus:outline-none glass-button"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
             >
                 <motion.img 
                     src={tauriLogo} 
                     alt="Logo" 
-                    className="w-10 h-10 object-contain relative z-10"
+                    className="w-8 h-8 object-contain relative z-10"
                 />
             </motion.button>
             
@@ -131,7 +117,7 @@ export default function Sidebar({ activeTab, onTabChange, onDisconnect, language
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.2 }}
-                    className="font-black text-xl text-slate-800 tracking-tight leading-none mb-1"
+                    className="font-bold text-lg text-slate-800 tracking-tight leading-none mb-1"
                 >
                     Server Forensics
                 </motion.span>
@@ -141,111 +127,95 @@ export default function Sidebar({ activeTab, onTabChange, onDisconnect, language
                     transition={{ delay: 0.3 }}
                     className="flex items-center gap-2"
                 >
-                    <span className="text-xs font-bold text-blue-600 tracking-widest uppercase">FUXI</span>
-                    <span className="text-[9px] font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-600 px-1.5 py-0.5 rounded shadow-sm shadow-blue-500/20">PRO</span>
+                    <span className="text-[10px] font-bold text-sky-600 tracking-widest uppercase">FUXI</span>
+                    <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">PRO</span>
                 </motion.div>
             </div>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-4 py-2 space-y-6 overflow-y-auto custom-scrollbar">
-        {menuGroups.map((group) => {
-          const isExpanded = expandedGroups.includes(group.id);
-          const hasActiveChild = group.items.some(item => item.id === activeTab);
-
-          return (
-            <div key={group.id} className="space-y-1">
-              <button 
-                onClick={() => toggleGroup(group.id)}
-                className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase tracking-wider transition-colors ${
-                  hasActiveChild ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'
-                }`}
+      <nav className="flex-1 px-3 py-2 space-y-4 overflow-y-auto custom-scrollbar">
+        {menuGroups.map(group => (
+          <div key={group.id} className="mb-2">
+            <button 
+              onClick={() => toggleGroup(group.id)}
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold text-slate-400 uppercase tracking-wider hover:text-slate-600 transition-colors"
+            >
+              <span>{t[group.labelKey as keyof typeof t]}</span>
+              <motion.div
+                animate={{ rotate: expandedGroups.includes(group.id) ? 0 : -90 }}
+                transition={{ duration: 0.2 }}
               >
-                <span>{t[group.labelKey as keyof typeof t]}</span>
-                <ChevronDown 
-                  size={14} 
-                  className={`transition-transform duration-300 ${isExpanded ? 'rotate-0' : '-rotate-90'}`} 
-                />
-              </button>
-              
-              <AnimatePresence initial={false}>
-                {isExpanded && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.3, ease: "easeInOut" }}
-                    className="overflow-hidden space-y-1"
-                  >
-                    {group.items.map((item) => {
+                <ChevronDown size={12} />
+              </motion.div>
+            </button>
+            
+            <AnimatePresence initial={false}>
+              {expandedGroups.includes(group.id) && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.3, ease: "easeInOut" }}
+                  className="overflow-hidden"
+                >
+                  <div className="space-y-1 mt-1">
+                    {group.items.map(item => {
                       const isActive = activeTab === item.id;
-                      const Icon = item.icon;
-
                       return (
                         <button
                           key={item.id}
                           onClick={() => onTabChange(item.id)}
-                          className={`relative group w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 outline-none overflow-hidden ${
-                              isActive 
-                              ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30' 
-                              : 'hover:bg-slate-100/80 text-slate-600 hover:text-slate-900'
-                          }`}
+                          className="w-full relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group"
                         >
-                          <Icon 
-                            size={20} 
-                            className={`transition-all duration-300 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-blue-500'}`} 
-                          />
-                          <span className="font-medium text-sm">
-                              {t[item.labelKey as keyof typeof t]}
+                          {isActive && (
+                            <motion.div
+                              layoutId="activeTab"
+                              className="absolute inset-0 bg-sky-500/5 border border-sky-500/10 rounded-xl"
+                              initial={false}
+                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                            />
+                          )}
+                          <div className={`relative z-10 p-1.5 rounded-lg transition-colors ${isActive ? 'text-sky-600 bg-sky-100/50' : 'text-slate-400 group-hover:text-slate-600 group-hover:bg-slate-100/50'}`}>
+                            <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} />
+                          </div>
+                          <span className={`relative z-10 text-sm font-medium transition-colors ${isActive ? 'text-slate-800' : 'text-slate-500 group-hover:text-slate-700'}`}>
+                            {t[item.labelKey as keyof typeof t]}
                           </span>
                           
                           {isActive && (
-                             <motion.div
-                               layoutId="activeGlow"
-                               className="absolute inset-0 bg-white/20 blur-xl rounded-xl"
-                               initial={{ opacity: 0 }}
-                               animate={{ opacity: 1 }}
-                               transition={{ duration: 0.5 }}
-                             />
+                            <motion.div
+                                layoutId="activeIndicator"
+                                className="absolute right-2 w-1.5 h-1.5 rounded-full bg-sky-500"
+                            />
                           )}
                         </button>
                       );
                     })}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          );
-        })}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        ))}
       </nav>
 
       {/* Footer Actions */}
-      <div className="p-6 border-t border-slate-200/60 space-y-3 bg-white/50 backdrop-blur-sm">
+      <div className="p-4 border-t border-white/20 bg-white/5 space-y-2">
         <button 
           onClick={onOpenSettings}
-          className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 transition-all group shadow-sm hover:shadow-md"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-500 hover:text-slate-700 hover:bg-white/40 transition-all duration-200 group"
         >
-          <div className="flex items-center gap-3">
-             <div className="p-1.5 bg-slate-100 rounded-lg group-hover:bg-blue-100 transition-colors">
-                 <Settings size={16} className="text-slate-500 group-hover:text-blue-600 transition-colors" />
-             </div>
-             <span className="text-xs font-medium text-slate-600 group-hover:text-slate-900 transition-colors">
-               {t.settings}
-             </span>
-          </div>
+          <Settings size={18} className="group-hover:rotate-45 transition-transform duration-500" />
+          <span className="text-sm font-medium">{t.settings}</span>
         </button>
-
         <button 
           onClick={onDisconnect}
-          className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-white border border-slate-200 hover:bg-red-50 hover:border-red-200 hover:shadow-md transition-all group shadow-sm"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-400 hover:text-red-500 hover:bg-red-50/50 transition-all duration-200"
         >
-          <div className="flex items-center gap-3">
-             <div className="p-1.5 bg-slate-100 rounded-lg group-hover:bg-red-100 transition-colors">
-                 <LogOut size={16} className="text-slate-500 group-hover:text-red-600 transition-colors" />
-             </div>
-             <span className="text-xs font-medium text-slate-600 group-hover:text-red-600 transition-colors">{t.disconnect}</span>
-          </div>
+          <LogOut size={18} />
+          <span className="text-sm font-medium">{t.disconnect}</span>
         </button>
       </div>
     </div>

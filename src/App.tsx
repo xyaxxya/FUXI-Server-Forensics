@@ -116,55 +116,62 @@ function MainApp() {
   }
 
   return (
-    <div className="relative w-full h-screen overflow-hidden text-slate-800 font-sans selection:bg-blue-100 selection:text-blue-900 bg-slate-50">
-      {/* Global Background Gradient */}
-      <div className="absolute inset-0 z-0 bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30 pointer-events-none" />
+    <div className="relative w-full h-screen overflow-hidden text-slate-800 font-sans selection:bg-sky-100 selection:text-sky-900 bg-[#F8FAFC]">
+      {/* Noise Overlay */}
+      <div className="noise-overlay" />
+      
+      {/* Global Background Gradient - Subtle Cold Light */}
+      <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#F8FAFC] via-[#F1F5F9] to-[#E2E8F0] opacity-100 pointer-events-none" />
+      <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] rounded-full bg-sky-100/30 blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-slate-200/40 blur-[100px] pointer-events-none" />
       
       {!isConnected ? (
         <Login onLogin={handleLoginSuccess} />
       ) : (
         <>
-          <div className="relative z-10 flex h-full">
+          <div className="relative z-10 flex h-full p-2 gap-2">
             <motion.div
               animate={{
-                width: showServerSidebar ? 288 : 0,
+                width: showServerSidebar ? 280 : 0,
+                opacity: showServerSidebar ? 1 : 0,
+                marginRight: showServerSidebar ? 0 : -8,
               }}
-              transition={{ duration: 0.26, ease: [0.2, 0.8, 0.2, 1] }}
-              className="h-full overflow-hidden flex-none"
-              style={{ willChange: "width" }}
+              transition={{ type: "spring", stiffness: 350, damping: 30 }}
+              className="h-full overflow-hidden flex-none rounded-2xl"
+              style={{ willChange: "width, opacity" }}
             >
-              <motion.div
-                animate={{
-                  x: showServerSidebar ? 0 : -288,
-                  opacity: showServerSidebar ? 1 : 0,
-                }}
-                transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}
-                className={showServerSidebar ? "h-full" : "h-full pointer-events-none"}
-                style={{ willChange: "transform, opacity" }}
-              >
+              <div className="h-full w-[280px]">
                 <ServerSidebar 
                   onAddSession={() => setShowLoginModal(true)}
                   onDisconnect={handleDisconnect}
                   language={language}
                 />
-              </motion.div>
+              </div>
             </motion.div>
-            <Sidebar 
-              activeTab={activeTab} 
-              onTabChange={setActiveTab} 
-              onDisconnect={() => handleDisconnect()} 
-              language={language}
-              onOpenSettings={() => setShowSettingsModal(true)}
-              onAddSession={() => setShowLoginModal(true)}
-              onToggleServerSidebar={() => setShowServerSidebar(prev => !prev)}
-            />
-            <Dashboard 
-              activeTab={activeTab} 
-              language={language} 
-              onAddSession={() => setShowLoginModal(true)}
-              aiSettings={aiSettings}
-              onOpenSettings={() => setShowSettingsModal(true)}
-            />
+
+            {/* Main Navigation Sidebar */}
+            <div className="h-full flex-none rounded-2xl overflow-hidden z-20">
+               <Sidebar 
+                 activeTab={activeTab}
+                 onTabChange={setActiveTab}
+                 onDisconnect={() => handleDisconnect()}
+                 language={language}
+                 onOpenSettings={() => setShowSettingsModal(true)}
+                 onAddSession={() => setShowLoginModal(true)}
+                 onToggleServerSidebar={() => setShowServerSidebar(prev => !prev)}
+               />
+            </div>
+
+            {/* Main Content Area */}
+            <main className="flex-1 h-full overflow-hidden rounded-2xl relative z-10">
+              <Dashboard 
+                activeTab={activeTab}
+                language={language}
+                onAddSession={() => setShowLoginModal(true)}
+                aiSettings={aiSettings}
+                onOpenSettings={() => setShowSettingsModal(true)}
+              />
+            </main>
           </div>
 
           <TaskSelectionModal 
@@ -174,20 +181,22 @@ function MainApp() {
             language={language}
           />
 
-          <SettingsModal 
-            isOpen={showSettingsModal} 
-            onClose={() => setShowSettingsModal(false)}
-            language={language}
-            onLanguageChange={setLanguage}
-            aiSettings={aiSettings}
-            onAiSettingsChange={setAiSettings}
-          />
+          {showSettingsModal && (
+            <SettingsModal
+              isOpen={showSettingsModal}
+              onClose={() => setShowSettingsModal(false)}
+              language={language}
+              onLanguageChange={setLanguage}
+              aiSettings={aiSettings}
+              onAiSettingsChange={setAiSettings}
+            />
+          )}
         </>
       )}
 
       {/* Login Modal for adding new sessions */}
       {isConnected && showLoginModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm">
           <div className="w-full max-w-md">
             <Login 
               onLogin={() => {

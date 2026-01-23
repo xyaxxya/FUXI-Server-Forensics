@@ -153,22 +153,22 @@ function StatusBadge({ status, language }: { status: "ok" | "error" | "loading",
   const t = translations[language];
   if (status === "loading") {
     return (
-      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-medium border border-blue-100">
-        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-500/10 text-sky-600 text-xs font-medium border border-sky-500/20">
+        <div className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
         {t.processing_status}
       </div>
     );
   }
   if (status === "error") {
     return (
-      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-50 text-red-600 text-xs font-medium border border-red-100">
+      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 text-red-600 text-xs font-medium border border-red-500/20">
         <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
         {t.error_status}
       </div>
     );
   }
   return (
-    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 text-green-600 text-xs font-medium border border-green-100">
+    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 text-xs font-medium border border-emerald-500/20">
       <Check size={12} />
       {t.ok_status}
     </div>
@@ -578,7 +578,7 @@ export default function Dashboard({
   return (
     <>
       {/* General Agent View - Persist State */}
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col bg-slate-50 overflow-hidden relative ${!isGeneralAgent ? 'hidden' : ''}`}>
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isGeneralAgent ? 'hidden' : ''}`}>
         <GeneralAgent 
           language={language} 
           aiSettings={aiSettings} 
@@ -587,28 +587,20 @@ export default function Dashboard({
       </div>
 
       {/* Agent Panel View - Persist State */}
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col bg-slate-50 overflow-hidden relative ${!isAgentPanel ? 'hidden' : ''}`}>
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isAgentPanel ? 'hidden' : ''}`}>
         <AgentPanel language={language} aiSettings={aiSettings} />
       </div>
 
       {/* Terminal View - Persist State */}
-      <div className={`flex-1 h-full p-6 flex flex-col bg-[#1e1e2e] overflow-hidden relative ${!isTerminal ? 'hidden' : ''}`}>
-        <div className="flex-1 bg-slate-900 rounded-lg overflow-hidden border border-slate-700 shadow-2xl relative z-10">
+      <div className={`flex-1 h-full p-6 flex flex-col glass-dark overflow-hidden relative ${!isTerminal ? 'hidden' : ''}`}>
+        <div className="flex-1 bg-transparent rounded-lg overflow-hidden border border-white/10 shadow-2xl relative z-10">
           <TerminalXterm onClose={() => {}} language={language} />
         </div>
       </div>
 
       {/* Main Dashboard Metrics View */}
-      <div className={`flex-1 flex flex-col h-screen overflow-hidden bg-slate-50 relative ${!isMetrics ? 'hidden' : ''}`}>
-      {/* Background Watermark */}
-      <div className="watermark-container pointer-events-none">
-        {Array.from({ length: 30 }).map((_, i) => (
-          <span key={i} className="watermark-text text-slate-200/20">
-            FUXI Server Forensics
-          </span>
-        ))}
-      </div>
-
+      <div className={`flex-1 flex flex-col h-screen overflow-hidden glass relative ${!isMetrics ? 'hidden' : ''}`}>
+      
       {/* Top Bar */}
       <div className="px-10 py-8 flex items-center justify-between relative z-20">
         <div>

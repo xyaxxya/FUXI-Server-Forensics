@@ -31,12 +31,15 @@ export default function TerminalXterm({ onClose, sessionId, language }: { onClos
     // 1. Initialize Xterm
     const term = new Terminal({
       cursorBlink: true,
-      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+      fontFamily: '"JetBrains Mono", "SF Mono", Menlo, Monaco, "Courier New", monospace',
       fontSize: 14,
+      lineHeight: 1.3,
+      allowTransparency: true,
       theme: {
-        background: '#1e293b',
-        foreground: '#f8fafc',
+        background: 'transparent',
+        foreground: '#f1f5f9',
         cursor: '#38bdf8',
+        selectionBackground: 'rgba(56, 189, 248, 0.3)',
       },
     });
 
@@ -166,44 +169,56 @@ export default function TerminalXterm({ onClose, sessionId, language }: { onClos
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-900 rounded-lg overflow-hidden border border-slate-700 shadow-xl">
-      <div className="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700">
-        <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${connecting ? 'bg-yellow-400 animate-pulse' : error ? 'bg-red-500' : 'bg-green-400'}`}></div>
-            <span className="text-xs font-mono text-slate-300">
-                {targetSession ? `${targetSession.user}@${targetSession.ip}` : t.terminal_title} (xterm.js)
-            </span>
+    <div className="flex flex-col h-full glass-dark rounded-2xl overflow-hidden border border-white/10 shadow-2xl backdrop-blur-xl">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-white/5 border-b border-white/10 backdrop-blur-md z-20">
+        <div className="flex items-center gap-3">
+            <div className="flex gap-1.5">
+                <div className="w-3 h-3 rounded-full bg-red-500/20 border border-red-500/50"></div>
+                <div className="w-3 h-3 rounded-full bg-amber-500/20 border border-amber-500/50"></div>
+                <div className="w-3 h-3 rounded-full bg-green-500/20 border border-green-500/50"></div>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
+                <div className={`w-1.5 h-1.5 rounded-full ${connecting ? 'bg-amber-400 animate-pulse' : error ? 'bg-red-400' : 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]'}`} />
+                <span className="text-xs font-medium text-slate-200 tracking-wide">
+                    {targetSession ? `${targetSession.user}@${targetSession.ip}` : t.no_session}
+                </span>
+            </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
             <button 
                 onClick={() => setShowFileManager(!showFileManager)} 
-                className={`text-slate-400 hover:text-white p-1 rounded transition-colors ${showFileManager ? 'bg-slate-700 text-blue-400' : ''}`}
+                className={`p-2 rounded-lg transition-all duration-300 ${showFileManager ? 'bg-sky-500/20 text-sky-300 shadow-[0_0_10px_rgba(14,165,233,0.2)]' : 'text-slate-400 hover:text-white hover:bg-white/10'}`}
                 title="Toggle File Manager"
             >
                 <FolderOpen size={16} />
             </button>
-            <button onClick={onClose} className="text-slate-400 hover:text-white text-xs uppercase font-bold tracking-wider ml-2">
-                {t.terminal_close}
+            <button 
+                onClick={onClose} 
+                className="p-2 text-slate-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-all duration-300 ml-1"
+                title={t.terminal_close}
+            >
+                <X size={16} />
             </button>
         </div>
       </div>
       <div className="flex-1 flex overflow-hidden relative">
-        <div className="flex-1 relative w-full h-full overflow-hidden bg-[#1e293b]">
-          <div ref={terminalRef} className="absolute inset-0" />
+        <div className="flex-1 relative w-full h-full overflow-hidden bg-transparent">
+          <div ref={terminalRef} className="absolute inset-0 p-4" />
         </div>
         
         {showFileManager && (
-            <div className="w-80 border-l border-slate-700 bg-[#1e1e2e] flex flex-col animate-in slide-in-from-right duration-200">
-                 <div className="flex items-center justify-between p-2 bg-slate-800 border-b border-slate-700">
-                    <span className="text-xs font-semibold text-slate-300 flex items-center gap-2">
-                        <FolderOpen size={14} className="text-blue-400"/>
-                        Remote Files
+            <div className="w-80 border-l border-white/10 glass-dark flex flex-col animate-in slide-in-from-right duration-300 backdrop-blur-3xl shadow-[-10px_0_30px_rgba(0,0,0,0.2)]">
+                 <div className="flex items-center justify-between p-4 border-b border-white/10 bg-white/5">
+                    <span className="text-xs font-bold text-slate-200 tracking-wider flex items-center gap-2 uppercase">
+                        <FolderOpen size={14} className="text-sky-400"/>
+                        FUXI_SFTP_ACCESS
                     </span>
-                    <button onClick={() => setShowFileManager(false)} className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-700">
+                    <button onClick={() => setShowFileManager(false)} className="text-slate-500 hover:text-white p-1.5 rounded-md hover:bg-white/10 transition-colors">
                         <X size={14} />
                     </button>
                  </div>
-                 <div className="flex-1 overflow-hidden">
+                 <div className="flex-1 overflow-hidden relative">
+                    <div className="absolute inset-0 bg-gradient-to-b from-sky-500/5 to-transparent pointer-events-none" />
                     <FileManager sessionId={targetSessionId || ''} />
                  </div>
             </div>
