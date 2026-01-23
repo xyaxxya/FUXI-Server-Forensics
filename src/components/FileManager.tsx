@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
-import { Folder, File, ArrowUp, RefreshCw, Upload, Download, Loader2, Trash2, Edit } from 'lucide-react';
+import { Folder, File, ArrowUp, RefreshCw, Upload, Download, Loader2, Trash2, Edit, Binary } from 'lucide-react';
 import FileEditor from './FileEditor';
+import HexEditor from './HexEditor';
 
 interface FileEntry {
     name: string;
@@ -20,6 +21,7 @@ export default function FileManager({ sessionId, initialPath = "/" }: { sessionI
     const [uploading, setUploading] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, file: FileEntry } | null>(null);
     const [editingFile, setEditingFile] = useState<{ name: string, path: string, content: string } | null>(null);
+    const [hexEditorFile, setHexEditorFile] = useState<{ name: string, content: Uint8Array } | null>(null);
     
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -191,6 +193,27 @@ export default function FileManager({ sessionId, initialPath = "/" }: { sessionI
         }
     };
 
+    const handleHexEdit = async () => {
+        if (!contextMenu) return;
+        const file = contextMenu.file;
+        setContextMenu(null);
+        if (file.is_dir) return;
+
+        setUploading(true);
+        try {
+            const remotePath = path === '/' ? `/${file.name}` : `${path}/${file.name}`;
+            const content = await invoke<number[]>('sftp_read_binary', { sessionId, path: remotePath });
+            setHexEditorFile({
+                name: file.name,
+                content: new Uint8Array(content)
+            });
+        } catch (e: any) {
+            setError(`Failed to open hex editor: ${e.toString()}`);
+        } finally {
+            setUploading(false);
+        }
+    };
+
     const handleNavigate = (entry: FileEntry) => {
         if (entry.is_dir) {
             const newPath = path === '/' ? `/${entry.name}` : `${path}/${entry.name}`;
@@ -250,6 +273,12 @@ export default function FileManager({ sessionId, initialPath = "/" }: { sessionI
                                     <Edit size={14} className="text-sky-400" /> Edit
                                 </button>
                                 <button 
+                                    onClick={(e) => { e.stopPropagation(); handleHexEdit(); }}
+                                    className="w-full text-left px-4 py-2 hover:bg-white/10 flex items-center gap-2 text-xs text-slate-300 hover:text-white transition-colors"
+                                >
+                                    <Binary size={14} className="text-emerald-400" /> Hex Editor
+                                </button>
+                                <button 
                                     onClick={(e) => { e.stopPropagation(); handleDownload(); }}
                                     className="w-full text-left px-4 py-2 hover:bg-white/10 flex items-center gap-2 text-xs text-slate-300 hover:text-white transition-colors"
                                 >
@@ -276,6 +305,16 @@ export default function FileManager({ sessionId, initialPath = "/" }: { sessionI
                     fileName={editingFile.name}
                     initialContent={editingFile.content}
                     onSave={handleEditorSave}
+                />
+            )}
+
+            {/* Hex Editor Modal */}
+            {hexEditorFile && (
+                <HexEditor
+                    isOpen={!!hexEditorFile}
+                    onClose={() => setHexEditorFile(null)}
+                    fileName={hexEditorFile.name}
+                    initialContent={hexEditorFile.content}
                 />
             )}
 
