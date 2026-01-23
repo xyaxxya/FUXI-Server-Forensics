@@ -16,7 +16,7 @@ export default function HexEditor({
   onClose,
   fileName,
   initialContent,
-  onSave,
+  // onSave,
 }: HexEditorProps) {
   const [content, setContent] = useState<Uint8Array>(initialContent);
   const [selectedOffset, setSelectedOffset] = useState<number | null>(null);
