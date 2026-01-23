@@ -43,7 +43,7 @@ export const DEFAULT_SETTINGS: AISettings = {
       name: "智谱 AI (GLM)",
       apiKey: "",
       baseUrl: "https://open.bigmodel.cn/api/paas/v4",
-      model: "glm-4",
+      model: "GLM-4.7-Flash",
     },
     openai: {
       id: "openai",

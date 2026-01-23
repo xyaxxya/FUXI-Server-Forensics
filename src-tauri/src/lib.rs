@@ -96,6 +96,196 @@ struct DbQueryResult {
     last_insert_id: Option<u64>,
 }
 
+#[derive(Serialize)]
+struct FileEntry {
+    name: String,
+    is_dir: bool,
+    size: u64,
+    mtime: u64,
+}
+
+#[tauri::command]
+async fn sftp_ls(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+) -> Result<Vec<FileEntry>, String> {
+    let session_arc = {
+        let sessions = state.sessions.lock().unwrap();
+        sessions
+            .get(&session_id)
+            .cloned()
+            .ok_or(format!("Session {} not found", session_id))?
+    };
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let session_info = session_arc.lock().unwrap();
+        let sftp = session_info.session.sftp().map_err(|e| e.to_string())?;
+
+        let path_path = std::path::Path::new(&path);
+
+        let entries = sftp.readdir(path_path).map_err(|e| e.to_string())?;
+
+        let mut files = Vec::new();
+        for (p, stat) in entries {
+            let name = p
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            if name == "." || name == ".." {
+                continue;
+            }
+
+            files.push(FileEntry {
+                name,
+                is_dir: stat.is_dir(),
+                size: stat.size.unwrap_or(0),
+                mtime: stat.mtime.unwrap_or(0),
+            });
+        }
+
+        files.sort_by(|a, b| {
+            if a.is_dir == b.is_dir {
+                a.name.cmp(&b.name)
+            } else {
+                b.is_dir.cmp(&a.is_dir)
+            }
+        });
+
+        Ok(files)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn sftp_read(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+) -> Result<String, String> {
+    let session_arc = {
+        let sessions = state.sessions.lock().unwrap();
+        sessions
+            .get(&session_id)
+            .cloned()
+            .ok_or(format!("Session {} not found", session_id))?
+    };
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let session_info = session_arc.lock().unwrap();
+        let sftp = session_info.session.sftp().map_err(|e| e.to_string())?;
+
+        let mut file = sftp
+            .open(std::path::Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        let mut content = String::new();
+        // Limit read size to avoid crashing on huge files? For now, read all.
+        // Or maybe just first 100KB for preview.
+        // Let's read all but catch error if not UTF-8
+        file.read_to_string(&mut content)
+            .map_err(|e| e.to_string())?;
+
+        Ok(content)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn sftp_read_binary(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+) -> Result<Vec<u8>, String> {
+    let session_arc = {
+        let sessions = state.sessions.lock().unwrap();
+        sessions
+            .get(&session_id)
+            .cloned()
+            .ok_or(format!("Session {} not found", session_id))?
+    };
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let session_info = session_arc.lock().unwrap();
+        let sftp = session_info.session.sftp().map_err(|e| e.to_string())?;
+
+        let mut file = sftp
+            .open(std::path::Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        let mut content = Vec::new();
+        file.read_to_end(&mut content).map_err(|e| e.to_string())?;
+
+        Ok(content)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn sftp_write_binary(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+    content: Vec<u8>,
+) -> Result<(), String> {
+    let session_arc = {
+        let sessions = state.sessions.lock().unwrap();
+        sessions
+            .get(&session_id)
+            .cloned()
+            .ok_or(format!("Session {} not found", session_id))?
+    };
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let session_info = session_arc.lock().unwrap();
+        let sftp = session_info.session.sftp().map_err(|e| e.to_string())?;
+
+        let mut file = sftp
+            .create(std::path::Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        file.write_all(&content).map_err(|e| e.to_string())?;
+
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn sftp_delete(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+    is_dir: bool,
+) -> Result<(), String> {
+    let session_arc = {
+        let sessions = state.sessions.lock().unwrap();
+        sessions
+            .get(&session_id)
+            .cloned()
+            .ok_or(format!("Session {} not found", session_id))?
+    };
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let session_info = session_arc.lock().unwrap();
+        let sftp = session_info.session.sftp().map_err(|e| e.to_string())?;
+
+        let path_path = std::path::Path::new(&path);
+
+        if is_dir {
+            sftp.rmdir(path_path).map_err(|e| e.to_string())?;
+        } else {
+            sftp.unlink(path_path).map_err(|e| e.to_string())?;
+        }
+
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 fn connect_ssh(
     state: State<'_, AppState>,
@@ -994,7 +1184,10 @@ async fn exec_local_command(cmd: String) -> Result<String, String> {
         if output.status.success() {
             Ok(stdout)
         } else {
-            Ok(format!("Execution failed (Exit code: {}):\nStdout: {}\nStderr: {}", output.status, stdout, stderr))
+            Ok(format!(
+                "Execution failed (Exit code: {}):\nStdout: {}\nStderr: {}",
+                output.status, stdout, stderr
+            ))
         }
     })
     .await
@@ -1029,7 +1222,12 @@ pub fn run() {
             stop_pty_session,
             connect_db,
             disconnect_db,
-            exec_sql
+            exec_sql,
+            sftp_ls,
+            sftp_read,
+            sftp_read_binary,
+            sftp_write_binary,
+            sftp_delete
         ))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

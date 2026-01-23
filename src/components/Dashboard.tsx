@@ -58,7 +58,7 @@ const parsers: Record<
   },
   docker: (output) => {
     const lines = output.trim().split("\n");
-    const headers = ["ID", "th_image", "th_status", "th_names"];
+    const headers = ["ID", "th_image", "th_status", "th_ports", "th_names"];
     const rows = lines.map((line) => line.split("|"));
     return { headers, rows };
   },

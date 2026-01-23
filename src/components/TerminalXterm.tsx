@@ -6,6 +6,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useCommandStore } from '../store/CommandContext';
 import { translations, Language } from '../translations';
+import FileManager from './FileManager';
+import { FolderOpen, X } from 'lucide-react';
 
 export default function TerminalXterm({ onClose, sessionId, language }: { onClose: () => void, sessionId?: string, language: Language }) {
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -15,6 +17,7 @@ export default function TerminalXterm({ onClose, sessionId, language }: { onClos
   const { sessions, currentSession } = useCommandStore();
   const [connecting, setConnecting] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showFileManager, setShowFileManager] = useState(false);
   const t = translations[language];
 
   // Use passed sessionId or fallback to currentSession (for backward compatibility)
@@ -89,21 +92,52 @@ export default function TerminalXterm({ onClose, sessionId, language }: { onClos
 
     startPty();
 
-    // Resize observer
+    // Robust Resize Handler
     const handleResize = () => {
-        if (fitAddonRef.current && ptyIdRef.current) {
+        if (!fitAddonRef.current || !xtermRef.current || !terminalRef.current) return;
+        
+        // Check visibility - if hidden, dimensions are 0
+        if (terminalRef.current.clientHeight === 0) return;
+
+        try {
             fitAddonRef.current.fit();
-            invoke('resize_pty', { 
-                id: ptyIdRef.current, 
-                cols: xtermRef.current?.cols, 
-                rows: xtermRef.current?.rows 
-            }).catch(console.error);
+            
+            // Sync with PTY
+            if (ptyIdRef.current) {
+                invoke('resize_pty', { 
+                    id: ptyIdRef.current, 
+                    cols: xtermRef.current.cols, 
+                    rows: xtermRef.current.rows 
+                }).catch(console.error);
+            }
+        } catch (e) {
+            console.error("Resize error:", e);
         }
     };
+
+    // 1. ResizeObserver - Detects container size changes
+    const resizeObserver = new ResizeObserver(() => {
+        handleResize();
+    });
+    
+    if (terminalRef.current) {
+        resizeObserver.observe(terminalRef.current);
+    }
+
+    // 2. Window resize
     window.addEventListener('resize', handleResize);
 
+    // 3. Polling for visibility changes (Critical for when tab becomes visible)
+    // This ensures that if the terminal was hidden during init, it fits correctly when shown
+    const intervalId = setInterval(handleResize, 800);
+
+    // Initial fit
+    setTimeout(handleResize, 100);
+
     return () => {
+      clearInterval(intervalId);
       window.removeEventListener('resize', handleResize);
+      resizeObserver.disconnect();
       if (ptyIdRef.current) {
           invoke('stop_pty_session', { id: ptyIdRef.current }).catch(console.error);
       }
@@ -140,12 +174,40 @@ export default function TerminalXterm({ onClose, sessionId, language }: { onClos
                 {targetSession ? `${targetSession.user}@${targetSession.ip}` : t.terminal_title} (xterm.js)
             </span>
         </div>
-        <button onClick={onClose} className="text-slate-400 hover:text-white text-xs uppercase font-bold tracking-wider">
-            {t.terminal_close}
-        </button>
+        <div className="flex items-center gap-2">
+            <button 
+                onClick={() => setShowFileManager(!showFileManager)} 
+                className={`text-slate-400 hover:text-white p-1 rounded transition-colors ${showFileManager ? 'bg-slate-700 text-blue-400' : ''}`}
+                title="Toggle File Manager"
+            >
+                <FolderOpen size={16} />
+            </button>
+            <button onClick={onClose} className="text-slate-400 hover:text-white text-xs uppercase font-bold tracking-wider ml-2">
+                {t.terminal_close}
+            </button>
+        </div>
       </div>
-      <div className="flex-1 relative p-1">
-        <div ref={terminalRef} className="absolute inset-0" />
+      <div className="flex-1 flex overflow-hidden relative">
+        <div className="flex-1 relative w-full h-full overflow-hidden bg-[#1e293b]">
+          <div ref={terminalRef} className="absolute inset-0" />
+        </div>
+        
+        {showFileManager && (
+            <div className="w-80 border-l border-slate-700 bg-[#1e1e2e] flex flex-col animate-in slide-in-from-right duration-200">
+                 <div className="flex items-center justify-between p-2 bg-slate-800 border-b border-slate-700">
+                    <span className="text-xs font-semibold text-slate-300 flex items-center gap-2">
+                        <FolderOpen size={14} className="text-blue-400"/>
+                        Remote Files
+                    </span>
+                    <button onClick={() => setShowFileManager(false)} className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-700">
+                        <X size={14} />
+                    </button>
+                 </div>
+                 <div className="flex-1 overflow-hidden">
+                    <FileManager sessionId={targetSessionId || ''} />
+                 </div>
+            </div>
+        )}
       </div>
     </div>
   );

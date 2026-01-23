@@ -60,7 +60,7 @@ export const dockerCommands: PluginCommand[] = [
     description: 'Running Docker containers', 
     cn_description: '当前正在运行的 Docker 容器', 
     // 使用自定义格式化输出获取容器信息
-    command: "if command -v docker >/dev/null 2>&1; then docker ps --format '{{.ID}}|{{.Image}}|{{.Status}}|{{.Names}}'; else echo 'Docker Not Detected'; fi", 
+    command: "if command -v docker >/dev/null 2>&1; then docker ps --format '{{.ID}}|{{.Image}}|{{.Status}}|{{.Ports}}|{{.Names}}'; else echo 'Docker Not Detected'; fi", 
     icon: Box, 
     parserType: 'docker', 
     checkExists: true

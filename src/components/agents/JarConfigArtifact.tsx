@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { FileCode, Database, Key, ChevronRight, ChevronDown, Search } from 'lucide-react';
+import { useState } from 'react';
+import { FileCode, Database, Search } from 'lucide-react';
 
 interface ConfigFile {
   path: string;

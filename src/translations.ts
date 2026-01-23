@@ -101,6 +101,10 @@ export const translations = {
     execution_failed: 'Execution failed: {0}',
     analyzing_results: 'Analyzing results...',
     output_truncated: '\n\n...[Output Truncated]... (Please read critical info or use head/tail/grep)',
+    analysis_queue: 'Analysis Queue',
+    max_loops_reached: 'Maximum conversation loops reached.',
+    running: 'Running',
+    refresh: 'Refresh',
     
     // Dashboard Common
     processing_status: 'Processing',
@@ -295,6 +299,9 @@ export const translations = {
     add_questions_placeholder: '例如：\n平台共成功充值了多少金额？（答案格式：12340.56）\n一共发展了多少个用户作为直接下线？（答案格式：123）\nVIP6等级的积分限制是多少？（答案格式：123）',
     add_to_queue: '加入队列',
     analysis_queue: '分析队列',
+    max_loops_reached: '已达到最大对话轮数限制。',
+    running: '运行中',
+    refresh: '刷新',
     analyzing: '正在识别...',
     no_questions: '暂无问题。',
     pending_analysis: '等待分析',
@@ -343,7 +350,6 @@ export const translations = {
     execution_failed: '执行失败: {0}',
     analyzing_results: '正在分析结果...',
     output_truncated: '\n\n...[输出已截断]... (请读取关键信息或使用 head/tail/grep)',
-    max_loops_reached: '已达到最大对话轮数限制。',
     
     // Dashboard Common
     processing_status: '处理中',
@@ -379,6 +385,7 @@ export const translations = {
     th_protocol: '协议',
     th_local_address: '本地地址',
     th_process: '进程',
+    th_ports: '端口映射',
     th_image: '镜像',
     th_status: '状态',
     th_names: '名称',
