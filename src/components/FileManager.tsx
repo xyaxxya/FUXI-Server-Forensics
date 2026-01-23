@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
-import { Folder, File, ArrowUp, RefreshCw, Upload, Download, Loader2, Trash2, FileCode, Edit } from 'lucide-react';
+import { Folder, File, ArrowUp, RefreshCw, Upload, Download, Loader2, Trash2, Edit } from 'lucide-react';
 import FileEditor from './FileEditor';
 
 interface FileEntry {

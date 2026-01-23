@@ -13,6 +13,7 @@ import {
   Info,
   Check,
   Database,
+  Key,
 } from "lucide-react";
 import { translations, Language } from "../translations";
 import { commands, PluginCommand } from "../config/commands";
@@ -58,7 +59,7 @@ const parsers: Record<
   },
   docker: (output) => {
     const lines = output.trim().split("\n");
-    const headers = ["ID", "th_image", "th_status", "th_ports", "th_names"];
+    const headers = ["ID", "th_image", "th_status", "th_ports", "th_names", "th_credentials"];
     const rows = lines.map((line) => line.split("|"));
     return { headers, rows };
   },
@@ -112,39 +113,97 @@ const parsers: Record<
 
 function TableDisplay({ data, language }: { data: TableData; language: Language }) {
   const t = translations[language];
+  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
+
+  const selectedRowData = selectedRowIndex !== null ? data.rows[selectedRowIndex] : null;
+
   return (
-    <div className="overflow-x-auto custom-scrollbar">
-      <table className="w-full text-left border-collapse">
-        <thead>
-          <tr>
-            {data.headers.map((h, i) => (
-              <th
-                key={i}
-                className="p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 whitespace-nowrap bg-slate-50/50"
-              >
-                {t[h as keyof typeof t] || h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {data.rows.map((row, i) => (
-            <tr
-              key={i}
-              className="hover:bg-blue-50/50 transition-colors group border-b border-slate-100 last:border-0"
-            >
-              {row.map((cell, j) => (
-                <td
-                  key={j}
-                  className="p-3 text-sm text-slate-600 font-mono whitespace-nowrap group-hover:text-slate-800"
+    <div className="relative flex flex-col h-full max-h-[600px]">
+      <div className="overflow-x-auto custom-scrollbar flex-1 pb-10">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr>
+              {data.headers.map((h, i) => (
+                <th
+                  key={i}
+                  className="p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 whitespace-nowrap bg-slate-50/50 sticky top-0 z-10 backdrop-blur-sm"
                 >
-                  {cell}
-                </td>
+                  {t[h as keyof typeof t] || h}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {data.rows.map((row, i) => (
+              <tr
+                key={i}
+                onClick={() => setSelectedRowIndex(i)}
+                className={`transition-colors group border-b border-slate-100 last:border-0 cursor-pointer ${
+                  selectedRowIndex === i ? "bg-blue-100/50" : "hover:bg-blue-50/50"
+                }`}
+              >
+                {row.map((cell, j) => (
+                  <td
+                    key={j}
+                    className={`p-3 text-sm font-mono whitespace-nowrap truncate ${
+                      data.headers[j] === "th_credentials" 
+                        ? "max-w-none text-red-600 font-bold group-hover:text-red-700" 
+                        : "text-slate-600 group-hover:text-slate-800 max-w-[300px]"
+                    }`}
+                    title={cell}
+                  >
+                    {data.headers[j] === "th_credentials" && cell && cell.length > 2 ? (
+                      <span className="flex items-center gap-1">
+                        <Key size={14} className="shrink-0 text-red-500" />
+                        {cell}
+                      </span>
+                    ) : (
+                      cell
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <AnimatePresence>
+        {selectedRowData && (
+          <motion.div
+            initial={{ y: "100%", opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: "100%", opacity: 0 }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            className="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] p-4 z-20 rounded-t-xl"
+          >
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200/60">
+              <span className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                <Info size={16} className="text-blue-500" />
+                {t.analysis_details || "Row Details"}
+              </span>
+              <button
+                onClick={() => setSelectedRowIndex(null)}
+                className="p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[200px] overflow-y-auto custom-scrollbar pr-2">
+              {data.headers.map((h, i) => (
+                <div key={i} className="flex flex-col gap-1">
+                  <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">
+                    {t[h as keyof typeof t] || h}
+                  </span>
+                  <div className="text-xs text-slate-700 font-mono break-all bg-slate-50 p-2 rounded border border-slate-100 select-text">
+                    {selectedRowData[i]}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -187,6 +246,7 @@ function CommandCard({
   onStartMonitoring,
   onStopMonitoring,
   language,
+  className,
 }: {
   def: PluginCommand;
   data: any;
@@ -199,6 +259,7 @@ function CommandCard({
   onStartMonitoring: (id: string) => void;
   onStopMonitoring: () => void;
   language: Language;
+  className?: string;
 }) {
   const t = translations[language];
   // Tooltip state
@@ -376,9 +437,12 @@ function CommandCard({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="light-card overflow-visible relative border border-slate-200/60 shadow-sm hover:shadow-md transition-all group"
+      layout
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className={`bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-visible relative hover:shadow-md transition-shadow duration-300 flex flex-col ${
+        className || ""
+      }`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
@@ -826,6 +890,7 @@ export default function Dashboard({
                 onStartMonitoring={handleStartMonitoring}
                 onStopMonitoring={handleStopMonitoring}
                 language={language}
+                className={cmd.id === 'docker_containers' ? "xl:col-span-2" : ""}
               />
             ))}
           </div>

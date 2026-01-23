@@ -142,7 +142,9 @@ export const translations = {
     th_process: 'Process',
     th_image: 'Image',
     th_status: 'Status',
+    th_ports: 'Ports',
     th_names: 'Names',
+    th_credentials: 'Credentials',
     th_value: 'Value',
     th_name: 'Name',
     th_roles: 'Roles',
@@ -151,6 +153,7 @@ export const translations = {
 
     // Terminal
     terminal_close: 'Close',
+    no_session: 'No Session',
     terminal_title: 'Terminal',
     initializing_ssh: 'Initializing Secure Shell (SSH) PTY Session...',
     connecting_to: 'Connecting to {0}...',
@@ -388,7 +391,8 @@ export const translations = {
     th_ports: '端口映射',
     th_image: '镜像',
     th_status: '状态',
-    th_names: '名称',
+    th_names: '容器名称',
+    th_credentials: '凭证信息',
     th_value: '值',
     th_name: '名称',
     th_roles: '角色',
@@ -415,6 +419,7 @@ export const translations = {
 
     // Terminal
     terminal_close: '关闭',
+    no_session: '无会话',
     terminal_title: '终端',
     initializing_ssh: '正在初始化 SSH PTY 会话...',
     connecting_to: '正在连接到 {0}...',

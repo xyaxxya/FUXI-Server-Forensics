@@ -31,10 +31,10 @@ export const dockerCommands: PluginCommand[] = [
     checkExists: true
   },
   { 
-    id: 'docker_compose', 
+    id: 'docker_compose_ver', 
     category: 'docker', 
-    name: 'Docker Compose', 
-    cn_name: 'Docker Compose', 
+    name: 'Docker Compose Version', 
+    cn_name: 'Docker Compose 版本', 
     description: 'Docker Compose version', 
     cn_description: 'Docker Compose 工具版本', 
     command: "if docker compose version >/dev/null 2>&1; then docker compose version; else echo 'Docker Compose Not Detected'; fi", 
@@ -57,10 +57,10 @@ export const dockerCommands: PluginCommand[] = [
     category: 'docker', 
     name: 'Docker Containers', 
     cn_name: '运行容器列表', 
-    description: 'Running Docker containers', 
-    cn_description: '当前正在运行的 Docker 容器', 
-    // 使用自定义格式化输出获取容器信息
-    command: "if command -v docker >/dev/null 2>&1; then docker ps --format '{{.ID}}|{{.Image}}|{{.Status}}|{{.Ports}}|{{.Names}}'; else echo 'Docker Not Detected'; fi", 
+    description: 'Running Docker containers (MySQL Credentials Auto-Extract)', 
+    cn_description: '运行容器列表 (自动提取MySQL凭证)', 
+    // Bash command for Linux compatibility and deep inspection
+    command: "if command -v docker >/dev/null 2>&1; then docker ps --format '{{.ID}}|{{.Image}}|{{.Status}}|{{.Ports}}|{{.Names}}' | while read -r line; do id=$(echo \"$line\" | cut -d'|' -f1); image=$(echo \"$line\" | cut -d'|' -f2); creds=\"\"; if echo \"$image\" | grep -q \"mysql\"; then creds=$(docker inspect \"$id\" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E \"MYSQL_ROOT_PASSWORD|MYSQL_USER|MYSQL_PASSWORD\" | tr \"\\n\" \"; \"); fi; echo \"$line|$creds\"; done; else echo 'Docker Not Detected'; fi", 
     icon: Box, 
     parserType: 'docker', 
     checkExists: true
