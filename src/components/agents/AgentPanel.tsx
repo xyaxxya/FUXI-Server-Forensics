@@ -612,7 +612,7 @@ ${text}
                 status: "completed", 
                 finalAnswer: finalAnswer,
                 messages: [...history],
-                accuracy: 95 // Mock accuracy for now
+                // accuracy: 95 // Mock accuracy for now (Hidden by user request)
             } : item
         ));
 
@@ -832,12 +832,13 @@ ${text}
             </div>
           </div>
           <div className="flex items-center gap-4">
-             {selectedQuestion.accuracy && (
+             {/* Confidence hidden by user request */}
+             {/* {selectedQuestion.accuracy && (
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 rounded-lg border border-green-200 text-sm font-medium">
                   <BrainCircuit size={16} />
                   {t.confidence}: {selectedQuestion.accuracy}%
                 </div>
-             )}
+             )} */}
           </div>
         </div>
 
@@ -1069,12 +1070,12 @@ ${text}
                           {getIconForType(q.type)}
                           {t[`type_${q.type.toLowerCase().replace("dataanalysis", "data_analysis")}` as keyof typeof t] || q.type}
                         </span>
-                        {q.status === "completed" && (
+                        {/* {q.status === "completed" && (
                           <span className="text-xs text-slate-500 flex items-center gap-1">
                             <BrainCircuit size={12} />
                             {t.confidence}: <span className="font-semibold text-green-600">{q.accuracy}%</span>
                           </span>
-                        )}
+                        )} */}
                         {q.status === "error" && (
                            <span className="text-xs text-red-500">{q.errorMessage}</span>
                         )}

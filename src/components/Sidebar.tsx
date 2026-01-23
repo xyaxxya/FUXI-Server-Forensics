@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { 
   Cpu, Network, Database, Container, Cloud, Terminal, 
   Shield, LayoutDashboard, ChevronDown, LogOut,
-  Bot, GalleryVerticalEnd, Settings
+  Bot, GalleryVerticalEnd, Settings,
+  FileText,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { translations, Language } from '../translations';
@@ -61,6 +62,7 @@ const menuGroups: MenuGroup[] = [
     id: 'agent',
     labelKey: 'agent',
     items: [
+      { id: 'agent-context', icon: FileText, labelKey: 'agent_context' },
       { id: 'agent-general', icon: Bot, labelKey: 'agent_general' },
       { id: 'agent-panel', icon: GalleryVerticalEnd, labelKey: 'agent_panel' },
     ]

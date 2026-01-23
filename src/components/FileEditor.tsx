@@ -140,7 +140,7 @@ export default function FileEditor({
               language={language}
               value={content}
               theme="vs-dark"
-              onChange={(value) => setContent(value || "")}
+              onChange={(value: string | undefined) => setContent(value || "")}
               options={{
                 minimap: { enabled: true },
                 fontSize: 14,

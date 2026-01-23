@@ -156,7 +156,7 @@ export default function SettingsModal({
                               <Sparkles size={16} className="text-indigo-600" />
                               {t.enable_planning}
                             </h4>
-                            <p className="text-xs text-indigo-700/70 mt-1">
+                            <p className="text-xs text-indigo-700/70 mt-1 whitespace-pre-line">
                               {t.enable_planning_desc}
                             </p>
                           </div>

@@ -23,6 +23,7 @@ import TerminalXterm from "./TerminalXterm";
 import MySQLManager from "./tools/MySQLManager";
 import GeneralAgent from "./agents/GeneralAgent";
 import AgentPanel from "./agents/AgentPanel";
+import GeneralInfoPanel from "./agents/GeneralInfoPanel";
 import { AISettings } from "../lib/ai";
 
 // --- Types ---
@@ -534,6 +535,9 @@ export default function Dashboard({
   const [showDatabaseModal, setShowDatabaseModal] = useState(false);
   // Monitoring state
   const [monitoredCommandIds, setMonitoredCommandIds] = useState<string[]>([]);
+  
+  // General Info Context State
+  const [generalInfo, setGeneralInfo] = useState("");
 
   // Terminal Tabs Management
   const [terminalTabs, setTerminalTabs] = useState<
@@ -620,8 +624,9 @@ export default function Dashboard({
   // Helper booleans for view switching
   const isGeneralAgent = activeTab === "agent-general";
   const isAgentPanel = activeTab === "agent-panel";
+  const isContextPanel = activeTab === "agent-context";
   const isTerminal = activeTab === "terminal";
-  const isMetrics = !isGeneralAgent && !isAgentPanel && !isTerminal;
+  const isMetrics = !isGeneralAgent && !isAgentPanel && !isContextPanel && !isTerminal;
 
   // Apply search filter
   const filteredCommands = (searchTerm ? commands : tabCommands).filter((c) => {
@@ -647,12 +652,26 @@ export default function Dashboard({
           language={language} 
           aiSettings={aiSettings} 
           onOpenSettings={onOpenSettings}
+          generalInfo={generalInfo}
+          setGeneralInfo={setGeneralInfo}
         />
       </div>
 
       {/* Agent Panel View - Persist State */}
       <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isAgentPanel ? 'hidden' : ''}`}>
         <AgentPanel language={language} aiSettings={aiSettings} />
+      </div>
+
+      {/* General Info Context Panel - Persist State */}
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isContextPanel ? 'hidden' : ''}`}>
+          <div className="h-full bg-white rounded-lg shadow-sm border border-slate-200 overflow-y-auto custom-scrollbar">
+             <GeneralInfoPanel
+                language={language}
+                generalInfo={generalInfo}
+                setGeneralInfo={setGeneralInfo}
+                aiSettings={aiSettings}
+             />
+          </div>
       </div>
 
       {/* Terminal View - Persist State */}

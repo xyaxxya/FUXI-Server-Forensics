@@ -22,22 +22,20 @@ interface GeneralAgentProps {
   language: Language;
   aiSettings: AISettings;
   onOpenSettings?: () => void;
+  generalInfo: string;
+  setGeneralInfo: (info: string | ((prev: string) => string)) => void;
 }
 
 type DisplayItem = 
   | { type: 'message', message: AIMessage }
   | { type: 'thinking', steps: ThinkingStep[], isFinished: boolean };
 
-export default function GeneralAgent({ language, aiSettings, onOpenSettings }: GeneralAgentProps) {
+export default function GeneralAgent({ language, aiSettings, onOpenSettings, generalInfo, setGeneralInfo }: GeneralAgentProps) {
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string>("");
   
-  // General Info Module
-  const [generalInfo, setGeneralInfo] = useState("");
-  const [showGeneralInfo, setShowGeneralInfo] = useState(false);
-
   const { currentSession, sessions, selectedSessionIds } = useCommandStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const t = translations[language];
@@ -212,6 +210,33 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
     }
   };
 
+  const handleExecutePreset = (prompt: string) => {
+      // Set input and send immediately
+      setInput(prompt);
+      // We can't call handleSendMessage directly because state update is async, 
+      // but we can trigger it in useEffect or just execute logic here.
+      // Better: Update input then auto-submit.
+      
+      // Hack: directly call process with new message to avoid async state issues
+      // But we need to update UI messages too.
+      
+      const msgToStore: AIMessage = {
+        role: "user",
+        content: selectedSessionIds.length > 0
+            ? `(Selected ${selectedSessionIds.length} servers) ${prompt}`
+            : prompt,
+      };
+
+      setMessages((prev) => [...prev, msgToStore]);
+      setLoading(true);
+      setStatus(t.ai_thinking);
+      
+      // Clear input in case it was set
+      setInput("");
+
+      processConversation([...messages, msgToStore]);
+  };
+
   const processConversation = async (history: AIMessage[], depth = 0) => {
     const maxLoops = aiSettings.maxLoops || 25;
     if (depth > maxLoops) {
@@ -306,6 +331,26 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
               tool_call_id: toolCall.id,
             };
             newHistory.push(toolMsg);
+          } else if (toolCall.function.name === "update_context_info") {
+              // Handle Context Update
+              const args = JSON.parse(toolCall.function.arguments);
+              const info = args.info;
+              
+              if (info) {
+                  setGeneralInfo(prev => {
+                      const newInfo = prev ? prev + "\n\n" + info : info;
+                      return newInfo;
+                  });
+                  setStatus(t.general_info_updated);
+              }
+              
+              // Return success message to AI
+               const toolMsg: AIMessage = {
+                  role: "tool",
+                  content: "Context updated successfully.",
+                  tool_call_id: toolCall.id,
+                };
+                newHistory.push(toolMsg);
           }
         }
 
@@ -349,13 +394,6 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => setShowGeneralInfo(!showGeneralInfo)}
-              className={`p-2 rounded-lg transition-colors ${showGeneralInfo ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`}
-              title={t.general_info}
-            >
-              <Info size={20} />
-            </button>
             {messages.length > 0 && (
               <button
                 onClick={handleClearChat}
@@ -367,38 +405,6 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings }: G
             )}
           </div>
         </div>
-
-        {/* General Info Panel */}
-        <AnimatePresence>
-          {showGeneralInfo && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="border-b border-slate-200 bg-slate-50/50 overflow-hidden"
-            >
-              <div className="p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    {t.general_info}
-                    </label>
-                    <span className="text-[10px] text-slate-400">
-                        {generalInfo.length} chars
-                    </span>
-                </div>
-                <textarea
-                  value={generalInfo}
-                  onChange={(e) => setGeneralInfo(e.target.value)}
-                  placeholder={t.general_info_placeholder}
-                  className="w-full h-24 p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none custom-scrollbar"
-                />
-                <p className="text-[10px] text-slate-400">
-                  {t.general_info_desc}
-                </p>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         {/* Chat Area */}
         <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-white custom-scrollbar scroll-smooth">

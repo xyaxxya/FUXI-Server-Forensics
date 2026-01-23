@@ -87,12 +87,12 @@ const SYSTEM_PROMPT = `
 3. **自适应分析**：能识别 ThinkPHP, Docker, 宝塔等环境并调整策略。
 
 **行为约束**：
-- 我问什么，你答什么，可以用一两句话解释你的思路。
+- 我问什么，你答什么。
 - 除非明确要求，否则不解释基础概念，专注于取证分析，严禁闲聊。
 
 **回答格式约束**：
 - 如果我提供了固定回答格式，你必须严格遵守
-- 如果答案是关键信息、结论或值，直接将答案用 **加粗** 给出
+- 如果最终答案是关键信息、结论或值，直接将答案用 **加粗** 给出，不要有多余的解释
 `;
 
 export interface Tool {
@@ -136,6 +136,23 @@ export async function sendToAI(
             },
           },
           required: ["command"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "update_context_info",
+        description: "Save important found information (e.g. credentials, configs) to the global context for future reference.",
+        parameters: {
+          type: "object",
+          properties: {
+            info: {
+              type: "string",
+              description: "The information to save/append to context.",
+            },
+          },
+          required: ["info"],
         },
       },
     },
