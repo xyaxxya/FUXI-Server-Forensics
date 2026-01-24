@@ -606,7 +606,7 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
                     ? format(t.input_placeholder_selected, selectedSessionIds.length)
                     : t.input_placeholder_default
                 }
-                className="w-full pl-6 pr-14 py-4 bg-transparent border-none focus:ring-0 resize-none max-h-32 min-h-[56px] text-slate-700 placeholder:text-slate-400 leading-relaxed custom-scrollbar"
+                className="w-full pl-6 pr-14 py-4 bg-transparent border-none focus:ring-0 outline-none focus:outline-none resize-none max-h-32 min-h-[56px] text-slate-700 placeholder:text-slate-400 leading-relaxed custom-scrollbar"
                 style={{ height: "auto" }}
               />
               <div className="absolute right-2 bottom-2">

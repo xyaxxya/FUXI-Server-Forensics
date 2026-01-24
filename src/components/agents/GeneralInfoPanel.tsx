@@ -283,12 +283,12 @@ export default function GeneralInfoPanel({
                 </span>
             </div>
             
-            <div className="relative group">
+            <div className="relative group bg-white focus-within:bg-white rounded-xl border border-slate-200 focus-within:border-indigo-200 focus-within:ring-4 focus-within:ring-indigo-50/50 transition-all duration-300 shadow-sm">
                 <textarea
                     value={generalInfo}
                     onChange={(e) => setGeneralInfo(e.target.value)}
                     placeholder={t.general_info_placeholder}
-                    className="w-full h-48 p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none custom-scrollbar font-mono leading-relaxed shadow-sm"
+                    className="w-full h-48 p-3 text-sm bg-transparent border-none focus:ring-0 outline-none focus:outline-none resize-none custom-scrollbar font-mono leading-relaxed"
                 />
                 <div className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 transition-opacity">
                      <button 

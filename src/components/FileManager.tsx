@@ -84,14 +84,15 @@ export default function FileManager({ sessionId, initialPath = "/" }: { sessionI
                 const file = fileList[i];
                 const arrayBuffer = await file.arrayBuffer();
                 const uint8Array = new Uint8Array(arrayBuffer);
-                const content = Array.from(uint8Array); // Convert to regular array for Rust serialization
+                // In Tauri v2, we can pass Uint8Array directly for Vec<u8>
+                // This avoids the massive overhead of Array.from() which causes "Transmitting" errors on large files
                 
                 const remotePath = path === '/' ? `/${file.name}` : `${path}/${file.name}`;
                 
                 await invoke('sftp_write_binary', {
                     sessionId,
                     path: remotePath,
-                    content
+                    content: uint8Array
                 });
             }
             // Refresh list
@@ -169,6 +170,28 @@ export default function FileManager({ sessionId, initialPath = "/" }: { sessionI
         }
     };
 
+    const handleHexEdit = async (targetFile?: FileEntry) => {
+        const file = targetFile || contextMenu?.file;
+        if (!file) return;
+        
+        if (contextMenu) setContextMenu(null);
+        if (file.is_dir) return;
+
+        setUploading(true);
+        try {
+            const remotePath = path === '/' ? `/${file.name}` : `${path}/${file.name}`;
+            const content = await invoke<number[]>('sftp_read_binary', { sessionId, path: remotePath });
+            setHexEditorFile({
+                name: file.name,
+                content: new Uint8Array(content)
+            });
+        } catch (e: any) {
+            setError(`Failed to open hex editor: ${e.toString()}`);
+        } finally {
+            setUploading(false);
+        }
+    };
+
     const handleEdit = async (targetFile?: FileEntry) => {
         const file = targetFile || contextMenu?.file;
         if (!file) return;
@@ -187,28 +210,13 @@ export default function FileManager({ sessionId, initialPath = "/" }: { sessionI
                 content
             });
         } catch (e: any) {
-            setError(`Failed to open file: ${e.toString()} (Binary files cannot be edited)`);
-        } finally {
-            setUploading(false);
-        }
-    };
-
-    const handleHexEdit = async () => {
-        if (!contextMenu) return;
-        const file = contextMenu.file;
-        setContextMenu(null);
-        if (file.is_dir) return;
-
-        setUploading(true);
-        try {
-            const remotePath = path === '/' ? `/${file.name}` : `${path}/${file.name}`;
-            const content = await invoke<number[]>('sftp_read_binary', { sessionId, path: remotePath });
-            setHexEditorFile({
-                name: file.name,
-                content: new Uint8Array(content)
-            });
-        } catch (e: any) {
-            setError(`Failed to open hex editor: ${e.toString()}`);
+            const errorMsg = e.toString();
+            // Check for UTF-8 error and fallback to Hex Editor
+            if (errorMsg.includes("stream did not contain valid UTF-8")) {
+                await handleHexEdit(file);
+            } else {
+                setError(`Failed to open file: ${errorMsg} (Binary files cannot be edited)`);
+            }
         } finally {
             setUploading(false);
         }
@@ -229,7 +237,7 @@ export default function FileManager({ sessionId, initialPath = "/" }: { sessionI
         try {
             // Convert string to bytes for sftp_write_binary
             const encoder = new TextEncoder();
-            const bytes = Array.from(encoder.encode(newContent));
+            const bytes = encoder.encode(newContent);
             
             await invoke('sftp_write_binary', {
                 sessionId,
@@ -331,14 +339,14 @@ export default function FileManager({ sessionId, initialPath = "/" }: { sessionI
                 <button onClick={handleUp} disabled={path === '/'} className="p-1.5 hover:bg-white/10 rounded-lg disabled:opacity-30 text-slate-400 hover:text-white transition-colors">
                     <ArrowUp size={16} />
                 </button>
-                <div className="flex-1 bg-black/20 border border-white/5 rounded-lg px-3 py-1.5 flex items-center">
+                <div className="flex-1 bg-black/40 border border-white/10 focus-within:border-sky-500/50 focus-within:ring-1 focus-within:ring-sky-500/20 rounded-lg px-3 py-1.5 flex items-center transition-all duration-300">
                     <span className="text-sky-500 mr-2">/</span>
                     <input 
                         type="text" 
                         value={inputPath} 
                         onChange={(e) => setInputPath(e.target.value)}
                         onKeyDown={handlePathKeyDown}
-                        className="flex-1 bg-transparent border-none text-xs text-slate-300 focus:outline-none font-medium tracking-wide"
+                        className="flex-1 bg-transparent border-none text-xs text-slate-300 focus:outline-none font-medium tracking-wide placeholder-slate-600"
                     />
                 </div>
                 <button 
@@ -381,24 +389,24 @@ export default function FileManager({ sessionId, initialPath = "/" }: { sessionI
                         {files.map((file) => (
                             <tr 
                                 key={file.name} 
-                                className="group hover:bg-white/[0.04] cursor-pointer border-b border-white/[0.02] transition-colors duration-150"
+                                className="group hover:bg-sky-500/10 hover:shadow-[0_0_10px_rgba(14,165,233,0.1)] border-b border-white/[0.02] transition-all duration-200 cursor-pointer relative"
                                 onDoubleClick={() => handleNavigate(file)}
                                 onContextMenu={(e) => handleContextMenu(e, file)}
                             >
-                                <td className="p-2.5 pl-4 flex items-center gap-3">
+                                <td className="p-2.5 pl-4 flex items-center gap-3 relative z-10">
                                     {file.is_dir ? (
-                                        <div className="p-1 rounded bg-sky-500/10 text-sky-400 group-hover:bg-sky-500/20 group-hover:scale-110 transition-all duration-200">
+                                        <div className="p-1 rounded bg-sky-500/10 text-sky-400 group-hover:bg-sky-500/20 group-hover:scale-110 transition-all duration-200 shadow-[0_0_8px_rgba(14,165,233,0.2)]">
                                             <Folder size={14} fill="currentColor" fillOpacity={0.2} />
                                         </div>
                                     ) : (
-                                        <div className="p-1 rounded bg-slate-500/10 text-slate-400 group-hover:text-slate-200 transition-colors">
+                                        <div className="p-1 rounded bg-slate-500/10 text-slate-400 group-hover:text-sky-200 group-hover:bg-sky-500/10 transition-colors">
                                             <File size={14} />
                                         </div>
                                     )}
                                     <span className="truncate max-w-[140px] text-xs font-medium text-slate-300 group-hover:text-white transition-colors" title={file.name}>{file.name}</span>
                                 </td>
-                                <td className="p-2.5 text-[11px] text-slate-500 font-mono text-right whitespace-nowrap group-hover:text-slate-400">{file.is_dir ? '-' : formatSize(file.size)}</td>
-                                <td className="p-2.5 pr-4 text-[11px] text-slate-600 font-mono text-right whitespace-nowrap group-hover:text-slate-500">
+                                <td className="p-2.5 text-[11px] text-slate-500 font-mono text-right whitespace-nowrap group-hover:text-sky-300/80 transition-colors relative z-10">{file.is_dir ? '-' : formatSize(file.size)}</td>
+                                <td className="p-2.5 pr-4 text-[11px] text-slate-600 font-mono text-right whitespace-nowrap group-hover:text-sky-300/80 transition-colors relative z-10">
                                     {new Date(file.mtime * 1000).toLocaleDateString()}
                                 </td>
                             </tr>

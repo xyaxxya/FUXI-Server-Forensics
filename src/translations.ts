@@ -218,7 +218,7 @@ export const translations = {
     about_title: 'Advanced System Intelligence & Forensics Tool',
     author: 'Author',
     tech_stack: 'Tech Stack',
-    built_with: 'v0.1.0 • Built with ❤️ for Security',
+    built_with: 'v{0} • Built with ❤️ for Security',
 
     // Task Selection
     task_queue: 'Task Execution Queue',
@@ -492,7 +492,7 @@ export const translations = {
     about_title: '高级系统智能取证工具',
     author: '作者',
     tech_stack: '技术栈',
-    built_with: 'v0.1.0 • 为安全而生',
+    built_with: 'v{0} • 为安全而生',
 
     // Task Selection
     task_queue: '任务执行队列',

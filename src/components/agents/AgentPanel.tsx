@@ -932,22 +932,24 @@ ${text}
         {/* Input Area */}
         <div className="p-6 bg-white border-t border-slate-200">
           <div className="max-w-4xl mx-auto relative">
-            <input
-              type="text"
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSendFollowUp()}
-              placeholder={t.chat_input_placeholder}
-              disabled={!aiSettings?.configs[aiSettings.activeProvider].apiKey}
-              className="w-full pl-5 pr-14 py-4 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm"
-            />
-            <button
-              onClick={handleSendFollowUp}
-              disabled={!chatInput.trim()}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors shadow-sm"
-            >
-              <Send size={18} />
-            </button>
+            <div className="relative bg-slate-50 focus-within:bg-white rounded-[2rem] border border-slate-200 focus-within:border-indigo-200 focus-within:ring-4 focus-within:ring-indigo-50/50 transition-all duration-300">
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSendFollowUp()}
+                placeholder={t.chat_input_placeholder}
+                disabled={!aiSettings?.configs[aiSettings.activeProvider].apiKey}
+                className="w-full pl-5 pr-14 py-4 bg-transparent border-none focus:ring-0 outline-none focus:outline-none text-slate-800 placeholder:text-slate-400"
+              />
+              <button
+                onClick={handleSendFollowUp}
+                disabled={!chatInput.trim()}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors shadow-sm"
+              >
+                <Send size={18} />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1007,12 +1009,14 @@ ${text}
               <Plus size={16} className="text-blue-500" />
               {t.add_questions_title}
             </h3>
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={t.add_questions_placeholder}
-              className="w-full h-24 p-3 rounded-lg border border-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-none text-slate-600 text-sm font-mono bg-slate-50"
-            />
+            <div className="relative bg-slate-50 focus-within:bg-white rounded-xl border border-slate-200 focus-within:border-indigo-200 focus-within:ring-4 focus-within:ring-indigo-50/50 transition-all duration-300">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={t.add_questions_placeholder}
+                className="w-full h-24 p-3 bg-transparent border-none focus:ring-0 outline-none focus:outline-none resize-none text-slate-600 text-sm font-mono custom-scrollbar"
+              />
+            </div>
             <div className="flex justify-end mt-3">
               <button 
                 onClick={handleAddQuestions}

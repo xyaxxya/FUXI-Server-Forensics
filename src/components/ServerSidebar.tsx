@@ -4,6 +4,7 @@ import { Server, Plus, CheckSquare, Square, LogOut, Trash2, Activity, Terminal }
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { translations, Language } from '../translations';
+import { APP_VERSION } from '../config/app';
 
 interface ServerSidebarProps {
   onAddSession: () => void;
@@ -274,7 +275,7 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
         <div className="p-3 border-t border-white/20 bg-white/10">
            <div className="flex items-center justify-between text-[10px] font-medium text-slate-400">
              <span>FUXI FORENSICS</span>
-             <span className="bg-slate-200/50 px-1.5 py-0.5 rounded text-slate-500">v1.2.1</span>
+             <span className="bg-slate-200/50 px-1.5 py-0.5 rounded text-slate-500">v{APP_VERSION}</span>
            </div>
         </div>
 

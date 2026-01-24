@@ -25,6 +25,7 @@ import GeneralAgent from "./agents/GeneralAgent";
 import AgentPanel from "./agents/AgentPanel";
 import GeneralInfoPanel from "./agents/GeneralInfoPanel";
 import { AISettings } from "../lib/ai";
+import { APP_VERSION } from "../config/app";
 
 // --- Types ---
 type TableData = { headers: string[]; rows: string[][] };
@@ -804,54 +805,69 @@ export default function Dashboard({
               </button>
 
               <div className="p-8 text-center">
-                <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-6 text-blue-500">
+                <motion.div 
+                  whileHover={{ rotate: 360, scale: 1.1 }}
+                  transition={{ duration: 0.5 }}
+                  className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-6 text-blue-500 shadow-lg shadow-blue-500/20"
+                >
                   <Activity size={32} />
-                </div>
-                <h2 className="text-2xl font-bold text-slate-800 mb-2">
+                </motion.div>
+                <motion.h2 
+                  whileHover={{ scale: 1.05 }}
+                  className="text-2xl font-bold text-slate-800 mb-2 cursor-default"
+                >
                   FUXI Server Forensics
-                </h2>
+                </motion.h2>
                 <p className="text-slate-500 mb-8">
                   {t.about_title}
                 </p>
 
                 <div className="space-y-4 text-left">
-                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                    <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">
+                  <motion.div 
+                    whileHover={{ scale: 1.02, backgroundColor: "rgba(239, 246, 255, 0.5)" }}
+                    className="p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-blue-200 transition-colors cursor-default group"
+                  >
+                    <div className="text-xs text-slate-400 group-hover:text-blue-500 font-semibold uppercase tracking-wider mb-1 transition-colors">
                       {t.author}
                     </div>
-                    <div className="text-slate-700 font-medium">yiyi、mid2dog</div>
-                  </div>
+                    <div className="text-slate-700 font-medium flex items-center gap-2">
+                       <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
+                       yiyi、mid2dog
+                    </div>
+                  </motion.div>
 
-                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                    <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">
+                  <motion.div 
+                    whileHover={{ scale: 1.02 }}
+                    className="p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-purple-200 hover:bg-purple-50/30 transition-colors cursor-default group"
+                  >
+                    <div className="text-xs text-slate-400 group-hover:text-purple-500 font-semibold uppercase tracking-wider mb-2 transition-colors">
                       {t.tech_stack}
                     </div>
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      <span className="px-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-600 font-medium">
-                        Tauri v2
-                      </span>
-                      <span className="px-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-600 font-medium">
-                        Rust
-                      </span>
-                      <span className="px-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-600 font-medium">
-                        React
-                      </span>
-                      <span className="px-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-600 font-medium">
-                        TypeScript
-                      </span>
-                      <span className="px-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-600 font-medium">
-                        Tailwind CSS
-                      </span>
-                      <span className="px-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-600 font-medium">
-                        Framer Motion
-                      </span>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { name: "Tauri v2", color: "bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100" },
+                        { name: "Rust", color: "bg-red-50 text-red-600 border-red-200 hover:bg-red-100" },
+                        { name: "React", color: "bg-cyan-50 text-cyan-600 border-cyan-200 hover:bg-cyan-100" },
+                        { name: "TypeScript", color: "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100" },
+                        { name: "Tailwind CSS", color: "bg-sky-50 text-sky-600 border-sky-200 hover:bg-sky-100" },
+                        { name: "Framer Motion", color: "bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100" },
+                      ].map((tech) => (
+                        <motion.span
+                          key={tech.name}
+                          whileHover={{ scale: 1.1, y: -2 }}
+                          whileTap={{ scale: 0.95 }}
+                          className={`px-3 py-1.5 border rounded-lg text-xs font-semibold shadow-sm cursor-pointer transition-colors ${tech.color}`}
+                        >
+                          {tech.name}
+                        </motion.span>
+                      ))}
                     </div>
-                  </div>
+                  </motion.div>
                 </div>
               </div>
 
               <div className="bg-slate-50 p-4 text-center text-xs text-slate-400 border-t border-slate-100">
-                {t.built_with}
+                {t.built_with.replace('{0}', APP_VERSION)}
               </div>
             </motion.div>
           </div>
@@ -918,7 +934,7 @@ export default function Dashboard({
 
       {/* Footer Version */}
       <div className="absolute bottom-4 right-6 text-xs text-slate-400 font-medium z-10">
-        v0.1.0-beta
+        v{APP_VERSION}
       </div>
     </div>
     </>

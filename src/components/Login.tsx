@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import tauriLogo from "../assets/tauri.png";
 import { useCommandStore } from "../store/CommandContext";
+import { APP_VERSION } from "../config/app";
 
 interface LoginProps {
   onLogin: () => void;
@@ -332,7 +333,7 @@ export default function Login({ onLogin, onClose }: LoginProps) {
 
         <div className="text-center mt-8">
           <p className="text-slate-400 text-xs">
-            FUXI Server Forensics 客户端 v0.1.0
+            FUXI Server Forensics 客户端 v{APP_VERSION}
           </p>
         </div>
       </motion.div>

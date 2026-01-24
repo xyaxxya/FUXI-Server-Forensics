@@ -1115,6 +1115,7 @@ async fn exec_sql(
     state: State<'_, AppState>,
     id: String,
     query: String,
+    db: Option<String>,
 ) -> Result<DbQueryResult, String> {
     let pool = {
         let dbs = state.db_connections.lock().unwrap();
@@ -1124,6 +1125,14 @@ async fn exec_sql(
 
     tauri::async_runtime::spawn_blocking(move || {
         let mut conn = pool.get_conn().map_err(|e| e.to_string())?;
+
+        if let Some(database) = db {
+            // Check if db is different from current?
+            // pool.get_conn() might return a connection with any previous state if not reset,
+            // but usually we just set it to be sure.
+            conn.query_drop(format!("USE `{}`", database))
+                .map_err(|e| e.to_string())?;
+        }
 
         let result = conn.query_iter(query).map_err(|e| e.to_string())?;
 
