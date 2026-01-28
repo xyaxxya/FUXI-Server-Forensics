@@ -24,15 +24,10 @@ function MainApp() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [aiSettings, setAiSettings] = useState<AISettings>(DEFAULT_SETTINGS);
   const [isAiSettingsLoaded, setIsAiSettingsLoaded] = useState(false);
-  const [isStarryMode, setIsStarryMode] = useState(false);
-
-  // Load Starry Mode settings
-  useEffect(() => {
+  const [isStarryMode, setIsStarryMode] = useState(() => {
     const saved = localStorage.getItem("starry_mode");
-    if (saved) {
-      setIsStarryMode(JSON.parse(saved));
-    }
-  }, []);
+    return saved ? JSON.parse(saved) : false;
+  });
 
   // Effect to toggle body class and save
   useEffect(() => {
