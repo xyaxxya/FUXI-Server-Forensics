@@ -11,6 +11,7 @@ import { motion } from "framer-motion";
 import { Language } from "./translations";
 import { CommandProvider, useCommandStore } from "./store/CommandContext";
 import { AISettings, DEFAULT_SETTINGS } from "./lib/ai";
+import StarrySkyBackground from "./components/StarrySkyBackground";
 
 function MainApp() {
   const [showIntro, setShowIntro] = useState(true);
@@ -23,6 +24,25 @@ function MainApp() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [aiSettings, setAiSettings] = useState<AISettings>(DEFAULT_SETTINGS);
   const [isAiSettingsLoaded, setIsAiSettingsLoaded] = useState(false);
+  const [isStarryMode, setIsStarryMode] = useState(false);
+
+  // Load Starry Mode settings
+  useEffect(() => {
+    const saved = localStorage.getItem("starry_mode");
+    if (saved) {
+      setIsStarryMode(JSON.parse(saved));
+    }
+  }, []);
+
+  // Effect to toggle body class and save
+  useEffect(() => {
+    localStorage.setItem("starry_mode", JSON.stringify(isStarryMode));
+    if (isStarryMode) {
+      document.body.classList.add("starry-mode");
+    } else {
+      document.body.classList.remove("starry-mode");
+    }
+  }, [isStarryMode]);
 
   // Load AI settings on mount
   useEffect(() => {
@@ -116,14 +136,20 @@ function MainApp() {
   }
 
   return (
-    <div className="relative w-full h-screen overflow-hidden text-slate-800 font-sans selection:bg-sky-100 selection:text-sky-900 bg-[#F8FAFC]">
-      {/* Noise Overlay */}
-      <div className="noise-overlay" />
-      
-      {/* Global Background Gradient - Subtle Cold Light */}
-      <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#F8FAFC] via-[#F1F5F9] to-[#E2E8F0] opacity-100 pointer-events-none" />
-      <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] rounded-full bg-sky-100/30 blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-slate-200/40 blur-[100px] pointer-events-none" />
+    <div className={`relative w-full h-screen overflow-hidden text-slate-800 font-sans selection:bg-sky-100 selection:text-sky-900 ${isStarryMode ? '' : 'bg-[#F8FAFC]'}`}>
+      {isStarryMode ? (
+        <StarrySkyBackground />
+      ) : (
+        <>
+          {/* Noise Overlay */}
+          <div className="noise-overlay" />
+          
+          {/* Global Background Gradient - Subtle Cold Light */}
+          <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#F8FAFC] via-[#F1F5F9] to-[#E2E8F0] opacity-100 pointer-events-none" />
+          <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] rounded-full bg-sky-100/30 blur-[120px] pointer-events-none" />
+          <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-slate-200/40 blur-[100px] pointer-events-none" />
+        </>
+      )}
       
       {!isConnected ? (
         <Login onLogin={handleLoginSuccess} />
@@ -189,6 +215,8 @@ function MainApp() {
               onLanguageChange={setLanguage}
               aiSettings={aiSettings}
               onAiSettingsChange={setAiSettings}
+              isStarryMode={isStarryMode}
+              onStarryModeChange={setIsStarryMode}
             />
           )}
         </>

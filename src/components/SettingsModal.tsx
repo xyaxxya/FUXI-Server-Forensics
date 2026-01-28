@@ -11,6 +11,8 @@ interface SettingsModalProps {
   onLanguageChange: (lang: Language) => void;
   aiSettings: AISettings;
   onAiSettingsChange: (settings: AISettings) => void;
+  isStarryMode: boolean;
+  onStarryModeChange: (enabled: boolean) => void;
 }
 
 export default function SettingsModal({
@@ -20,6 +22,8 @@ export default function SettingsModal({
   onLanguageChange,
   aiSettings,
   onAiSettingsChange,
+  isStarryMode,
+  onStarryModeChange,
 }: SettingsModalProps) {
   const t = translations[language];
   const [activeTab, setActiveTab] = useState<"general" | "ai">("general");
@@ -131,6 +135,29 @@ export default function SettingsModal({
                             </div>
                           )}
                         </button>
+                      </div>
+                    </div>
+
+                    {/* Starry Mode Section */}
+                    <div>
+                      <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                        <Sparkles className="text-purple-500" size={24} />
+                        {t.appearance}
+                      </h3>
+                      <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200 flex items-center justify-between">
+                         <div>
+                           <h4 className="font-bold text-slate-800 text-lg mb-1">{t.starry_mode}</h4>
+                           <p className="text-slate-500 text-sm">{t.starry_mode_desc}</p>
+                         </div>
+                         <label className="relative inline-flex items-center cursor-pointer">
+                            <input 
+                              type="checkbox" 
+                              className="sr-only peer"
+                              checked={isStarryMode}
+                              onChange={(e) => onStarryModeChange(e.target.checked)}
+                            />
+                            <div className="w-14 h-8 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-purple-600"></div>
+                         </label>
                       </div>
                     </div>
                   </div>
