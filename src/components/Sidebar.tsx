@@ -3,7 +3,7 @@ import {
   Cpu, Network, Database, Container, Cloud, Terminal, 
   Shield, LayoutDashboard, ChevronDown, LogOut,
   Bot, GalleryVerticalEnd, Settings,
-  FileText,
+  FileText, Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { translations, Language } from '../translations';
@@ -64,6 +64,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { id: 'agent-context', icon: FileText, labelKey: 'agent_context' },
       { id: 'agent-general', icon: Bot, labelKey: 'agent_general' },
+      { id: 'agent-database', icon: Sparkles, labelKey: 'agent_database' },
       { id: 'agent-panel', icon: GalleryVerticalEnd, labelKey: 'agent_panel' },
     ]
   },

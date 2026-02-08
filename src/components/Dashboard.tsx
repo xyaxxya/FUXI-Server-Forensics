@@ -24,6 +24,7 @@ import MySQLManager from "./tools/MySQLManager";
 import GeneralAgent from "./agents/GeneralAgent";
 import AgentPanel from "./agents/AgentPanel";
 import GeneralInfoPanel from "./agents/GeneralInfoPanel";
+import DatabaseAgent from "./agents/DatabaseAgent";
 import { AISettings } from "../lib/ai";
 import { APP_VERSION } from "../config/app";
 
@@ -626,8 +627,9 @@ export default function Dashboard({
   const isGeneralAgent = activeTab === "agent-general";
   const isAgentPanel = activeTab === "agent-panel";
   const isContextPanel = activeTab === "agent-context";
+  const isDatabaseAgent = activeTab === "agent-database";
   const isTerminal = activeTab === "terminal";
-  const isMetrics = !isGeneralAgent && !isAgentPanel && !isContextPanel && !isTerminal;
+  const isMetrics = !isGeneralAgent && !isAgentPanel && !isContextPanel && !isDatabaseAgent && !isTerminal;
 
   // Apply search filter
   const filteredCommands = (searchTerm ? commands : tabCommands).filter((c) => {
@@ -673,6 +675,15 @@ export default function Dashboard({
                 aiSettings={aiSettings}
              />
           </div>
+      </div>
+
+      {/* Database Agent View - Persist State */}
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isDatabaseAgent ? 'hidden' : ''}`}>
+        <DatabaseAgent 
+          language={language} 
+          aiSettings={aiSettings} 
+          onOpenSettings={onOpenSettings}
+        />
       </div>
 
       {/* Terminal View - Persist State */}
@@ -781,7 +792,7 @@ export default function Dashboard({
               >
                 <X size={24} />
               </button>
-              <MySQLManager onClose={() => setShowDatabaseModal(false)} language={language} />
+              <MySQLManager onClose={() => setShowDatabaseModal(false)} language={language} aiSettings={aiSettings} />
             </div>
           </div>
         )}

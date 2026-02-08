@@ -5,14 +5,16 @@ import {
   ChevronRight, ChevronDown, Server,
   ArrowRight, Loader2, Plus, Shield, Trash2,
   Play, RotateCw, Save, FileCode, Layout,
-  Eye, Scroll, Archive, Folder
+  Eye, Scroll, Archive, Folder, Sparkles
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { translations, Language } from '../../translations';
+import { AISettings, sendToAI } from '../../lib/ai';
 
 interface MySQLManagerProps {
   onClose: () => void;
   language?: Language;
+  aiSettings?: AISettings;
 }
 
 interface SshConfig {
@@ -53,9 +55,14 @@ interface Tab {
   page: number; // For pagination
 }
 
-export default function MySQLManager({ onClose, language = 'en' }: MySQLManagerProps) {
+export default function MySQLManager({ onClose, language = 'en', aiSettings }: MySQLManagerProps) {
   const t = translations[language];
   // State
+  const [showAIModal, setShowAIModal] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
   const [connections, setConnections] = useState<DBConfig[]>(() => {
     const saved = localStorage.getItem('db_connections');
     return saved ? JSON.parse(saved) : [];
@@ -504,6 +511,85 @@ export default function MySQLManager({ onClose, language = 'en' }: MySQLManagerP
       createTab('query', t.new_query, initialSql);
   };
 
+  const handleAIQuery = async () => {
+    if (!aiPrompt.trim()) return;
+    if (!activeConnection || !selectedDb) {
+        setAiError(language === 'zh' ? "请先连接数据库并选择一个数据库" : "Please connect to a database and select one first");
+        return;
+    }
+    if (!aiSettings) {
+        setAiError(language === 'zh' ? "AI 设置不可用" : "AI Settings not available");
+        return;
+    }
+
+    setAiLoading(true);
+    setAiError(null);
+
+    try {
+        // 1. Fetch Schema
+        // We use information_schema to get tables and columns for the selected DB
+        const schemaRes = await invoke<DbQueryResult>('exec_sql', {
+            id: activeConnection,
+            query: `SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, COLUMN_COMMENT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = '${selectedDb}' ORDER BY TABLE_NAME, ORDINAL_POSITION;`
+        });
+
+        // 2. Format Schema
+        let schemaStr = "";
+        let currentTable = "";
+        if (schemaRes.rows.length === 0) {
+             // Fallback if permission denied or empty
+             schemaStr = "No schema information available or database is empty.";
+        } else {
+            schemaRes.rows.forEach(row => {
+                if (row[0] !== currentTable) {
+                    currentTable = row[0];
+                    schemaStr += `\nTable: ${currentTable}\nColumns:\n`;
+                }
+                const comment = row[3] ? ` // ${row[3]}` : '';
+                schemaStr += `- ${row[1]} (${row[2]})${comment}\n`;
+            });
+        }
+
+        // 3. Send to AI
+        const prompt = `
+Context: You are a SQL expert.
+Database Schema (${selectedDb}):
+${schemaStr}
+
+User Request: ${aiPrompt}
+
+Task: Generate a single valid MySQL query to answer the request.
+Constraints:
+- Return ONLY the SQL code.
+- No markdown formatting (no \`\`\`).
+- No explanations.
+- Use fully qualified table names if needed or just standard names.
+`;
+
+        const response = await sendToAI(
+            [{ role: 'user', content: prompt }],
+            aiSettings
+        );
+
+        let sql = response.content.trim();
+        // Strip markdown if present
+        if (sql.startsWith('```sql')) sql = sql.replace(/```sql\n?/, '').replace(/```$/, '');
+        else if (sql.startsWith('```')) sql = sql.replace(/```\n?/, '').replace(/```$/, '');
+        
+        sql = sql.trim();
+
+        // 4. Create Query Tab
+        createNewQuery(sql);
+        setShowAIModal(false);
+        setAiPrompt("");
+
+    } catch (e: any) {
+        setAiError(e.message || e.toString());
+    } finally {
+        setAiLoading(false);
+    }
+  };
+
   const activeTab = tabs.find(t => t.id === activeTabId);
 
   return (
@@ -532,14 +618,24 @@ export default function MySQLManager({ onClose, language = 'en' }: MySQLManagerP
               </p>
             </div>
           </div>
-          <motion.button 
-            whileHover={{ scale: 1.1, rotate: 90 }}
-            whileTap={{ scale: 0.9 }}
-            onClick={onClose} 
-            className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400 hover:text-slate-600"
-          >
-            <X size={20} />
-          </motion.button>
+          <div className="flex items-center gap-2">
+            <button
+                onClick={() => setShowAIModal(true)}
+                className="p-2 text-indigo-500 hover:bg-indigo-50 rounded-xl transition-colors flex items-center gap-2 font-medium text-sm mr-2"
+                title="AI SQL Helper"
+            >
+                <Sparkles size={18} />
+                <span className="hidden sm:inline">AI Query</span>
+            </button>
+            <motion.button 
+              whileHover={{ scale: 1.1, rotate: 90 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={onClose} 
+              className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400 hover:text-slate-600"
+            >
+              <X size={20} />
+            </motion.button>
+          </div>
         </div>
 
         {/* Content */}
@@ -1144,6 +1240,67 @@ export default function MySQLManager({ onClose, language = 'en' }: MySQLManagerP
             )}
           </div>
         </div>
+
+        {/* AI Query Modal */}
+        <AnimatePresence>
+            {showAIModal && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/20 backdrop-blur-sm p-4">
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col"
+                    >
+                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-indigo-50 to-white">
+                            <div className="flex items-center gap-2 text-indigo-600 font-bold">
+                                <Sparkles size={18} />
+                                <span>AI SQL Generator</span>
+                            </div>
+                            <button onClick={() => setShowAIModal(false)} className="text-slate-400 hover:text-slate-600">
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-2">
+                                    {language === 'zh' ? '描述你的查询需求' : 'Describe your query'}
+                                </label>
+                                <textarea 
+                                    className="w-full h-32 p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none text-sm text-slate-700 placeholder-slate-400 font-sans"
+                                    placeholder={language === 'zh' ? "例如：查询最近注册的10个用户..." : "e.g. Find top 10 recent users..."}
+                                    value={aiPrompt}
+                                    onChange={e => setAiPrompt(e.target.value)}
+                                    autoFocus
+                                />
+                            </div>
+                            
+                            {aiError && (
+                                <div className="p-3 bg-red-50 text-red-600 text-xs rounded-lg border border-red-100">
+                                    {aiError}
+                                </div>
+                            )}
+
+                            <div className="flex justify-end gap-3 pt-2">
+                                <button 
+                                    onClick={() => setShowAIModal(false)}
+                                    className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg text-sm font-medium transition-colors"
+                                >
+                                    {t.cancel}
+                                </button>
+                                <button 
+                                    onClick={handleAIQuery}
+                                    disabled={aiLoading || !aiPrompt.trim()}
+                                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg shadow-indigo-200 transition-all"
+                                >
+                                    {aiLoading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                                    {language === 'zh' ? '生成 SQL' : 'Generate SQL'}
+                                </button>
+                            </div>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
+        </AnimatePresence>
       </motion.div>
     </div>
   );

@@ -40,6 +40,7 @@ export const translations = {
     // Agent
     agent: 'Agent',
     agent_general: 'General Agent',
+    agent_database: 'Database Agent',
     agent_panel: 'Main Panel',
     agent_context: 'Context Panel',
     general_info: 'General Info',
@@ -296,6 +297,7 @@ export const translations = {
     // Agent
     agent: 'Agent智能体',
     agent_general: '通用智能体',
+    agent_database: '数据库智查',
     agent_panel: '主答题面板',
     agent_context: '上下文面板',
     general_info: '通用信息',
