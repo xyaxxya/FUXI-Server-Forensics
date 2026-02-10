@@ -784,17 +784,7 @@ export default function Dashboard({
       {/* Database Query Modal */}
       <AnimatePresence>
         {showDatabaseModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-            <div className="w-full max-w-6xl h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden relative">
-              <button
-                onClick={() => setShowDatabaseModal(false)}
-                className="absolute top-4 right-4 z-10 text-slate-400 hover:text-slate-600"
-              >
-                <X size={24} />
-              </button>
-              <MySQLManager onClose={() => setShowDatabaseModal(false)} language={language} aiSettings={aiSettings} />
-            </div>
-          </div>
+          <MySQLManager onClose={() => setShowDatabaseModal(false)} language={language} aiSettings={aiSettings} />
         )}
       </AnimatePresence>
 

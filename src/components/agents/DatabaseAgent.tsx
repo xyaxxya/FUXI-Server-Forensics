@@ -1,19 +1,13 @@
 import { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Database,
   Send,
-  Settings,
-  Terminal,
   Loader2,
   Sparkles,
   Trash2,
   Server,
-  Play,
   Check,
-  X,
-  RefreshCw,
-  Table as TableIcon
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import ReactMarkdown from "react-markdown";
@@ -60,7 +54,7 @@ type DisplayItem =
   | { type: 'message', message: AIMessage }
   | { type: 'thinking', steps: ThinkingStep[], isFinished: boolean };
 
-export default function DatabaseAgent({ language, aiSettings, onOpenSettings }: DatabaseAgentProps) {
+export default function DatabaseAgent({ language, aiSettings }: DatabaseAgentProps) {
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -72,7 +66,6 @@ export default function DatabaseAgent({ language, aiSettings, onOpenSettings }: 
   const [databases, setDatabases] = useState<string[]>([]);
   const [selectedDb, setSelectedDb] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isSummaryMode, setIsSummaryMode] = useState(true);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -106,7 +99,7 @@ export default function DatabaseAgent({ language, aiSettings, onOpenSettings }: 
     if (!config) return;
 
     setIsConnecting(true);
-    setConnectionError(null);
+    // setConnectionError(null);
     try {
       const sshConfig = config.useSsh ? config.ssh : undefined;
       await invoke('connect_db', {
@@ -136,7 +129,7 @@ export default function DatabaseAgent({ language, aiSettings, onOpenSettings }: 
       }
       
     } catch (e: any) {
-      setConnectionError(e.toString());
+      // setConnectionError(e.toString());
     } finally {
       setIsConnecting(false);
     }
@@ -406,10 +399,9 @@ export default function DatabaseAgent({ language, aiSettings, onOpenSettings }: 
                     output = JSON.stringify(res);
 
                     // For AI Context, we must truncate if too large to avoid token limits
-                    let aiContextOutput = output;
                     if (res.rows && res.rows.length > 20) {
-                        const truncatedRes = { ...res, rows: res.rows.slice(0, 20) };
-                        aiContextOutput = JSON.stringify(truncatedRes) + `\n...(Truncated ${res.rows.length - 20} rows for AI context, but user sees all)...`;
+                        // const truncatedRes = { ...res, rows: res.rows.slice(0, 20) };
+                        // aiContextOutput = JSON.stringify(truncatedRes) + `\n...(Truncated ${res.rows.length - 20} rows for AI context, but user sees all)...`;
                     }
                     
                     // We need to distinguish between what AI sees and what UI shows.

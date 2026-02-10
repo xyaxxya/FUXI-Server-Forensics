@@ -1,15 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Database, Table, X, 
   ChevronRight, ChevronDown, Server,
-  ArrowRight, Loader2, Plus, Shield, Trash2,
-  Play, RotateCw, Save, FileCode, Layout,
-  Eye, Scroll, Archive, Folder, Sparkles
+  ArrowRight, Loader2, Plus,
+  Play, FileCode, Layout,
+  Eye, Scroll, Archive, Sparkles,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { translations, Language } from '../../translations';
 import { AISettings, sendToAI } from '../../lib/ai';
+import { useDbStore, DBConfig } from '../../lib/dbStore';
+import ConnectionForm from '../database/ConnectionForm';
 
 interface MySQLManagerProps {
   onClose: () => void;
@@ -17,25 +20,8 @@ interface MySQLManagerProps {
   aiSettings?: AISettings;
 }
 
-interface SshConfig {
-  ip: string;
-  port: number;
-  user: string;
-  pass?: string;
-  private_key?: string;
-}
+// Interfaces SshConfig and DBConfig are imported from dbStore
 
-interface DBConfig {
-  id: string; // Unique ID for connection
-  name: string;
-  user: string;
-  pass: string;
-  host: string;
-  port: number;
-  database: string;
-  useSsh: boolean;
-  ssh?: SshConfig;
-}
 
 interface DbQueryResult {
   headers: string[];
@@ -63,20 +49,27 @@ export default function MySQLManager({ onClose, language = 'en', aiSettings }: M
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
-  const [connections, setConnections] = useState<DBConfig[]>(() => {
-    const saved = localStorage.getItem('db_connections');
-    return saved ? JSON.parse(saved) : [];
-  });
-  
-  const [activeConnection, setActiveConnection] = useState<string | null>(null); // Connected DB ID
-  const [editingConfig, setEditingConfig] = useState<DBConfig | null>(null); // Config being edited/created
-  
-  const [connecting, setConnecting] = useState(false);
-  const [globalError, setGlobalError] = useState<string | null>(null);
-  
-  // Manager State
-  const [databases, setDatabases] = useState<string[]>([]);
-  const [selectedDb, setSelectedDb] = useState<string | null>(null);
+  const { 
+     connections, 
+     activeConnectionId: activeConnection, 
+     activeDatabase: selectedDb,
+     databases,
+     addConnection,
+     updateConnection,
+     removeConnection,
+     setActiveConnection,
+     setActiveDatabase: setSelectedDb,
+     setDatabases
+   } = useDbStore();
+ 
+   const [editingConfig, setEditingConfig] = useState<DBConfig | null>(null); // Config being edited/created
+   
+   const [connecting, setConnecting] = useState(false);
+   const [globalError, setGlobalError] = useState<string | null>(null);
+   
+   // Manager State
+   // databases is now from store
+   // selectedDb is now from store
   
   interface DbObjects {
     tables: string[];
@@ -92,10 +85,6 @@ export default function MySQLManager({ onClose, language = 'en', aiSettings }: M
   // Tabs
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
-
-  useEffect(() => {
-    localStorage.setItem('db_connections', JSON.stringify(connections));
-  }, [connections]);
 
   const handleCreate = () => {
     setEditingConfig({
@@ -116,49 +105,20 @@ export default function MySQLManager({ onClose, language = 'en', aiSettings }: M
     });
   };
 
-  const handleSave = () => {
-    if (!editingConfig) return;
-    setConnections(prev => {
-      const idx = prev.findIndex(c => c.id === editingConfig.id);
-      if (idx >= 0) {
-        const newConns = [...prev];
-        newConns[idx] = editingConfig;
-        return newConns;
-      }
-      return [...prev, editingConfig];
-    });
+  const handleSave = (config: DBConfig) => {
+    const exists = connections.some(c => c.id === config.id);
+    if (exists) {
+      updateConnection(config);
+    } else {
+      addConnection(config);
+    }
     setEditingConfig(null);
   };
 
   const handleDeleteConnection = (id: string) => {
     if (confirm(t.delete_connection_confirm)) {
-        setConnections(prev => prev.filter(c => c.id !== id));
+        removeConnection(id);
         if (editingConfig?.id === id) setEditingConfig(null);
-    }
-  };
-
-  const handleTestConnection = async () => {
-    if (!editingConfig) return;
-    setConnecting(true);
-    setGlobalError(null);
-    const tempId = "test_" + crypto.randomUUID();
-    try {
-        const sshConfig = editingConfig.useSsh ? editingConfig.ssh : undefined;
-        await invoke('connect_db', {
-            id: tempId,
-            host: editingConfig.host,
-            port: editingConfig.port,
-            user: editingConfig.user,
-            pass: editingConfig.pass,
-            database: editingConfig.database || 'mysql',
-            sshConfig: sshConfig
-        });
-        alert(t.connection_successful);
-        await invoke('disconnect_db', { id: tempId });
-    } catch (e: any) {
-        alert(t.connection_failed_prefix + e.toString());
-    } finally {
-        setConnecting(false);
     }
   };
 
@@ -205,7 +165,7 @@ export default function MySQLManager({ onClose, language = 'en', aiSettings }: M
       setActiveConnection(null);
       setDatabases([]);
       setSelectedDb(null);
-      setTables([]);
+      // setTables([]); // Removed as it is not defined
       setTabs([]);
       setActiveTabId(null);
     } catch (e) {
@@ -592,8 +552,8 @@ Constraints:
 
   const activeTab = tabs.find(t => t.id === activeTabId);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-200/60 backdrop-blur-sm p-4 font-sans">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-200/60 backdrop-blur-sm p-4 font-sans">
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -865,142 +825,13 @@ Constraints:
 
             {editingConfig ? (
                <div className="p-8 max-w-3xl mx-auto w-full overflow-y-auto custom-scrollbar relative z-10">
-                  <div className="flex justify-between items-center mb-8">
-                      <div>
-                          <h3 className="text-2xl font-bold text-slate-800">{t.connection_settings}</h3>
-                          <p className="text-slate-500 text-sm mt-1">Configure your FUXI Data Link parameters</p>
-                      </div>
-                      {connections.some(c => c.id === editingConfig.id) && (
-                          <button onClick={() => handleDeleteConnection(editingConfig.id)} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2.5 rounded-xl transition-colors">
-                              <Trash2 size={20}/>
-                          </button>
-                      )}
-                  </div>
-                  <div className="space-y-6">
-                    <div className="space-y-5 p-6 border border-slate-200 rounded-2xl bg-white shadow-sm">
-                      <div className="space-y-1.5">
-                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">{t.connection_name}</label>
-                          <input 
-                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all placeholder-slate-400 font-medium" 
-                            value={editingConfig.name} 
-                            placeholder="My Database"
-                            onChange={e => setEditingConfig({...editingConfig, name: e.target.value})}
-                          />
-                      </div>
-                      
-                      <div className="grid grid-cols-3 gap-5">
-                        <div className="col-span-2 space-y-1.5">
-                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">{t.host}</label>
-                          <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-mono text-sm" value={editingConfig.host} onChange={e => setEditingConfig({...editingConfig, host: e.target.value})} />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">{t.port}</label>
-                          <input type="number" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-mono text-sm" value={editingConfig.port} onChange={e => setEditingConfig({...editingConfig, port: parseInt(e.target.value)})} />
-                        </div>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-5">
-                        <div className="space-y-1.5">
-                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">{t.username}</label>
-                          <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-mono text-sm" value={editingConfig.user} onChange={e => setEditingConfig({...editingConfig, user: e.target.value})} />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">{t.password}</label>
-                          <input type="password" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-mono text-sm" value={editingConfig.pass} onChange={e => setEditingConfig({...editingConfig, pass: e.target.value})} />
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-1.5">
-                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">{t.database_optional}</label>
-                          <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-mono text-sm" value={editingConfig.database} onChange={e => setEditingConfig({...editingConfig, database: e.target.value})} />
-                      </div>
-                    </div>
-
-                    {/* SSH Tunnel */}
-                    <div className="space-y-5 p-6 border border-slate-200 rounded-2xl bg-white shadow-sm">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="relative flex items-center">
-                            <input 
-                              type="checkbox" 
-                              id="useSsh"
-                              checked={editingConfig.useSsh} 
-                              onChange={e => setEditingConfig({...editingConfig, useSsh: e.target.checked})}
-                              className="peer sr-only"
-                            />
-                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                        </div>
-                        <label htmlFor="useSsh" className="font-bold text-slate-700 flex items-center gap-2 cursor-pointer select-none">
-                          <Shield size={16} className="text-indigo-500" /> {t.use_ssh_tunnel}
-                        </label>
-                      </div>
-                      
-                      <AnimatePresence>
-                        {editingConfig.useSsh && (
-                            <motion.div 
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: 'auto', opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
-                                className="overflow-hidden"
-                            >
-                                <div className="space-y-4 pl-6 border-l-2 border-indigo-100 pt-2">
-                                {(!editingConfig.ssh) && (() => {
-                                    // Initialize SSH config if missing
-                                    const newSsh = { ip: '', port: 22, user: 'root', pass: '' };
-                                    setEditingConfig({...editingConfig, ssh: newSsh});
-                                    return null;
-                                })()}
-                                <div className="grid grid-cols-3 gap-5">
-                                    <div className="col-span-2 space-y-1.5">
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">{t.ssh_host}</label>
-                                    <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-mono text-sm" value={editingConfig.ssh?.ip || ''} onChange={e => setEditingConfig({...editingConfig, ssh: {...editingConfig.ssh!, ip: e.target.value}})} />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">{t.port}</label>
-                                    <input type="number" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-mono text-sm" value={editingConfig.ssh?.port || 22} onChange={e => setEditingConfig({...editingConfig, ssh: {...editingConfig.ssh!, port: parseInt(e.target.value)}})} />
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-5">
-                                    <div className="space-y-1.5">
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">{t.ssh_user}</label>
-                                    <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-mono text-sm" value={editingConfig.ssh?.user || ''} onChange={e => setEditingConfig({...editingConfig, ssh: {...editingConfig.ssh!, user: e.target.value}})} />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">{t.ssh_password}</label>
-                                    <input type="password" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-mono text-sm" value={editingConfig.ssh?.pass || ''} onChange={e => setEditingConfig({...editingConfig, ssh: {...editingConfig.ssh!, pass: e.target.value}})} />
-                                    </div>
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">{t.private_key_path}</label>
-                                    <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-mono text-sm" value={editingConfig.ssh?.private_key || ''} onChange={e => setEditingConfig({...editingConfig, ssh: {...editingConfig.ssh!, private_key: e.target.value}})} placeholder="/path/to/id_rsa" />
-                                </div>
-                                </div>
-                            </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                    
-                    <div className="flex justify-between pt-6 border-t border-slate-200">
-                      <button 
-                        onClick={handleTestConnection}
-                        disabled={connecting}
-                        className="px-5 py-2.5 bg-white text-slate-600 rounded-xl hover:bg-slate-50 hover:text-indigo-600 transition-all flex items-center gap-2 border border-slate-200 font-bold shadow-sm disabled:opacity-50"
-                      >
-                         {connecting ? <Loader2 size={16} className="animate-spin" /> : <RotateCw size={16} />}
-                         {t.test_connection}
-                      </button>
-                      <div className="flex gap-4">
-                          <button onClick={() => setEditingConfig(null)} className="px-5 py-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors font-medium">{t.cancel}</button>
-                          <motion.button 
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={handleSave} 
-                            className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-2 font-bold"
-                          >
-                              <Save size={18}/> {t.save}
-                          </motion.button>
-                      </div>
-                    </div>
-                  </div>
+                  <ConnectionForm 
+                    initialConfig={editingConfig}
+                    onSave={handleSave}
+                    onCancel={() => setEditingConfig(null)}
+                    onDelete={handleDeleteConnection}
+                    language={language}
+                  />
                </div>
             ) : activeConnection ? (
               <div className="flex-1 flex flex-col h-full overflow-hidden relative z-10 bg-white">
@@ -1113,11 +944,11 @@ Constraints:
                                                         key={s} 
                                                         className={`px-3 py-1.5 text-xs font-mono cursor-pointer hover:bg-indigo-50 flex items-center justify-between ${i === suggestionIndex ? 'bg-indigo-100 text-indigo-700 font-bold' : 'text-slate-600'}`}
                                                         onClick={() => {
-                                                            // Manually trigger completion for mouse click (simplified)
-                                                            const completion = s;
-                                                            const cursor = activeTab.query.length; // Approximate, ideally use ref
-                                                            // This is a bit tricky with React state, better to use keyboard for now or full implementation
-                                                        }}
+                                                        // Manually trigger completion for mouse click (simplified)
+                                                        // const completion = s;
+                                                        // const cursor = activeTab.query.length; // Approximate, ideally use ref
+                                                        // This is a bit tricky with React state, better to use keyboard for now or full implementation
+                                                    }}
                                                     >
                                                         <span>{s}</span>
                                                         {i === suggestionIndex && <span className="text-[10px] text-indigo-400">Tab</span>}
@@ -1302,6 +1133,7 @@ Constraints:
             )}
         </AnimatePresence>
       </motion.div>
-    </div>
+    </div>,
+    document.body
   );
 }

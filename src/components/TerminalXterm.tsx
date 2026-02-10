@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useCommandStore } from '../store/CommandContext';
 import { translations, Language } from '../translations';
 import FileManager from './FileManager';
-import { FolderOpen, X, RefreshCw, Terminal as TerminalIcon, Cpu, MoreHorizontal } from 'lucide-react';
+import { FolderOpen, X, RefreshCw, Terminal as TerminalIcon, Cpu } from 'lucide-react';
 
 export default function TerminalXterm({ onClose, sessionId, language }: { onClose: () => void, sessionId?: string, language: Language }) {
   const terminalRef = useRef<HTMLDivElement>(null);

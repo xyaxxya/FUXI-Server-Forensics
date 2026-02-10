@@ -67,7 +67,7 @@ export function ChartDisplay({
               const label = name === 'value' ? (data[0]?.value2 !== undefined ? 'RX' : title) : 'TX';
               return [`${Number(value).toFixed(2)} ${unit}`, label];
             }}
-            labelFormatter={formatTime}
+            labelFormatter={(label) => formatTime(String(label))}
             contentStyle={{
               backgroundColor: 'white',
               border: '1px solid #e5e7eb',

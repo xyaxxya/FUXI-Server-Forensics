@@ -1205,6 +1205,7 @@ async fn exec_local_command(cmd: String) -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    println!("Tauri App Starting...");
     tauri::Builder::default()
         .setup(|app| {
             app.manage(AppState {

@@ -112,7 +112,8 @@ export async function sendToAI(
   messages: AIMessage[],
   settings: AISettings,
   customTools?: Tool[],
-  generalInfo?: string
+  generalInfo?: string,
+  signal?: AbortSignal
 ): Promise<AIMessage> {
   const config = settings.configs[settings.activeProvider];
 
@@ -277,6 +278,7 @@ export async function sendToAI(
           "dangerously-allow-browser": "true", // Only for dev/local apps
         },
         body: JSON.stringify(payload),
+        signal,
       });
 
       if (!response.ok) {
@@ -330,6 +332,7 @@ export async function sendToAI(
         Authorization: `Bearer ${config.apiKey}`,
       },
       body: JSON.stringify(payload),
+      signal,
     });
 
     if (!response.ok) {

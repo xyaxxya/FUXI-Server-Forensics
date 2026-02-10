@@ -12,7 +12,6 @@ import {
   Clock, 
   ChevronRight,
   X,
-  BrainCircuit,
   Settings,
   Send,
   User,

@@ -1,10 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useRef } from 'react';
+import { motion } from 'framer-motion';
 import { 
   Database, 
   Cpu, 
   Globe, 
-  Plus, 
   Save,
   Trash2,
   Sparkles,
@@ -20,7 +19,6 @@ interface GeneralInfoPanelProps {
   language: Language;
   generalInfo: string;
   setGeneralInfo: (info: string | ((prev: string) => string)) => void;
-  onExecutePrompt?: (prompt: string) => void;
   aiSettings: AISettings;
 }
 
@@ -28,11 +26,9 @@ export default function GeneralInfoPanel({
   language,
   generalInfo,
   setGeneralInfo,
-  onExecutePrompt,
   aiSettings
 }: GeneralInfoPanelProps) {
   const t = translations[language];
-  const [showPresets, setShowPresets] = useState(true);
   
   // AI Execution State
   const [loading, setLoading] = useState(false);

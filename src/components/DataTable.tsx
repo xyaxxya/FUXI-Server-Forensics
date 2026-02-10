@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Download, ChevronLeft, ChevronRight, Search } from 'lucide-react';
-import { translations, Language } from '../translations';
+import { Language } from '../translations';
 
 interface DataTableProps {
   headers: string[];
@@ -10,7 +10,6 @@ interface DataTableProps {
 }
 
 export default function DataTable({ headers, rows, language, title }: DataTableProps) {
-  const t = translations[language];
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
