@@ -14,6 +14,12 @@ import {
   Check,
   Database,
   Key,
+  Cpu,
+  Server,
+  Zap,
+  Layout,
+  Terminal,
+  Clock
 } from "lucide-react";
 import { translations, Language } from "../translations";
 import { commands, PluginCommand } from "../config/commands";
@@ -73,7 +79,6 @@ const parsers: Record<
     return { headers, rows };
   },
   lsOutput: (output) => {
-    // Basic ls -l parsing
     return output;
   },
   authLog: (output) => {
@@ -129,7 +134,7 @@ function TableDisplay({ data, language }: { data: TableData; language: Language 
               {data.headers.map((h, i) => (
                 <th
                   key={i}
-                  className="p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 whitespace-nowrap bg-slate-50/50 sticky top-0 z-10 backdrop-blur-sm"
+                  className="p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 whitespace-nowrap bg-slate-50/80 sticky top-0 z-10 backdrop-blur-md"
                 >
                   {t[h as keyof typeof t] || h}
                 </th>
@@ -142,7 +147,7 @@ function TableDisplay({ data, language }: { data: TableData; language: Language 
                 key={i}
                 onClick={() => setSelectedRowIndex(i)}
                 className={`transition-colors group border-b border-slate-100 last:border-0 cursor-pointer ${
-                  selectedRowIndex === i ? "bg-blue-100/50" : "hover:bg-blue-50/50"
+                  selectedRowIndex === i ? "bg-blue-100/50" : "hover:bg-blue-50/30"
                 }`}
               >
                 {row.map((cell, j) => (
@@ -178,7 +183,7 @@ function TableDisplay({ data, language }: { data: TableData; language: Language 
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: "100%", opacity: 0 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] p-4 z-20 rounded-t-xl"
+            className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] p-4 z-20 rounded-t-xl"
           >
             <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200/60">
               <span className="text-sm font-semibold text-slate-700 flex items-center gap-2">
@@ -265,14 +270,13 @@ function CommandCard({
   className?: string;
 }) {
   const t = translations[language];
-  // Tooltip state
   const [showTooltip, setShowTooltip] = useState(false);
   const tooltipTimeout = useRef<any>(null);
 
   const handleMouseEnter = () => {
     tooltipTimeout.current = setTimeout(() => {
       setShowTooltip(true);
-    }, 500); // 500ms delay
+    }, 500); 
   };
 
   const handleMouseLeave = () => {
@@ -280,7 +284,6 @@ function CommandCard({
     setShowTooltip(false);
   };
 
-  // Determine if this command should show a chart
   const isChartCommand = [
     "cpu_usage",
     "mem_usage",
@@ -319,11 +322,9 @@ function CommandCard({
       </div>
     );
   } else if (data) {
-    // Check if command was successful (exit_code 0), regardless of stderr content
     const isSuccess = data.exit_code === 0;
 
     if (isSuccess) {
-      // Command succeeded, even if there's stderr output (e.g., nginx -t writes to stderr)
       const parser = parsers[def.parserType || "raw"] || parsers.raw;
       const parsedData = parser(
         data?.stdout || data?.stderr || "",
@@ -340,7 +341,6 @@ function CommandCard({
         content = <TableDisplay data={parsedData} language={language} />;
       }
     } else if (data?.stderr) {
-      // Check if the error is a common "not found" error
       const isNotFoundError =
         data.stderr.includes("没有那个文件或目录") ||
         data.stderr.includes("No such file or directory") ||
@@ -369,7 +369,6 @@ function CommandCard({
         </div>
       );
     } else {
-      // No stderr, but command failed - show generic error
       content = (
         <div className="flex flex-col items-center justify-center h-48 gap-4">
           <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400">
@@ -386,7 +385,6 @@ function CommandCard({
     }
   } else {
     if (isChartCommand && chartData.length > 0) {
-      // Show chart for monitoring commands
       content = (
         <div>
           <div className="mb-4">
@@ -394,7 +392,7 @@ function CommandCard({
               data={chartData}
               title={title}
               color="#3b82f6"
-              color2="#10b981" // Green for TX
+              color2="#10b981"
               yAxisLabel={
                 def.id === "network_traffic" ? "KB/s" : "Percentage (%)"
               }
@@ -443,12 +441,19 @@ function CommandCard({
       layout
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      className={`bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-visible relative hover:shadow-md transition-shadow duration-300 flex flex-col ${
+      className={`bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/60 overflow-visible relative hover:shadow-lg hover:border-sky-200 transition-all duration-300 flex flex-col group overflow-hidden ${
         className || ""
       }`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
+      {/* Holographic Shine Effect on Hover */}
+      <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/40 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 pointer-events-none z-10" />
+
+      {/* Tech Corner Accents */}
+      <div className="absolute -top-[1px] -left-[1px] w-3 h-3 border-t-2 border-l-2 border-sky-500/0 group-hover:border-sky-500/50 rounded-tl-lg transition-colors duration-300" />
+      <div className="absolute -bottom-[1px] -right-[1px] w-3 h-3 border-b-2 border-r-2 border-sky-500/0 group-hover:border-sky-500/50 rounded-br-lg transition-colors duration-300" />
+
       {/* Tooltip */}
       <AnimatePresence>
         {showTooltip && (
@@ -471,7 +476,7 @@ function CommandCard({
 
       <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-white/50">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500">
+          <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform duration-300">
             <Activity size={16} />
           </div>
           <div className="flex flex-col leading-tight">
@@ -535,93 +540,8 @@ export default function Dashboard({
   } = useCommandStore();
 
   const [showDatabaseModal, setShowDatabaseModal] = useState(false);
-  // Monitoring state
   const [monitoredCommandIds, setMonitoredCommandIds] = useState<string[]>([]);
-  
-  // General Info Context State
   const [generalInfo, setGeneralInfo] = useState("");
-
-  // Terminal Tabs Management
-  const [terminalTabs, setTerminalTabs] = useState<
-    { id: string; sessionId: string; title: string }[]
-  >([]);
-  const [activeTerminalTab, setActiveTerminalTab] = useState<string | null>(
-    null,
-  );
-
-  // Initialize a terminal tab if one doesn't exist and we're on the terminal tab
-  useEffect(() => {
-    if (
-      activeTab === "terminal" &&
-      terminalTabs.length === 0 &&
-      currentSession
-    ) {
-      const newTabId = crypto.randomUUID();
-      setTerminalTabs([
-        {
-          id: newTabId,
-          sessionId: currentSession.id,
-          title: `${currentSession.user}@${currentSession.ip}`,
-        },
-      ]);
-      setActiveTerminalTab(newTabId);
-    }
-  }, [activeTab, currentSession, terminalTabs.length]);
-
-  const closeTerminalTab = (tabId: string, e?: any) => {
-    e?.stopPropagation();
-    setTerminalTabs((prev) => {
-      const newTabs = prev.filter((t) => t.id !== tabId);
-      if (newTabs.length > 0 && activeTerminalTab === tabId) {
-        setActiveTerminalTab(newTabs[newTabs.length - 1].id);
-      } else if (newTabs.length === 0) {
-        setActiveTerminalTab(null);
-      }
-      return newTabs;
-    });
-  };
-
-  // Expose closeTerminalTab to window/commands if needed or just use it in UI
-  useEffect(() => {
-    // Just to silence unused warning if we keep the function
-    if (false) closeTerminalTab("", undefined);
-  }, []);
-
-  // Filter commands for current tab
-  const tabCommands = commands.filter((c) => c.category === activeTab);
-
-  // Effect: Refresh data when session changes
-  useEffect(() => {
-    if (currentSession && activeTab !== "terminal") {
-      // Fetch new data for current tab
-      const ids = tabCommands.map((c) => c.id);
-      if (ids.length > 0) {
-        // Pass false to use cached data if available
-        fetchAll(ids, false);
-      }
-    } else if (!currentSession) {
-      clearData();
-    }
-  }, [currentSession?.id, activeTab]);
-
-  // Effect: Scroll terminal to bottom
-  useEffect(() => {
-    // Scroll logic removed as we use xterm.js
-  }, []);
-
-  // Monitoring handlers
-  const handleStartMonitoring = (commandId: string) => {
-    const newMonitoredIds = [...monitoredCommandIds, commandId];
-    setMonitoredCommandIds(newMonitoredIds);
-    startMonitoring(newMonitoredIds, 3000); // 3 second interval
-  };
-
-  const handleStopMonitoring = () => {
-    setMonitoredCommandIds([]);
-    stopMonitoring();
-  };
-
-  const t = translations[language];
 
   // Helper booleans for view switching
   const isGeneralAgent = activeTab === "agent-general";
@@ -631,7 +551,8 @@ export default function Dashboard({
   const isTerminal = activeTab === "terminal";
   const isMetrics = !isGeneralAgent && !isAgentPanel && !isContextPanel && !isDatabaseAgent && !isTerminal;
 
-  // Apply search filter
+  // Filter commands
+  const tabCommands = commands.filter((c) => c.category === activeTab);
   const filteredCommands = (searchTerm ? commands : tabCommands).filter((c) => {
     const title = language === "zh" ? c.cn_name : c.name;
     return (
@@ -647,9 +568,35 @@ export default function Dashboard({
       : currentTaskCmd.name
     : "";
 
+  const t = translations[language];
+
+  // Monitoring handlers
+  const handleStartMonitoring = (commandId: string) => {
+    const newMonitoredIds = [...monitoredCommandIds, commandId];
+    setMonitoredCommandIds(newMonitoredIds);
+    startMonitoring(newMonitoredIds, 3000);
+  };
+
+  const handleStopMonitoring = () => {
+    setMonitoredCommandIds([]);
+    stopMonitoring();
+  };
+
+  // Effect: Refresh data when session changes
+  useEffect(() => {
+    if (currentSession && activeTab !== "terminal") {
+      const ids = tabCommands.map((c) => c.id);
+      if (ids.length > 0) {
+        fetchAll(ids, false);
+      }
+    } else if (!currentSession) {
+      clearData();
+    }
+  }, [currentSession?.id, activeTab]);
+
   return (
     <>
-      {/* General Agent View - Persist State */}
+      {/* General Agent View */}
       <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isGeneralAgent ? 'hidden' : ''}`}>
         <GeneralAgent 
           language={language} 
@@ -660,14 +607,14 @@ export default function Dashboard({
         />
       </div>
 
-      {/* Agent Panel View - Persist State */}
+      {/* Agent Panel View */}
       <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isAgentPanel ? 'hidden' : ''}`}>
         <AgentPanel language={language} aiSettings={aiSettings} />
       </div>
 
-      {/* General Info Context Panel - Persist State */}
+      {/* General Info Context Panel */}
       <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isContextPanel ? 'hidden' : ''}`}>
-          <div className="h-full bg-white rounded-lg shadow-sm border border-slate-200 overflow-y-auto custom-scrollbar">
+          <div className="h-full bg-white/90 backdrop-blur-xl rounded-2xl shadow-sm border border-slate-200/60 overflow-y-auto custom-scrollbar">
              <GeneralInfoPanel
                 language={language}
                 generalInfo={generalInfo}
@@ -677,7 +624,7 @@ export default function Dashboard({
           </div>
       </div>
 
-      {/* Database Agent View - Persist State */}
+      {/* Database Agent View */}
       <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isDatabaseAgent ? 'hidden' : ''}`}>
         <DatabaseAgent 
           language={language} 
@@ -686,9 +633,9 @@ export default function Dashboard({
         />
       </div>
 
-      {/* Terminal View - Persist State */}
+      {/* Terminal View */}
       <div className={`flex-1 h-full p-6 flex flex-col glass-dark overflow-hidden relative ${!isTerminal ? 'hidden' : ''}`}>
-        <div className="flex-1 bg-transparent rounded-lg overflow-hidden border border-white/10 shadow-2xl relative z-10">
+        <div className="flex-1 bg-black/80 backdrop-blur-md rounded-xl overflow-hidden border border-white/10 shadow-2xl relative z-10 ring-1 ring-white/5">
           <TerminalXterm onClose={() => {}} language={language} />
         </div>
       </div>
@@ -700,25 +647,40 @@ export default function Dashboard({
       <div className="px-10 py-8 flex items-center justify-between relative z-20">
         <div>
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <h1 className="text-4xl font-black text-slate-800 tracking-tight capitalize bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-600">
+            <h1 className="text-4xl font-black text-slate-800 tracking-tight capitalize flex items-center gap-3">
+              {activeTab === 'system' && <Cpu className="text-sky-500" size={36} />}
+              {activeTab === 'network' && <Globe className="text-sky-500" size={36} />}
+              {activeTab === 'services' && <Server className="text-sky-500" size={36} />}
+              {activeTab === 'docker' && <Layout className="text-sky-500" size={36} />}
               {t[activeTab as keyof typeof t] || activeTab}
             </h1>
-            <div className="h-1 w-20 bg-blue-500 mt-2 rounded-full" />
+            <div className="h-1 w-24 bg-gradient-to-r from-sky-500 to-transparent mt-2 rounded-full" />
+            
+            {/* System Ticker */}
+            <div className="mt-3 flex items-center gap-4 text-xs font-mono text-slate-500">
+                <span className="flex items-center gap-1">
+                    <Clock size={12} className="text-sky-500" />
+                    UPTIME: 42:12:09
+                </span>
+                <span className="text-slate-300">|</span>
+                <span className="flex items-center gap-1">
+                    <Activity size={12} className="text-emerald-500" />
+                    SYS_LOAD: 0.45
+                </span>
+            </div>
           </motion.div>
-          <p className="text-slate-500 text-base mt-3 font-medium">
-            {t.system_overview}
-          </p>
+          
           {/* Connection Status Indicator */}
           {currentSession && (
-            <div className="flex items-center gap-2 mt-2 bg-white/50 backdrop-blur px-3 py-1.5 rounded-full border border-slate-200/50 w-fit shadow-sm">
-              <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
+            <div className="flex items-center gap-2 mt-4 bg-white/60 backdrop-blur px-3 py-1.5 rounded-full border border-sky-100/50 w-fit shadow-sm">
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
               <span className="text-xs font-semibold text-slate-600">
                 {t.connected_to}{" "}
-                <span className="text-blue-600">
+                <span className="text-sky-600 font-mono">
                   {currentSession.user}@{currentSession.ip}
                 </span>
               </span>
@@ -731,14 +693,14 @@ export default function Dashboard({
           {progress < 100 && progress > 0 && (
             <div className="flex flex-col items-end mr-4">
               <div className="flex items-center gap-2 mb-1">
-                <div className="w-3 h-3 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
-                <span className="text-xs font-semibold text-blue-600">
+                <div className="w-3 h-3 rounded-full border-2 border-sky-500 border-t-transparent animate-spin" />
+                <span className="text-xs font-semibold text-sky-600">
                   {t.running}: {currentTaskTitle}
                 </span>
               </div>
-              <div className="w-32 h-1.5 bg-blue-100 rounded-full overflow-hidden">
+              <div className="w-32 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                 <motion.div
-                  className="h-full bg-blue-500 rounded-full"
+                  className="h-full bg-sky-500 rounded-full"
                   initial={{ width: 0 }}
                   animate={{ width: `${progress}%` }}
                 />
@@ -748,19 +710,17 @@ export default function Dashboard({
 
           {/* Monitoring Status */}
           {isMonitoring && (
-            <div className="flex items-center gap-2 mr-4">
-              <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-xs font-semibold text-green-600">
+            <div className="flex items-center gap-2 mr-4 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
+              <Activity size={14} className="text-emerald-500 animate-pulse" />
+              <span className="text-xs font-bold text-emerald-600">
                 {t.monitoring_metrics.replace('{0}', monitoredCommandIds.length.toString())}
               </span>
             </div>
           )}
 
-          {/* Session Management - Moved to ServerSidebar */}
-
           <div className="relative group">
             <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-sky-500 transition-colors"
               size={18}
             />
             <input
@@ -768,13 +728,13 @@ export default function Dashboard({
               placeholder={t.search_metrics}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all w-64 shadow-sm"
+              className="pl-10 pr-4 py-2.5 bg-white/80 backdrop-blur-sm border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 transition-all w-64 shadow-sm hover:shadow-md"
             />
           </div>
 
           <button
             onClick={() => setShowAbout(true)}
-            className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 transition-all shadow-sm"
+            className="w-10 h-10 rounded-xl bg-white/80 backdrop-blur-sm border border-slate-200 flex items-center justify-center text-slate-500 hover:text-sky-600 hover:border-sky-200 hover:bg-sky-50 transition-all shadow-sm hover:shadow-md"
           >
             <HelpCircle size={20} />
           </button>
@@ -881,7 +841,7 @@ export default function Dashboard({
           <div className="mb-6 flex justify-end">
             <button
               onClick={() => setShowDatabaseModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg shadow-sm transition-colors font-medium text-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg shadow-lg shadow-sky-500/20 transition-all font-medium text-sm transform hover:scale-105 active:scale-95"
             >
               <Database size={16} />
               <span>{t.manage_database}</span>
@@ -892,8 +852,8 @@ export default function Dashboard({
         {/* Command Cards */}
         {filteredCommands.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-            <div className="w-24 h-24 rounded-3xl bg-white shadow-xl shadow-blue-500/10 flex items-center justify-center mb-6">
-              <Cloud className="text-blue-400" size={48} />
+            <div className="w-24 h-24 rounded-3xl bg-white/50 backdrop-blur shadow-xl shadow-sky-500/10 flex items-center justify-center mb-6 border border-white">
+              <Cloud className="text-sky-400" size={48} />
             </div>
             <h3 className="text-2xl font-bold text-slate-800 mb-2">
               {t.no_metrics_title}
@@ -901,13 +861,24 @@ export default function Dashboard({
             <p className="text-slate-500 max-w-md mx-auto mb-8 text-lg">
               {t.no_metrics_desc}
             </p>
-            <button className="px-8 py-4 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/30 transition-all flex items-center gap-3 transform hover:scale-105 active:scale-95">
+            <button className="px-8 py-4 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white rounded-2xl font-bold shadow-lg shadow-sky-500/30 transition-all flex items-center gap-3 transform hover:scale-105 active:scale-95">
               <RefreshCw size={20} />
               <span>{t.reload_system}</span>
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 pb-24">
+          <motion.div 
+            initial="hidden"
+            animate="visible"
+            variants={{
+                visible: {
+                    transition: {
+                        staggerChildren: 0.1
+                    }
+                }
+            }}
+            className="grid grid-cols-1 xl:grid-cols-2 gap-8 pb-24"
+          >
             {filteredCommands.map((cmd) => (
               <CommandCard
                 key={cmd.id}
@@ -929,13 +900,13 @@ export default function Dashboard({
                 className={cmd.id === 'docker_containers' ? "xl:col-span-2" : ""}
               />
             ))}
-          </div>
+          </motion.div>
         )}
       </div>
 
       {/* Footer Version */}
-      <div className="absolute bottom-4 right-6 text-xs text-slate-400 font-medium z-10">
-        v{APP_VERSION}
+      <div className="absolute bottom-4 right-6 text-[10px] text-slate-400 font-mono z-10 opacity-50">
+        FUXI_FORENSICS_CORE v{APP_VERSION}
       </div>
     </div>
     </>
