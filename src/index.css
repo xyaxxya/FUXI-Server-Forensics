@@ -127,3 +127,224 @@ body {
 .animate-fade-in {
   animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* --- STARRY MODE (DARK CYBER) OVERRIDES --- */
+body.starry-mode {
+  --color-surface-base: #0f172a; /* Slate 900 */
+  --color-surface-glass: rgba(15, 23, 42, 0.6);
+  --color-surface-glass-heavy: rgba(15, 23, 42, 0.85);
+  --color-border-glass: rgba(255, 255, 255, 0.1);
+  --color-text-primary: #f1f5f9; /* Slate 50 */
+  --color-text-secondary: #cbd5e1; /* Slate 300 */
+}
+
+/* Global Dark Overrides */
+.starry-mode .bg-white,
+.starry-mode .bg-slate-50 {
+  background-color: rgba(15, 23, 42, 0.6) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.starry-mode .bg-slate-100 {
+  background-color: rgba(30, 41, 59, 0.6) !important; /* Slate 800 */
+}
+
+/* Text Colors */
+.starry-mode .text-slate-900,
+.starry-mode .text-slate-800,
+.starry-mode .text-slate-700 {
+  color: #f1f5f9 !important; /* Slate 50 */
+}
+
+.starry-mode .text-slate-600,
+.starry-mode .text-slate-500 {
+  color: #cbd5e1 !important; /* Slate 300 */
+}
+
+.starry-mode .text-slate-400 {
+  color: #94a3b8 !important; /* Slate 400 (Keep) */
+}
+
+/* Borders */
+.starry-mode .border-slate-100,
+.starry-mode .border-slate-200,
+.starry-mode .border-slate-300 {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Input Fields & Textareas */
+.starry-mode input,
+.starry-mode textarea {
+  background-color: rgba(2, 6, 23, 0.5) !important; /* Slate 950 */
+  color: #f8fafc !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+.starry-mode input::placeholder,
+.starry-mode textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* Specific Panel Fixes */
+
+/* GeneralInfoPanel / AgentPanel specific containers */
+.starry-mode .bg-white\/90 {
+  background-color: rgba(15, 23, 42, 0.85) !important;
+}
+.starry-mode .bg-white\/80 {
+  background-color: rgba(15, 23, 42, 0.75) !important;
+}
+
+/* Buttons */
+.starry-mode .hover\:bg-slate-100:hover,
+.starry-mode .hover\:bg-white:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Scrollbar in Dark Mode */
+.starry-mode ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+.starry-mode ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Markdown Code Blocks */
+.starry-mode pre {
+  background-color: #020617 !important;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Table Headers */
+.starry-mode th.bg-slate-50\/80 {
+  background-color: rgba(15, 23, 42, 0.9) !important;
+}
+.starry-mode tr.hover\:bg-blue-50\/30:hover {
+  background-color: rgba(14, 165, 233, 0.15) !important;
+}
+
+/* Sidebar Specifics */
+.starry-mode .bg-sky-100,
+.starry-mode .bg-sky-100\/50 {
+    background-color: rgba(14, 165, 233, 0.2) !important;
+    color: #38bdf8 !important;
+}
+
+/* --- COMPREHENSIVE STARRY MODE OVERRIDES --- */
+
+/* Semi-transparent white backgrounds - Make them dark transparent */
+.starry-mode .bg-white\/90,
+.starry-mode .bg-white\/80,
+.starry-mode .bg-white\/60,
+.starry-mode .bg-white\/50,
+.starry-mode .bg-white\/40,
+.starry-mode .bg-white\/30,
+.starry-mode .bg-white\/20,
+.starry-mode .bg-white\/10 {
+  background-color: rgba(15, 23, 42, 0.4) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Hover states for white opacities */
+.starry-mode .hover\:bg-white\/80:hover,
+.starry-mode .hover\:bg-white\/40:hover,
+.starry-mode .hover\:bg-white\/30:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Slate backgrounds with opacity */
+.starry-mode .bg-slate-100\/50,
+.starry-mode .bg-slate-50\/50 {
+  background-color: rgba(30, 41, 59, 0.5) !important;
+}
+
+/* Colored Badges (Light backgrounds) -> Darker backgrounds with matching text */
+.starry-mode .bg-blue-100 { background-color: rgba(59, 130, 246, 0.15) !important; color: #60a5fa !important; border-color: rgba(59, 130, 246, 0.3) !important; }
+.starry-mode .bg-orange-100 { background-color: rgba(249, 115, 22, 0.15) !important; color: #fb923c !important; border-color: rgba(249, 115, 22, 0.3) !important; }
+.starry-mode .bg-red-100 { background-color: rgba(239, 68, 68, 0.15) !important; color: #f87171 !important; border-color: rgba(239, 68, 68, 0.3) !important; }
+.starry-mode .bg-purple-100 { background-color: rgba(168, 85, 247, 0.15) !important; color: #c084fc !important; border-color: rgba(168, 85, 247, 0.3) !important; }
+.starry-mode .bg-green-50 { background-color: rgba(34, 197, 94, 0.15) !important; color: #4ade80 !important; border-color: rgba(34, 197, 94, 0.3) !important; }
+
+/* Red backgrounds (Delete buttons/warnings) */
+.starry-mode .bg-red-50 { background-color: rgba(239, 68, 68, 0.1) !important; color: #fca5a5 !important; }
+.starry-mode .bg-red-50\/80 { background-color: rgba(239, 68, 68, 0.1) !important; }
+
+/* Sky/Blue backgrounds */
+/* Note: bg-sky-100/50 is already handled in previous block, but ensuring specific overrides here */
+.starry-mode .bg-sky-100 { background-color: rgba(14, 165, 233, 0.15) !important; }
+
+/* Specific Hover Fixes for Red/Delete */
+.starry-mode .hover\:bg-red-50:hover,
+.starry-mode .hover\:bg-red-50\/50:hover {
+  background-color: rgba(239, 68, 68, 0.2) !important;
+}
+
+/* Fix for Active Server Card Rings/Shadows */
+.starry-mode .ring-sky-100\/50 {
+  --tw-ring-color: rgba(14, 165, 233, 0.2) !important;
+}
+.starry-mode .shadow-sky-500\/10 {
+  --tw-shadow-color: rgba(14, 165, 233, 0.1) !important;
+}
+
+/* Fix Input Focus Rings (Indigo) */
+.starry-mode .focus-within\:ring-indigo-50\/50:focus-within {
+  --tw-ring-color: rgba(99, 102, 241, 0.2) !important;
+}
+
+/* Blue 50 Backgrounds */
+.starry-mode .bg-blue-50 {
+  background-color: rgba(59, 130, 246, 0.1) !important;
+  color: #93c5fd !important;
+}
+
+/* Indigo Backgrounds (Thinking Process) */
+.starry-mode .bg-indigo-100 { background-color: rgba(99, 102, 241, 0.15) !important; color: #818cf8 !important; border-color: rgba(99, 102, 241, 0.3) !important; }
+.starry-mode .bg-indigo-50 { background-color: rgba(99, 102, 241, 0.1) !important; color: #a5b4fc !important; border-color: rgba(99, 102, 241, 0.2) !important; }
+
+/* Slate 200/300 Backgrounds */
+.starry-mode .bg-slate-200,
+.starry-mode .bg-slate-200\/80,
+.starry-mode .bg-slate-200\/50 {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.starry-mode .bg-slate-300 {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Glass Buttons */
+.starry-mode .glass-button {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+.starry-mode .glass-button:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+  border-color: rgba(255, 255, 255, 0.25) !important;
+}
+
+/* Group Hover Overrides (Important for Sidebar) */
+.starry-mode .group:hover .group-hover\:bg-white\/80 {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Specific Border Overrides for Semi-Transparent Slates */
+.starry-mode .border-slate-200\/60,
+.starry-mode .border-slate-200\/50,
+.starry-mode .border-slate-300\/30 {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Specific Border Overrides for Sky */
+.starry-mode .border-sky-300\/50,
+.starry-mode .border-sky-500\/10,
+.starry-mode .border-sky-500\/20,
+.starry-mode .border-sky-500\/30 {
+  border-color: rgba(14, 165, 233, 0.2) !important;
+}
+
+/* Background Overrides for specific Sky opacities */
+.starry-mode .bg-sky-500\/10 {
+  background-color: rgba(14, 165, 233, 0.1) !important;
+}

@@ -1038,7 +1038,7 @@ ${text}
             </h3>
             
             {questions.length === 0 && (
-              <div className="text-center py-12 text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-300">
+              <div className="text-center py-12 text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-300">
                 <Bot size={32} className="mx-auto mb-2 opacity-50" />
                 <p>{t.no_questions}</p>
               </div>
@@ -1110,7 +1110,7 @@ ${text}
                   {q.status === "completed" && q.finalAnswer ? (
                     <>
                       <div className="bg-slate-50 rounded-lg p-3 text-xs text-slate-600 leading-relaxed border border-slate-100 h-full overflow-hidden relative group/answer">
-                        <div className="absolute top-0 right-0 p-1 opacity-0 group-hover/answer:opacity-100 transition-opacity bg-gradient-to-l from-slate-50 via-slate-50 to-transparent pl-6">
+                        <div className="absolute top-0 right-0 p-1 opacity-0 group-hover/answer:opacity-100 transition-opacity">
                            <button
                               onClick={(e) => handleCopy(e, q.id, q.finalAnswer || "")}
                               className="p-1.5 hover:bg-white bg-slate-100 text-slate-500 hover:text-blue-600 rounded-md border border-slate-200 shadow-sm transition-all"
@@ -1123,7 +1123,7 @@ ${text}
                       </div>
                     </>
                   ) : (
-                    <div className="h-full flex items-center justify-center text-slate-300 text-xs italic bg-slate-50/50 rounded-lg border border-dashed border-slate-200">
+                    <div className="h-full flex items-center justify-center text-slate-300 text-xs italic bg-slate-50 rounded-lg border border-dashed border-slate-200">
                        {q.status === "pending" ? t.pending_analysis : q.status === "processing" ? t.processing : "Error"}
                     </div>
                   )}

@@ -447,8 +447,8 @@ function CommandCard({
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {/* Holographic Shine Effect on Hover */}
-      <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/40 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 pointer-events-none z-10" />
+      {/* Holographic Shine Effect on Hover - Removed per user request */}
+      {/* <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/40 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 pointer-events-none z-10" /> */}
 
       {/* Tech Corner Accents */}
       <div className="absolute -top-[1px] -left-[1px] w-3 h-3 border-t-2 border-l-2 border-sky-500/0 group-hover:border-sky-500/50 rounded-tl-lg transition-colors duration-300" />

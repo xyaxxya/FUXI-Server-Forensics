@@ -217,8 +217,8 @@ export default function Sidebar({ activeTab, onTabChange, onDisconnect, language
                             </motion.div>
                           )}
                           
-                          {/* Hover Effect Background */}
-                          {!isActive && isHoveredLocal && (
+                          {/* Hover Effect Background - Removed per user request */}
+                          {/* {!isActive && isHoveredLocal && (
                              <motion.div
                                layoutId="hoverTab"
                                className="absolute inset-0 bg-slate-100/50 rounded-xl"
@@ -226,9 +226,9 @@ export default function Sidebar({ activeTab, onTabChange, onDisconnect, language
                                animate={{ opacity: 1 }}
                                exit={{ opacity: 0 }}
                              />
-                          )}
+                          )} */}
 
-                          <div className={`relative z-10 p-1.5 rounded-lg transition-colors ${isActive ? 'text-sky-600 bg-sky-100/50' : 'text-slate-400 group-hover:text-slate-600 group-hover:bg-white/80'}`}>
+                          <div className={`relative z-10 p-1.5 rounded-lg transition-colors ${isActive ? 'text-sky-600 bg-sky-100/50' : 'text-slate-400 group-hover:text-slate-600'}`}>
                             <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} />
                           </div>
                           <span className={`relative z-10 text-sm font-medium transition-colors ${isActive ? 'text-slate-800' : 'text-slate-500 group-hover:text-slate-700'}`}>
