@@ -28,6 +28,7 @@ interface Session {
   port: number;
   user: string;
   is_current: boolean;
+  note: string;
 }
 
 interface CommandHistoryItem {
@@ -86,6 +87,8 @@ interface CommandContextType {
   toggleSessionSelection: (sessionId: string) => void;
   setSessionSelection: (sessionIds: string[]) => void;
   updateSessions: () => Promise<void>;
+  updateSessionNote: (sessionId: string, note: string) => Promise<void>;
+  reorderSessions: (newOrder: string[]) => Promise<void>;
   addCommandToHistory: (cmd: string, success: boolean, sessionId?: string) => void;
   addCustomCommand: (command: Omit<CustomCommand, 'id'>) => void;
   removeCustomCommand: (id: string) => void;
@@ -307,7 +310,7 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
   const listSessions = async (): Promise<Session[]> => {
     try {
       const sessionList = await invoke<Session[]>('list_sessions');
-      return sessionList;
+      return Array.isArray(sessionList) ? sessionList : [];
     } catch (e: any) {
       console.error('Failed to list sessions:', e);
       return [];
@@ -336,7 +339,7 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
 
       for (let attempt = 0; attempt < 3; attempt++) {
         lastList = await listSessions();
-        lastCurrent = lastList.find(s => s.is_current) || null;
+        lastCurrent = (Array.isArray(lastList) ? lastList : []).find(s => s.is_current) || null;
         if (lastCurrent?.id === sessionId) break;
         await sleep(120);
         await invoke<string>('switch_session', { sessionId }).catch(() => undefined as any);
@@ -384,6 +387,49 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
     // Set current session
     const current = sessionList.find(s => s.is_current) || null;
     setCurrentSession(current);
+  };
+
+  const updateSessionNote = async (sessionId: string, note: string): Promise<void> => {
+    try {
+      await invoke('update_session_note', { sessionId, note });
+      setSessions(prev => prev.map(s => 
+        s.id === sessionId ? { ...s, note } : s
+      ));
+      if (currentSession?.id === sessionId) {
+        setCurrentSession(prev => prev ? { ...prev, note } : null);
+      }
+    } catch (e) {
+      console.error('Failed to update session note:', e);
+      throw e;
+    }
+  };
+
+  const reorderSessions = async (newOrder: string[]): Promise<void> => {
+    // Optimistic update
+    setSessions(prev => {
+       const sessionMap = new Map(prev.map(s => [s.id, s]));
+       const newSessions: Session[] = [];
+       
+       newOrder.forEach(id => {
+         const s = sessionMap.get(id);
+         if (s) {
+           newSessions.push(s);
+           sessionMap.delete(id);
+         }
+       });
+       
+       // Append any remaining sessions (defensive)
+       sessionMap.forEach(s => newSessions.push(s));
+       
+       return newSessions;
+    });
+
+    try {
+      await invoke('reorder_sessions', { newOrder });
+    } catch (e) {
+      console.error('Failed to reorder sessions:', e);
+      await updateSessions();
+    }
   };
 
   const fetchAll = async (targetIds?: string[], forceRefresh: boolean = false) => {
@@ -759,6 +805,8 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
         toggleSessionSelection,
         setSessionSelection,
         updateSessions,
+        updateSessionNote,
+        reorderSessions,
         addCommandToHistory,
         addCustomCommand,
         removeCustomCommand,

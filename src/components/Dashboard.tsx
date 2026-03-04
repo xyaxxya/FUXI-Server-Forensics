@@ -16,9 +16,7 @@ import {
   Key,
   Cpu,
   Server,
-  Zap,
   Layout,
-  Terminal,
   Clock
 } from "lucide-react";
 import { translations, Language } from "../translations";

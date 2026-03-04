@@ -89,6 +89,8 @@ const SYSTEM_PROMPT = `
 **行为约束**：
 - 我问什么，你答什么。
 - 除非明确要求，否则不解释基础概念，专注于取证分析，严禁闲聊。
+- **主动保留关键信息**：在分析过程中，一旦发现对后续分析有价值的关键信息（如：数据库账号密码、Webshell 路径、关键配置文件位置、特定软件版本、异常 IP 等），**必须立即主动调用** \`update_context_info\` 工具将其保存到上下文面板，不要等待用户指示。
+- **集群感知**：对于集群环境（如 K8s, Hadoop, ElasticSearch），注意区分 Master/Node 节点。请先检查服务器列表中的备注（Note）信息，优先针对 Master 节点执行管理命令，针对 Node 节点执行数据/日志分析命令。利用 \`run_shell_command\` 的 \`target_ids\` 参数来指定特定服务器执行命令，避免无差别的全量扫描。
 
 **回答格式约束**：
 - 如果我提供了固定回答格式，你必须严格遵守
@@ -126,7 +128,7 @@ export async function sendToAI(
       type: "function",
       function: {
         name: "run_shell_command",
-        description: "在当前 SSH 会话中执行 Shell 命令 (支持 cd 目录保持)",
+        description: "在当前 SSH 会话中执行 Shell 命令。支持指定目标服务器执行。",
         parameters: {
           type: "object",
           properties: {
@@ -134,6 +136,11 @@ export async function sendToAI(
               type: "string",
               description:
                 '要执行的 Shell 命令。支持管道、逻辑运算符 (&&, ||)。例如: "ls -la /var/log", "cd /tmp && ls", "ps aux | grep mysql"',
+            },
+            target_ids: {
+              type: "array",
+              items: { type: "string" },
+              description: "Optional. List of session IDs to execute this command on. If not provided, executes on all selected servers. Use this to target specific nodes (e.g. only master node).",
             },
           },
           required: ["command"],
@@ -144,7 +151,7 @@ export async function sendToAI(
       type: "function",
       function: {
         name: "update_context_info",
-        description: "Save important found information (e.g. credentials, configs) to the global context for future reference.",
+        description: "Save CRITICAL findings (credentials, webshell paths, software versions, configs) to the global context panel immediately. Use this PROACTIVELY when you find something important.",
         parameters: {
           type: "object",
           properties: {
@@ -288,8 +295,8 @@ export async function sendToAI(
 
       const data = await response.json();
       const textContent =
-        data.content.find((c: any) => c.type === "text")?.text || "";
-      const toolUses = data.content.filter((c: any) => c.type === "tool_use");
+        (Array.isArray(data.content) ? data.content.find((c: any) => c.type === "text")?.text : "") || "";
+      const toolUses = Array.isArray(data.content) ? data.content.filter((c: any) => c.type === "tool_use") : [];
 
       const tool_calls = toolUses.map((t: any) => ({
         id: t.id,

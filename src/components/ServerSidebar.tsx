@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useCommandStore } from '../store/CommandContext';
-import { Server, Plus, CheckSquare, Square, LogOut, Trash2, Activity, Terminal } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Server, Plus, CheckSquare, Square, LogOut, Trash2, Activity, Terminal, Edit2, Check, X } from 'lucide-react';
+import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { translations, Language } from '../translations';
 import { APP_VERSION } from '../config/app';
@@ -22,6 +22,7 @@ const ServerCard = ({
   onClick, 
   onToggleSelect, 
   onDelete,
+  onUpdateNote,
   language = 'en'
 }: { 
   session: any, 
@@ -30,18 +31,28 @@ const ServerCard = ({
   onClick: () => void, 
   onToggleSelect: (e: React.MouseEvent) => void,
   onDelete: (e: React.MouseEvent) => void,
+  onUpdateNote: (note: string) => void,
   language?: Language
 }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [noteDraft, setNoteDraft] = useState(session.note || '');
   const t = translations[language];
 
+  const handleSaveNote = (e: React.MouseEvent | React.FormEvent) => {
+    e.stopPropagation();
+    onUpdateNote(noteDraft);
+    setIsEditing(false);
+  };
+
+  const handleCancelEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setNoteDraft(session.note || '');
+    setIsEditing(false);
+  };
+
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, x: -10 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -10 }}
-      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+    <div
       className={cn(
         "group relative flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all duration-300",
         "border",
@@ -49,7 +60,7 @@ const ServerCard = ({
           ? "bg-white/60 border-sky-300/50 shadow-lg shadow-sky-500/10 ring-1 ring-sky-100/50 z-10 backdrop-blur-md" 
           : "bg-white/10 border-white/20 hover:bg-white/30 hover:border-white/40 backdrop-blur-sm"
       )}
-      onClick={onClick}
+      onClick={!isEditing ? onClick : undefined}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -62,66 +73,115 @@ const ServerCard = ({
       )}
 
       {/* Checkbox */}
-      <div 
-        onClick={onToggleSelect}
-        className={cn(
-          "relative z-20 flex-shrink-0 transition-colors p-1 rounded-md",
-          isSelected ? "text-sky-500" : "text-slate-400 hover:text-sky-400"
-        )}
-      >
-        {isSelected ? (
-          <motion.div initial={{ scale: 0.8 }} animate={{ scale: 1 }}>
-            <CheckSquare size={16} className="drop-shadow-sm" />
-          </motion.div>
-        ) : (
-          <Square size={16} />
-        )}
-      </div>
+      {!isEditing && (
+        <div 
+          onClick={onToggleSelect}
+          className={cn(
+            "relative z-20 flex-shrink-0 transition-colors p-1 rounded-md",
+            isSelected ? "text-sky-500" : "text-slate-400 hover:text-sky-400"
+          )}
+        >
+          {isSelected ? (
+            <motion.div initial={{ scale: 0.8 }} animate={{ scale: 1 }}>
+              <CheckSquare size={16} className="drop-shadow-sm" />
+            </motion.div>
+          ) : (
+            <Square size={16} />
+          )}
+        </div>
+      )}
 
-      {/* Server Info */}
+      {/* Server Info or Edit Mode */}
       <div className="flex-1 min-w-0 flex flex-col gap-0.5 relative z-10">
-        <div className={cn(
-          "font-semibold text-sm truncate flex items-center gap-2 transition-colors",
-          isActive ? "text-slate-800" : "text-slate-600 group-hover:text-slate-800"
-        )}>
-          <span className="truncate tracking-tight">{session.user}@{session.ip}</span>
-        </div>
-        
-        <div className="flex items-center gap-3 text-[10px] uppercase tracking-wider font-medium text-slate-400">
-          <div className="flex items-center gap-1.5">
-             <span className="relative flex h-1.5 w-1.5">
-              <span className={cn(
-                "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
-                isActive ? "bg-emerald-400" : "bg-slate-400"
-              )}></span>
-              <span className={cn(
-                "relative inline-flex rounded-full h-1.5 w-1.5",
-                isActive ? "bg-emerald-500" : "bg-slate-400"
-              )}></span>
-            </span>
-            <span className={isActive ? "text-emerald-600 font-bold" : "text-slate-500"}>
-              {isActive ? t.active_status : t.connected_status}
-            </span>
+        {isEditing ? (
+          <div className="flex items-center gap-1 w-full" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+            <input
+              type="text"
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              className="w-full min-w-0 text-xs px-2 py-1 rounded border border-sky-300 focus:outline-none focus:ring-1 focus:ring-sky-400 bg-white/80"
+              placeholder="Add a note..."
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSaveNote(e);
+                if (e.key === 'Escape') handleCancelEdit(e as any);
+              }}
+            />
+            <button onClick={handleSaveNote} className="p-1 text-emerald-500 hover:bg-emerald-50 rounded">
+              <Check size={14} />
+            </button>
+            <button onClick={handleCancelEdit} className="p-1 text-red-500 hover:bg-red-50 rounded">
+              <X size={14} />
+            </button>
           </div>
-        </div>
+        ) : (
+          <>
+            <div className={cn(
+              "font-semibold text-sm truncate flex items-center gap-2 transition-colors",
+              isActive ? "text-slate-800" : "text-slate-600 group-hover:text-slate-800"
+            )}>
+              <span className="truncate tracking-tight">{session.user}@{session.ip}</span>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 text-[10px] uppercase tracking-wider font-medium text-slate-400">
+                <div className="flex items-center gap-1.5">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className={cn(
+                      "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
+                      isActive ? "bg-emerald-400" : "bg-slate-400"
+                    )}></span>
+                    <span className={cn(
+                      "relative inline-flex rounded-full h-1.5 w-1.5",
+                      isActive ? "bg-emerald-500" : "bg-slate-400"
+                    )}></span>
+                  </span>
+                  <span className={isActive ? "text-emerald-600 font-bold" : "text-slate-500"}>
+                    {isActive ? t.active_status : t.connected_status}
+                  </span>
+                </div>
+              </div>
+              {session.note && (
+                <span className="text-[10px] text-slate-500 truncate max-w-[80px] bg-slate-100 px-1 rounded border border-slate-200" title={session.note}>
+                  {session.note}
+                </span>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Disconnect Button (Slide In) */}
+      {/* Actions (Slide In) */}
       <AnimatePresence>
-        {isHovered && (
-          <motion.button
-            onClick={onDelete}
-            initial={{ opacity: 0, x: 5 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 5 }}
-            className="relative z-20 p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-            title={t.disconnect}
-          >
-            <LogOut size={14} />
-          </motion.button>
+        {isHovered && !isEditing && (
+          <div className="flex items-center gap-1">
+            <motion.button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsEditing(true);
+              }}
+              initial={{ opacity: 0, x: 5 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 5 }}
+              className="relative z-20 p-1.5 text-slate-400 hover:text-sky-500 hover:bg-sky-50 rounded-lg transition-colors"
+              title="Edit Note"
+            >
+              <Edit2 size={14} />
+            </motion.button>
+            <motion.button
+              onClick={onDelete}
+              initial={{ opacity: 0, x: 5 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 5 }}
+              className="relative z-20 p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+              title={t.disconnect}
+            >
+              <LogOut size={14} />
+            </motion.button>
+          </div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 };
 
@@ -135,6 +195,8 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
     selectedSessionIds, 
     toggleSessionSelection,
     setSessionSelection,
+    updateSessionNote,
+    reorderSessions,
     currentSession
   } = useCommandStore();
   
@@ -251,23 +313,27 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
               </button>
             </div>
           ) : (
-            <AnimatePresence mode='popLayout'>
-              {sessions.map(session => (
-                <ServerCard 
-                  key={session.id}
-                  session={session}
-                  isActive={session.is_current || currentSession?.id === session.id}
-                  isSelected={selectedSessionIds.includes(session.id)}
-                  onClick={() => handleSessionClick(session.id)}
-                  onToggleSelect={(e) => {
-                    e.stopPropagation();
-                    toggleSessionSelection(session.id);
-                  }}
-                  onDelete={(e) => handleDeleteClick(e, session.id)}
-                  language={language}
-                />
-              ))}
-            </AnimatePresence>
+            <Reorder.Group axis="y" values={sessions.map(s => s.id)} onReorder={reorderSessions} className="space-y-2">
+              <AnimatePresence mode='popLayout'>
+                {sessions.map(session => (
+                  <Reorder.Item key={session.id} value={session.id}>
+                    <ServerCard 
+                      session={session}
+                      isActive={session.is_current || currentSession?.id === session.id}
+                      isSelected={selectedSessionIds.includes(session.id)}
+                      onClick={() => handleSessionClick(session.id)}
+                      onToggleSelect={(e) => {
+                        e.stopPropagation();
+                        toggleSessionSelection(session.id);
+                      }}
+                      onDelete={(e) => handleDeleteClick(e, session.id)}
+                      onUpdateNote={(note) => updateSessionNote(session.id, note)}
+                      language={language}
+                    />
+                  </Reorder.Item>
+                ))}
+              </AnimatePresence>
+            </Reorder.Group>
           )}
         </div>
 

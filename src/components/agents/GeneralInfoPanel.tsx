@@ -44,7 +44,7 @@ export default function GeneralInfoPanel({
       id: 'db',
       label: t.general_info_auto_db,
       icon: <Database size={16} />,
-      prompt: "请扫描服务器上的数据库配置（MySQL, PostgreSQL, Redis, MongoDB等）。查找常见的配置文件（如 my.cnf, redis.conf），包括常见php网站目录里的数据库配置，常见java网站jar包里的数据库配置文件。如果可见，请提取主机、端口、用户名和密码。如果找到，请总结这些凭据并调用 `update_context_info` 工具将其保存。请不要在最终回答中以明文显示密码，仅在工具调用中保存。"
+      prompt: "请扫描服务器上的数据库配置（MySQL, PostgreSQL, Redis, MongoDB等）。查找常的配置文件（如 my.cnf, redis.conf），包括常见php网站目录里的数据库配置，常见java网站jar包里的数据库配置文件。如果可见，请提取主机、端口、用户名和密码。如果找到，请总结这些凭据并调用 `update_context_info` 工具将其保存。请不要在最终回答中以明文显示密码，仅在工具调用中保存。"
     },
     {
       id: 'sys',
@@ -56,7 +56,7 @@ export default function GeneralInfoPanel({
       id: 'web',
       label: t.general_info_auto_web,
       icon: <Globe size={16} />,
-      prompt: "请识别正在运行的Web服务（Nginx, Apache, Tomcat等）。检查活动端口 (`netstat -tulpn`) 和配置文件位置。请总结Web架构并调用 `update_context_info` 将其保存。"
+      prompt: "请识别正在运行的Web服务（Nginx, Apache, Tomcat等）。检查活动端口 (`netstat -tulpn`) 和配置文件位置。如果是多服务器集群，请详细总结每个服务器的Web架构（如：前端Nginx反向代理到后端Tomcat集群或k8s部署的Web应用）。请总结Web架构并调用 `update_context_info` 将其保存。"
     }
   ];
 

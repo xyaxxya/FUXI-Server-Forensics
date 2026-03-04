@@ -80,7 +80,6 @@ const menuGroups: MenuGroup[] = [
 export default function Sidebar({ activeTab, onTabChange, onDisconnect, language, onOpenSettings, onToggleServerSidebar }: SidebarProps) {
   const t = translations[language];
   const [expandedGroups, setExpandedGroups] = useState<string[]>(['monitor', 'infrastructure', 'services', 'agent', 'tools']);
-  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
 
   // Auto-expand group containing active tab
   useEffect(() => {
@@ -186,14 +185,11 @@ export default function Sidebar({ activeTab, onTabChange, onDisconnect, language
                     
                     {group.items.map(item => {
                       const isActive = activeTab === item.id;
-                      const isHoveredLocal = hoveredItem === item.id;
                       
                       return (
                         <button
                           key={item.id}
                           onClick={() => onTabChange(item.id)}
-                          onMouseEnter={() => setHoveredItem(item.id)}
-                          onMouseLeave={() => setHoveredItem(null)}
                           className="w-full relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group ml-2"
                           style={{ width: "calc(100% - 8px)" }}
                         >

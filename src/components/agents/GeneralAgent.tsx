@@ -60,17 +60,17 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
   const t = translations[language];
 
   // Derived State
-  const activeSession = chatSessions.find(s => s.id === activeSessionId);
+  const activeSession = Array.isArray(chatSessions) ? chatSessions.find(s => s.id === activeSessionId) : undefined;
   const messages = activeSession ? activeSession.messages : [];
 
   // Ensure there's always at least one session if none exist
   useEffect(() => {
-    if (chatSessions.length === 0 && !activeSessionId) {
+    if ((!chatSessions || chatSessions.length === 0) && !activeSessionId) {
         createSession();
-    } else if (chatSessions.length > 0 && !activeSessionId) {
+    } else if (chatSessions && chatSessions.length > 0 && !activeSessionId) {
         setActiveSession(chatSessions[0].id);
     }
-  }, [chatSessions.length, activeSessionId, createSession, setActiveSession]);
+  }, [chatSessions?.length, activeSessionId, createSession, setActiveSession]);
 
   const format = (str: string, ...args: any[]) => {
     return str.replace(/{(\d+)}/g, (match, number) => {
@@ -260,8 +260,16 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
     }
 
     try {
+      // Prepare enhanced context with server list
+      let enhancedInfo = generalInfo;
+      const serverListInfo = sessions
+          .map(s => `- ${s.user}@${s.ip} (ID: ${s.id}) ${s.note ? `[Note: ${s.note}]` : ''} ${selectedSessionIds.includes(s.id) ? '(Selected)' : ''}`)
+          .join('\n');
+      
+      enhancedInfo = `**Current Server List**:\n${serverListInfo}\n\n${enhancedInfo}`;
+
       // 1. Get response from AI
-      const response = await sendToAI(history, aiSettings, undefined, generalInfo, signal);
+      const response = await sendToAI(history, aiSettings, undefined, enhancedInfo, signal);
       if (signal.aborted) return;
 
       // 2. Add AI response to history
@@ -278,11 +286,22 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
           if (toolCall.function.name === "run_shell_command") {
             const args = JSON.parse(toolCall.function.arguments);
             const cmd = args.command;
+            const targetIds = args.target_ids;
 
             let output = "";
             try {
-              let targetSessions = sessions.filter((s) => selectedSessionIds.includes(s.id));
-              if (targetSessions.length === 0 && currentSession) targetSessions = [currentSession];
+              let targetSessions: typeof sessions = [];
+              
+              if (targetIds && Array.isArray(targetIds) && targetIds.length > 0) {
+                  // If AI specified targets, use them
+                  targetSessions = sessions.filter(s => targetIds.includes(s.id));
+              } 
+              
+              if (targetSessions.length === 0) {
+                  // Fallback to selected sessions or current session
+                  targetSessions = sessions.filter((s) => selectedSessionIds.includes(s.id));
+                  if (targetSessions.length === 0 && currentSession) targetSessions = [currentSession];
+              }
 
               if (targetSessions.length === 0) {
                 output = t.no_active_session;

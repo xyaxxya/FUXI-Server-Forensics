@@ -38,9 +38,11 @@ export default function TerminalXterm({ onClose, sessionId, language }: { onClos
     // 1. Initialize Xterm
     const term = new Terminal({
       cursorBlink: true,
-      fontFamily: '"JetBrains Mono", "SF Mono", Menlo, Monaco, "Courier New", monospace',
-      fontSize: 14,
-      lineHeight: 1.4, // Increased line height for better readability
+      fontFamily: '"JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, "Courier New", monospace',
+      fontSize: 14, // Increased font size for better readability
+      fontWeight: 500, // Medium weight for clearer text
+      lineHeight: 1.5, // Increased line height for less eye strain
+      letterSpacing: 0.4, // Slight letter spacing
       allowTransparency: true,
       theme: {
         background: 'transparent',

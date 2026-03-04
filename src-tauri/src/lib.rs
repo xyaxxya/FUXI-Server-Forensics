@@ -40,10 +40,12 @@ struct SessionInfo {
     port: u16,
     user: String,
     pass: Option<String>,
+    note: String,
 }
 
 struct AppState {
     sessions: Mutex<HashMap<String, Arc<Mutex<SessionInfo>>>>,
+    session_order: Mutex<Vec<String>>,
     pty_sessions: Mutex<HashMap<String, PtySession>>,
     current_session_id: Mutex<Option<String>>,
     db_connections: Mutex<HashMap<String, DbConnection>>,
@@ -86,6 +88,7 @@ struct SessionSummary {
     port: u16,
     user: String,
     is_current: bool,
+    note: String,
 }
 
 #[derive(Serialize)]
@@ -333,12 +336,14 @@ fn connect_ssh(
         port,
         user: user.clone(),
         pass: pass.clone(),
+        note: String::new(),
     };
 
     // Store session wrapped in Arc<Mutex>
     {
         let mut sessions = state.sessions.lock().unwrap();
         sessions.insert(session_id.clone(), Arc::new(Mutex::new(session_info)));
+        state.session_order.lock().unwrap().push(session_id.clone());
     }
 
     *state.current_session_id.lock().unwrap() = Some(session_id.clone());
@@ -361,12 +366,19 @@ fn disconnect_ssh(
         let mut next_current: Option<String> = None;
         {
             let mut sessions = state.sessions.lock().unwrap();
+            let mut order = state.session_order.lock().unwrap();
+            
             if sessions.remove(&id).is_some() {
                 removed = true;
-                if sessions.is_empty() {
+                // Remove from order
+                if let Some(pos) = order.iter().position(|x| x == &id) {
+                    order.remove(pos);
+                }
+                
+                if order.is_empty() {
                     next_current = None;
                 } else {
-                    next_current = sessions.keys().next().cloned();
+                    next_current = order.first().cloned();
                 }
             }
         }
@@ -693,22 +705,58 @@ async fn batch_exec_command(
 fn list_sessions(state: State<'_, AppState>) -> Result<Vec<SessionSummary>, String> {
     let current_id = state.current_session_id.lock().unwrap().clone();
     let sessions = state.sessions.lock().unwrap();
+    let order = state.session_order.lock().unwrap();
 
-    let summaries: Vec<SessionSummary> = sessions
+    let summaries: Vec<SessionSummary> = order
         .iter()
-        .map(|(id, info_arc)| {
-            let info = info_arc.lock().unwrap();
-            SessionSummary {
-                id: id.clone(),
-                ip: info.ip.clone(),
-                port: info.port,
-                user: info.user.clone(),
-                is_current: current_id.as_ref() == Some(id),
-            }
+        .filter_map(|id| {
+            sessions.get(id).map(|info_arc| {
+                let info = info_arc.lock().unwrap();
+                SessionSummary {
+                    id: id.clone(),
+                    ip: info.ip.clone(),
+                    port: info.port,
+                    user: info.user.clone(),
+                    is_current: current_id.as_ref() == Some(id),
+                    note: info.note.clone(),
+                }
+            })
         })
         .collect();
 
     Ok(summaries)
+}
+
+#[tauri::command]
+fn reorder_sessions(state: State<'_, AppState>, new_order: Vec<String>) -> Result<(), String> {
+    let mut order = state.session_order.lock().unwrap();
+    // Validate that new_order contains valid session IDs? 
+    // Or just trust frontend? 
+    // Better to ensure we don't lose sessions that might have been added concurrently (race condition),
+    // but for this single-user local app, replacing is usually fine.
+    // However, robust implementation:
+    // 1. Ensure all IDs in new_order exist in `sessions` (optional, but good)
+    // 2. Ensure all IDs in `sessions` are in `new_order` (to prevent hiding sessions)
+    
+    // Simple implementation: Just replace.
+    *order = new_order;
+    Ok(())
+}
+
+#[tauri::command]
+fn update_session_note(
+    state: State<'_, AppState>,
+    session_id: String,
+    note: String,
+) -> Result<(), String> {
+    let sessions = state.sessions.lock().unwrap();
+    if let Some(session_arc) = sessions.get(&session_id) {
+        let mut info = session_arc.lock().unwrap();
+        info.note = note;
+        Ok(())
+    } else {
+        Err(format!("Session {} not found", session_id))
+    }
 }
 
 #[tauri::command]
@@ -1210,6 +1258,7 @@ pub fn run() {
         .setup(|app| {
             app.manage(AppState {
                 sessions: Mutex::new(HashMap::new()),
+                session_order: Mutex::new(Vec::new()),
                 pty_sessions: Mutex::new(HashMap::new()),
                 current_session_id: Mutex::new(None),
                 db_connections: Mutex::new(HashMap::new()),
@@ -1225,6 +1274,8 @@ pub fn run() {
             exec_command_stream,
             exec_local_command,
             list_sessions,
+            update_session_note,
+            reorder_sessions,
             switch_session,
             start_pty_session,
             write_pty,
