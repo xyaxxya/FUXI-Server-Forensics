@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight, Terminal, Check, Loader2 } from "lucide-react";
+import { ChevronDown, Terminal, Check, Loader2, BrainCircuit } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { translations, Language } from "../../translations";
@@ -38,19 +38,10 @@ export default function ThinkingProcess({ steps, isFinished, language }: Thinkin
     } catch { return false; }
   });
 
-  // Initial expand state logic
-  // If loading (not finished), expand.
-  // If finished, collapse by default.
-  // We removed the forced expansion effect to respect user toggle.
   useEffect(() => {
     if (!isFinished) {
       setIsExpanded(true);
     } else {
-        // Optional: Auto-collapse on finish?
-        // Let's leave it as is (user can close it manually) or collapse it if it was auto-expanded.
-        // For now, let's auto-collapse on finish to keep UI clean, UNLESS user opened it?
-        // Actually, best UX: Expand while thinking. Collapse when done.
-        // User complained "can't go back", so we must allow collapse.
         setIsExpanded(false);
     }
   }, [isFinished]);
@@ -58,69 +49,91 @@ export default function ThinkingProcess({ steps, isFinished, language }: Thinkin
   if (steps.length === 0) return null;
 
   return (
-    <div className="my-4 border border-slate-200 rounded-lg overflow-hidden bg-slate-50/50 w-full max-w-full">
-      {/* Header */}
+    <div className="my-6 w-full max-w-full group">
+      {/* Header - Modern Card Style */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center gap-2 p-3 bg-slate-100 hover:bg-slate-200/80 transition-colors text-left"
+        className={`w-full flex items-center gap-3 p-3.5 rounded-xl border transition-all duration-300 ${
+          isExpanded 
+            ? "bg-white border-indigo-100 shadow-md ring-1 ring-indigo-50" 
+            : "bg-white/80 border-slate-200/60 hover:bg-white hover:border-indigo-200 hover:shadow-sm"
+        }`}
       >
-        {isExpanded ? (
-          <ChevronDown size={16} className="text-slate-500 flex-shrink-0" />
-        ) : (
-          <ChevronRight size={16} className="text-slate-500 flex-shrink-0" />
-        )}
-        <div className="flex items-center gap-2 text-sm font-medium text-slate-700 flex-1 overflow-hidden">
-          <span className="flex items-center gap-1.5 flex-shrink-0">
-            {isFinished ? (
-              <Check size={14} className="text-green-600" />
-            ) : (
-              <Loader2 size={14} className="animate-spin text-blue-600" />
-            )}
-            {t.thinking_process}
-          </span>
-          <span className="text-xs font-normal text-slate-500 flex-shrink-0">
-            ({steps.length} {steps.length === 1 ? 'step' : 'steps'})
-          </span>
-          {hasTable && (
-             <span className="ml-auto flex items-center gap-1 text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-200 flex-shrink-0">
-                 <Terminal size={10} />
-                 Data Table
-             </span>
+        <div className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${
+          isFinished 
+            ? "bg-emerald-50 text-emerald-600" 
+            : "bg-indigo-50 text-indigo-600"
+        }`}>
+          {isFinished ? (
+            <Check size={16} strokeWidth={2.5} />
+          ) : (
+            <BrainCircuit size={16} className="animate-pulse" />
           )}
+        </div>
+        
+        <div className="flex-1 text-left min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`text-sm font-semibold ${isExpanded ? "text-indigo-900" : "text-slate-700"}`}>
+              {t.thinking_process}
+            </span>
+            {!isFinished && (
+              <span className="flex items-center gap-1 text-[10px] font-medium bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full border border-indigo-100/50">
+                <Loader2 size={10} className="animate-spin" />
+                Processing
+              </span>
+            )}
+            {hasTable && (
+               <span className="flex items-center gap-1 text-[10px] font-medium bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full border border-purple-100/50">
+                   <Terminal size={10} />
+                   Data
+               </span>
+            )}
+          </div>
+          <div className="text-xs text-slate-400 mt-0.5 font-medium">
+            {steps.length} {steps.length === 1 ? 'step' : 'steps'} of analysis
+          </div>
+        </div>
+
+        <div className={`p-1.5 rounded-lg transition-all duration-200 ${
+          isExpanded ? "bg-indigo-50 text-indigo-500 rotate-180" : "text-slate-400 group-hover:text-indigo-400"
+        }`}>
+          <ChevronDown size={16} />
         </div>
       </button>
 
-      {/* Content */}
+      {/* Content - Timeline Style */}
       <AnimatePresence>
         {isExpanded && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="overflow-hidden"
           >
-            <div className="p-3 space-y-3 border-t border-slate-200">
+            <div className="mx-4 px-4 py-5 space-y-6 border-l-2 border-indigo-100/50 ml-8 mt-2">
               {steps.map((step, idx) => (
-                <div key={step.id || idx} className="relative pl-4 pb-2 last:pb-0">
-                  {/* Vertical Line */}
-                  {idx !== steps.length - 1 && (
-                    <div className="absolute left-[7px] top-6 bottom-0 w-px bg-slate-200" />
-                  )}
-                  
-                  {/* Dot */}
-                  <div className={`absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-2 ${
+                <motion.div 
+                  key={step.id || idx} 
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.05 }}
+                  className="relative pl-6"
+                >
+                  {/* Timeline Dot */}
+                  <div className={`absolute -left-[31px] top-1 w-5 h-5 rounded-full border-[3px] shadow-sm z-10 transition-colors duration-300 ${
                     step.toolCall?.isLoading 
-                      ? "border-blue-500 bg-white animate-pulse" 
+                      ? "border-indigo-500 bg-white animate-pulse shadow-indigo-200" 
                       : step.toolCall?.isError
-                        ? "border-red-500 bg-red-50"
-                        : "border-slate-300 bg-slate-50"
+                        ? "border-red-400 bg-white shadow-red-100"
+                        : "border-emerald-400 bg-white shadow-emerald-100"
                   }`} />
 
-                  {/* Step Content */}
-                  <div className="space-y-2">
+                  {/* Step Content Card */}
+                  <div className="group/step">
                     {/* Thought Text */}
                     {step.title && (
-                      <div className="text-sm text-slate-700 leading-relaxed prose prose-sm max-w-none prose-p:my-0 prose-ul:my-0 prose-li:my-0">
+                      <div className="text-sm text-slate-600 leading-relaxed mb-3 prose prose-sm max-w-none prose-p:my-0 prose-ul:my-0 prose-li:my-0 prose-strong:text-indigo-700 prose-code:text-indigo-600 prose-code:bg-indigo-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded-md prose-code:font-medium">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
                           {step.title}
                         </ReactMarkdown>
@@ -138,7 +151,7 @@ export default function ThinkingProcess({ steps, isFinished, language }: Thinkin
                       />
                     )}
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
           </motion.div>
@@ -150,7 +163,6 @@ export default function ThinkingProcess({ steps, isFinished, language }: Thinkin
 
 function ToolExecutionBlock({ command, output, isError, isLoading, language }: { command: string, output?: string, isError?: boolean, isLoading?: boolean, language: Language }) {
   const [showOutput, setShowOutput] = useState(false);
-  const t = translations[language];
 
   // Try to parse output as DbQueryResult
   let tableData = null;
@@ -165,7 +177,6 @@ function ToolExecutionBlock({ command, output, isError, isLoading, language }: {
       }
   }
 
-  // Auto-expand if table detected
   useEffect(() => {
     if (tableData) {
         setShowOutput(true);
@@ -173,26 +184,50 @@ function ToolExecutionBlock({ command, output, isError, isLoading, language }: {
   }, [tableData]);
   
   return (
-    <div className="mt-1 border border-slate-200 rounded-md overflow-hidden bg-white w-full max-w-full min-w-0">
+    <div className={`rounded-xl overflow-hidden border transition-all duration-200 ${
+      isError 
+        ? "bg-red-50/30 border-red-100" 
+        : "bg-slate-50/50 border-slate-200/60 hover:border-indigo-200 hover:shadow-sm"
+    }`}>
       {/* Command Bar */}
       <button 
         onClick={() => setShowOutput(!showOutput)}
-        className={`w-full flex items-center gap-2 p-2 text-xs font-mono text-left transition-colors ${
-          isError ? "bg-red-50 text-red-700 hover:bg-red-100" : "bg-slate-50 text-slate-600 hover:bg-slate-100"
-        }`}
+        className="w-full flex items-center gap-3 p-3 text-xs font-mono text-left transition-colors group/cmd"
       >
-        <Terminal size={12} className={isError ? "text-red-500" : "text-slate-500"} />
-        <span className="flex-1 truncate">{command}</span>
-        {isLoading && <Loader2 size={12} className="animate-spin text-blue-500" />}
+        <div className={`p-1.5 rounded-md ${
+          isError ? "bg-red-100 text-red-600" : "bg-slate-200/50 text-slate-500 group-hover/cmd:text-indigo-500 group-hover/cmd:bg-indigo-50"
+        }`}>
+          <Terminal size={14} />
+        </div>
+        
+        <div className="flex-1 min-w-0">
+          <div className={`truncate font-medium ${isError ? "text-red-700" : "text-slate-700"}`}>
+            {command}
+          </div>
+        </div>
+
+        {isLoading && (
+          <div className="flex items-center gap-1.5 text-[10px] text-indigo-600 font-medium bg-indigo-50 px-2 py-1 rounded-md">
+            <Loader2 size={10} className="animate-spin" />
+            Executing
+          </div>
+        )}
+        
         {tableData && (
-             <span className="text-[10px] text-indigo-500 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold">
-                 Table: {tableData.rows.length} rows
+             <span className="flex items-center gap-1.5 text-[10px] text-purple-600 bg-purple-50 border border-purple-100 px-2 py-1 rounded-md font-medium">
+                 <Terminal size={10} />
+                 {tableData.rows.length} rows
              </span>
         )}
+        
         {output && (
-            <span className="text-[10px] text-slate-400 border border-slate-200 px-1.5 py-0.5 rounded">
-                {showOutput ? t.hide_output : t.show_output}
-            </span>
+            <div className={`p-1 rounded-md transition-all ${
+              showOutput 
+                ? "bg-slate-200/50 text-slate-600 rotate-180" 
+                : "text-slate-400 hover:bg-slate-100"
+            }`}>
+               <ChevronDown size={14} />
+            </div>
         )}
       </button>
 
@@ -200,13 +235,13 @@ function ToolExecutionBlock({ command, output, isError, isLoading, language }: {
       <AnimatePresence>
         {showOutput && output && (
           <motion.div
-            initial={{ height: 0 }}
-            animate={{ height: "auto" }}
-            exit={{ height: 0 }}
-            className="border-t border-slate-100"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="border-t border-slate-100/50"
           >
             {tableData ? (
-                <div className="p-2 bg-slate-50/30">
+                <div className="p-3 bg-white">
                     <DataTable 
                         headers={tableData.headers} 
                         rows={tableData.rows} 
@@ -215,8 +250,8 @@ function ToolExecutionBlock({ command, output, isError, isLoading, language }: {
                     />
                 </div>
             ) : (
-                <div className={`p-2 overflow-x-auto text-[10px] font-mono whitespace-pre-wrap max-h-60 custom-scrollbar ${
-                isError ? "text-red-600 bg-red-50/30" : "text-slate-600 bg-slate-50/30"
+                <div className={`p-4 overflow-x-auto text-[11px] font-mono leading-relaxed whitespace-pre-wrap max-h-80 custom-scrollbar ${
+                isError ? "text-red-600 bg-red-50/30" : "text-slate-600 bg-slate-50"
                 }`}>
                 {output}
                 </div>

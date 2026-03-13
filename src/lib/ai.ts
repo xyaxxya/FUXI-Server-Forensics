@@ -14,7 +14,7 @@ export interface ToolCall {
   };
 }
 
-export type AIProviderId = "zhipu" | "openai" | "qwen" | "claude" | "kimi";
+export type AIProviderId = "zhipu" | "openai" | "qwen" | "claude" | "kimi" | "gemini" | "ollama";
 
 export interface AIProviderConfig {
   id: AIProviderId;
@@ -72,6 +72,20 @@ export const DEFAULT_SETTINGS: AISettings = {
       apiKey: "",
       baseUrl: "https://api.moonshot.cn/v1",
       model: "moonshot-v1-8k",
+    },
+    gemini: {
+      id: "gemini",
+      name: "Google Gemini",
+      apiKey: "",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+      model: "gemini-1.5-pro",
+    },
+    ollama: {
+      id: "ollama",
+      name: "Ollama (Local)",
+      apiKey: "ollama", // Ollama usually doesn't need a key, but we need non-empty string to pass check
+      baseUrl: "http://localhost:11434/v1",
+      model: "llama3",
     },
   },
 };

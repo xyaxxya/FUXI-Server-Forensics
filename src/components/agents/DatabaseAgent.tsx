@@ -493,7 +493,7 @@ export default function DatabaseAgent({ language, aiSettings }: DatabaseAgentPro
         {/* Main Chat Area */}
         <div className="flex-1 flex flex-col bg-white min-w-0">
             {/* Header */}
-            <div className="h-14 border-b border-slate-200 flex items-center justify-between px-4 bg-white min-w-0">
+            <div className="h-16 border-b border-slate-200 flex items-center justify-between px-4 bg-white min-w-0 shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
                     <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600">
                         <Sparkles size={18} />
@@ -559,19 +559,24 @@ export default function DatabaseAgent({ language, aiSettings }: DatabaseAgentPro
                     return (
                         <motion.div
                             key={idx}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
+                            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            transition={{ duration: 0.3, ease: "easeOut" }}
                             className={`flex gap-4 max-w-full min-w-0 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
                         >
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 ${
-                                msg.role === "user" ? "bg-indigo-600 text-white" : "bg-white border border-indigo-100 text-indigo-600 shadow-sm"
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-1 shadow-sm transition-transform hover:scale-110 duration-200 ${
+                                msg.role === "user" 
+                                ? "bg-gradient-to-br from-indigo-500 to-blue-600 text-white" 
+                                : "bg-white border border-indigo-50 text-indigo-600"
                             }`}>
                                 {msg.role === "user" ? <div className="text-xs font-bold">U</div> : <Sparkles size={16} />}
                             </div>
-                            <div className={`max-w-[85%] min-w-0 rounded-2xl px-5 py-3 text-sm shadow-sm overflow-hidden ${
-                                msg.role === "user" ? "bg-indigo-600 text-white rounded-tr-sm" : "bg-slate-50 text-slate-800 rounded-tl-sm border border-slate-100"
+                            <div className={`max-w-[85%] min-w-0 rounded-2xl px-6 py-4 text-sm shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md ${
+                                msg.role === "user" 
+                                ? "bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-tr-sm" 
+                                : "bg-white text-slate-700 rounded-tl-sm border border-slate-100/60"
                             }`}>
-                                <div className={`prose prose-sm max-w-none break-words ${msg.role === "user" ? "prose-invert" : "prose-slate"}`}>
+                                <div className={`prose prose-sm max-w-none break-words leading-relaxed ${msg.role === "user" ? "prose-invert" : "prose-slate"}`}>
                                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
                                         table: ({node, ...props}) => <div className="overflow-x-auto my-2"><table className="min-w-full divide-y divide-slate-300 border border-slate-200 rounded-lg" {...props} /></div>,
                                         th: ({node, ...props}) => <th className="bg-slate-100 px-3 py-2 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider" {...props} />,

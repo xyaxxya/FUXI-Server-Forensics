@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Globe, Bot, Settings, Sparkles } from "lucide-react";
+import { X, Globe, Bot, Settings, Sparkles, ChevronDown } from "lucide-react";
 import { translations, Language } from "../translations";
 import { AISettings, DEFAULT_SETTINGS } from "../lib/ai";
 
@@ -259,28 +259,34 @@ export default function SettingsModal({
                         </div>
                     </div>
 
-                    {/* Provider Tabs */}
-                    <div className="flex gap-2 mb-8 p-1.5 bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto custom-scrollbar">
-                      {(["zhipu", "openai", "qwen", "claude", "kimi"] as const).map(
-                        (provider) => (
-                          <button
-                            key={provider}
-                            onClick={() =>
-                              onAiSettingsChange({
-                                ...aiSettings,
-                                activeProvider: provider,
-                              })
-                            }
-                            className={`flex-1 min-w-[100px] px-4 py-2.5 text-sm font-bold rounded-lg transition-all whitespace-nowrap ${
-                              aiSettings.activeProvider === provider
-                                ? "bg-indigo-50 text-indigo-600 shadow-sm ring-1 ring-indigo-100"
-                                : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
-                            }`}
-                          >
-                            {aiSettings.configs[provider]?.name || provider}
-                          </button>
-                        )
-                      )}
+                    {/* Provider Selection Dropdown */}
+                    <div className="mb-8">
+                      <label className="block text-sm font-bold text-slate-700 mb-2">
+                        {language === 'zh' ? 'AI 模型服务商' : 'AI Provider'}
+                      </label>
+                      <div className="relative group">
+                        <select
+                          value={aiSettings.activeProvider}
+                          onChange={(e) =>
+                            onAiSettingsChange({
+                              ...aiSettings,
+                              activeProvider: e.target.value as any,
+                            })
+                          }
+                          className="w-full appearance-none bg-white border border-slate-200 text-slate-700 py-3.5 px-4 pr-10 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-medium cursor-pointer hover:border-indigo-300 shadow-sm"
+                        >
+                          {(["zhipu", "openai", "qwen", "claude", "kimi", "gemini", "ollama"] as const).map(
+                            (provider) => (
+                              <option key={provider} value={provider}>
+                                {aiSettings.configs[provider]?.name || provider}
+                              </option>
+                            )
+                          )}
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 group-hover:text-indigo-500 transition-colors">
+                          <ChevronDown size={20} />
+                        </div>
+                      </div>
                     </div>
 
                     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6">

@@ -555,7 +555,9 @@ ${text}
                                     
                                     // Truncate output if too long to save tokens
                                     if (out.length > 1000) {
-                                        out = out.substring(0, 1000) + t.output_truncated;
+                                        const keepHead = 200;
+                                        const keepTail = 800;
+                                        out = out.substring(0, keepHead) + t.output_truncated + "\n" + out.substring(out.length - keepTail);
                                     }
                                     
                                     const exit = res.exit_code !== 0 ? ` [Exit: ${res.exit_code}]` : "";
@@ -734,7 +736,9 @@ ${text}
                                     
                                     // Truncate output if too long to save tokens
                                     if (out.length > 1000) {
-                                        out = out.substring(0, 1000) + t.output_truncated;
+                                        const keepHead = 200;
+                                        const keepTail = 800;
+                                        out = out.substring(0, keepHead) + t.output_truncated + "\n" + out.substring(out.length - keepTail);
                                     }
 
                                     const exit = res.exit_code !== 0 ? ` [Exit: ${res.exit_code}]` : "";
@@ -853,12 +857,12 @@ ${text}
                   if (item.type === 'message') {
                      if (item.message.role === 'user') {
                        return (
-                        <div key={`msg-${idx}`} className="flex flex-row-reverse gap-4 mb-6">
-                            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm bg-blue-600 text-white">
+                        <div key={`msg-${idx}`} className="flex flex-row-reverse gap-4 mb-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm bg-gradient-to-br from-blue-500 to-indigo-600 text-white transition-transform hover:scale-110 duration-200">
                                 <User size={20} />
                             </div>
                             <div className="flex flex-col max-w-[80%] items-end">
-                                <div className="px-5 py-3.5 rounded-2xl shadow-sm text-sm leading-relaxed bg-blue-600 text-white rounded-tr-sm [&_*]:text-white">
+                                <div className="px-6 py-4 rounded-2xl shadow-sm text-sm leading-relaxed bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-tr-sm [&_*]:text-white/95 transition-all duration-200 hover:shadow-md">
                                     {item.message.content}
                                 </div>
                             </div>
@@ -868,11 +872,11 @@ ${text}
                        // Assistant Message (Final Answer)
                        return (
                         <div key={`msg-${idx}`} className="flex gap-4 mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm bg-green-600 text-white">
+                            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm bg-white border border-green-100 text-green-600 transition-transform hover:scale-110 duration-200">
                                 <Bot size={20} />
                             </div>
                             <div className="flex flex-col max-w-[80%] items-start">
-                                <div className="px-6 py-4 rounded-2xl shadow-md text-sm leading-relaxed bg-white border border-slate-200 text-slate-800 rounded-tl-sm">
+                                <div className="px-6 py-4 rounded-2xl shadow-sm text-sm leading-relaxed bg-white border border-slate-100/80 text-slate-700 rounded-tl-sm transition-all duration-200 hover:shadow-md">
                                     <div className="markdown-content prose-invert">
                                         <ReactMarkdown 
                                             remarkPlugins={[remarkGfm]}
@@ -963,7 +967,7 @@ ${text}
       <div className="flex-1 flex flex-col transition-all duration-300">
         
         {/* Header / Config Bar */}
-        <div className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm z-10">
+        <div className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm z-10 shrink-0">
           <div className="flex items-center gap-3">
             <div className="bg-blue-600 p-2 rounded-lg text-white">
               <Bot size={20} />

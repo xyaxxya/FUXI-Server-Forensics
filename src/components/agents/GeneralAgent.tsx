@@ -310,7 +310,11 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
                 setStatus(format(t.running_command, session.ip, cmd));
                 const res: any = await invoke("exec_command", { cmd, sessionId: session.id });
                 output = res.stdout || res.stderr || t.no_output;
-                 if (output.length > 3000) output = output.substring(0, 3000) + t.output_truncated;
+                 if (output.length > 3000) {
+                    const keepHead = 500;
+                    const keepTail = 2500;
+                    output = output.substring(0, keepHead) + t.output_truncated + "\n" + output.substring(output.length - keepTail);
+                 }
                 if (res.exit_code !== 0) output += `\n(${t.exit_code}: ${res.exit_code})`;
               } else {
                 setStatus(format(t.running_on_servers, targetSessions.length, cmd));
@@ -319,7 +323,11 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
                     try {
                       const res: any = await invoke("exec_command", { cmd, sessionId: session.id });
                       let truncated = res.stdout || res.stderr || t.no_output;
-                      if (truncated.length > 1000) truncated = truncated.substring(0, 1000) + t.output_truncated;
+                      if (truncated.length > 1000) {
+                          const keepHead = 200;
+                          const keepTail = 800;
+                          truncated = truncated.substring(0, keepHead) + t.output_truncated + "\n" + truncated.substring(truncated.length - keepTail);
+                      }
                       const exitInfo = res.exit_code !== 0 ? ` (${t.exit_code}: ${res.exit_code})` : "";
                       return `[${session.user}@${session.ip}]${exitInfo}:\n${truncated}`;
                     } catch (e: any) {
@@ -420,8 +428,8 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
         {/* Main Content */}
         <div className="flex-1 flex flex-col min-w-0 bg-white">
             {/* Header */}
-            <div className="p-4 bg-slate-50/50 border-b border-slate-200 flex items-center justify-between">
-                <div className="flex items-center gap-3">
+            <div className="p-4 bg-slate-50/50 border-b border-slate-200 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3 overflow-hidden">
                     <button 
                         onClick={() => setIsSidebarOpen(!isSidebarOpen)}
                         className="p-2 text-slate-500 hover:bg-slate-200 rounded-lg transition-colors"
@@ -510,15 +518,24 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
                     return (
                         <motion.div
                             key={idx}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
+                            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            transition={{ duration: 0.3, ease: "easeOut" }}
                             className={`flex gap-4 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
                         >
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 ${msg.role === "user" ? "bg-blue-600 text-white shadow-sm" : "bg-white text-indigo-600 border border-indigo-100 shadow-sm"}`}>
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-1 shadow-sm transition-transform hover:scale-110 duration-200 ${
+                                msg.role === "user" 
+                                ? "bg-gradient-to-br from-indigo-500 to-blue-600 text-white" 
+                                : "bg-white text-indigo-600 border border-indigo-50"
+                            }`}>
                                 {msg.role === "user" ? <div className="text-xs font-bold">U</div> : <Sparkles size={16} />}
                             </div>
-                            <div className={`max-w-[85%] rounded-2xl px-5 py-3 text-sm shadow-sm ${msg.role === "user" ? "bg-blue-600 text-white rounded-tr-sm [&_*]:text-white" : "bg-slate-50 text-slate-800 rounded-tl-sm border border-slate-100"}`}>
-                                <div className={`prose prose-sm max-w-none ${msg.role === "user" ? "prose-invert [&_*]:text-white" : "prose-slate"}`}>
+                            <div className={`max-w-[85%] rounded-2xl px-6 py-4 text-sm shadow-sm transition-all duration-200 hover:shadow-md ${
+                                msg.role === "user" 
+                                ? "bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-tr-sm" 
+                                : "bg-white text-slate-700 rounded-tl-sm border border-slate-100/60"
+                            }`}>
+                                <div className={`prose prose-sm max-w-none leading-relaxed ${msg.role === "user" ? "prose-invert [&_*]:text-white/95" : "prose-slate"}`}>
                                     <ReactMarkdown
                                         remarkPlugins={[remarkGfm]}
                                         components={{
