@@ -41,22 +41,132 @@ export default function GeneralInfoPanel({
 
   const presets = [
     {
-      id: 'db',
-      label: t.general_info_auto_db,
-      icon: <Database size={16} />,
-      prompt: "请扫描服务器上的数据库配置（MySQL, PostgreSQL, Redis, MongoDB等）。查找常的配置文件（如 my.cnf, redis.conf），包括常见php网站目录里的数据库配置，常见java网站jar包里的数据库配置文件。如果可见，请提取主机、端口、用户名和密码。如果找到，请总结这些凭据并调用 `update_context_info` 工具将其保存。请不要在最终回答中以明文显示密码，仅在工具调用中保存。"
-    },
-    {
       id: 'sys',
       label: t.general_info_auto_sys,
       icon: <Cpu size={16} />,
-      prompt: "请收集系统详细信息：操作系统版本 (`cat /etc/*release`)、内核版本 (`uname -a`)、CPU信息、内存使用情况和磁盘使用情况。请总结关键规格并调用 `update_context_info` 将此环境上下文保存。"
+      prompt: `**任务：系统深度取证与基线检查**
+请执行以下取证命令序列，并对发现的**高危项**（如老旧内核、高负载、异常账号）进行**标红**或加粗警告。
+
+1.  **OS基础信息**：
+    - \`cat /etc/*release\` (发行版)
+    - \`uname -a\` (内核版本，检查是否存在DirtyCow等已知漏洞)
+    - \`hostnamectl\`
+
+2.  **资源负载**：
+    - \`uptime\` (检查负载是否异常高)
+    - \`free -h\` (内存占用)
+    - \`df -hT | grep -v 'tmpfs'\` (磁盘空间，重点关注 /var /tmp 是否爆满)
+
+3.  **账号与权限**：
+    - \`cat /etc/passwd | grep -v 'nologin'\` (查看可登录用户)
+    - \`grep 'sudo' /etc/group\` (查看sudo权限组)
+    - \`lastlog | head -n 10\` (最近登录记录)
+
+4.  **网络连接**：
+    - \`ip addr show\`
+    - \`route -n\`
+
+请将收集到的信息整理为结构化报告，并调用 \`update_context_info\` 保存。`
     },
     {
       id: 'web',
       label: t.general_info_auto_web,
       icon: <Globe size={16} />,
-      prompt: "请识别正在运行的Web服务（Nginx, Apache, Tomcat等）。检查活动端口 (`netstat -tulpn`) 和配置文件位置。如果是多服务器集群，请详细总结每个服务器的Web架构（如：前端Nginx反向代理到后端Tomcat集群或k8s部署的Web应用）。请总结Web架构并调用 `update_context_info` 将其保存。"
+      prompt: `**任务：Web服务与中间件取证**
+请识别服务器上运行的所有Web组件，并寻找潜在的**Webshell**或**配置文件**。
+
+1.  **服务识别**：
+    - \`netstat -tulpn | grep -E '80|443|8080|8888|3306|6379'\` (关键端口监听)
+    - \`ps aux | grep -E 'nginx|apache|tomcat|java|php|docker'\` (进程特征)
+
+2.  **配置定位** (尝试查找，但不强制)：
+    - Nginx: \`find /etc/nginx -name "*.conf" 2>/dev/null | head -n 5\`
+    - Apache: \`find /etc/httpd /etc/apache2 -name "*.conf" 2>/dev/null | head -n 5\`
+    - Tomcat: \`find / -name "server.xml" 2>/dev/null | head -n 5\`
+
+3.  **Web根目录推断**：
+    - 根据配置文件或进程参数，推断 Web Root 路径（如 \`/var/www/html\`, \`/usr/share/nginx/html\`, \`/opt/tomcat/webapps\`）。
+
+4.  **异常检查**：
+    - 检查 Web 目录下是否有最近修改的 \`.php\` / \`.jsp\` 文件 (疑似Webshell):
+      \`find /var/www/html -type f -name "*.php" -mtime -7 2>/dev/null\` (示例路径，需根据实际情况调整)
+
+请总结 Web 架构（前端->后端->数据库），并记录关键路径到 \`update_context_info\`。`
+    },
+    {
+      id: 'db',
+      label: t.general_info_auto_db,
+      icon: <Database size={16} />,
+      prompt: `**任务：数据库凭据与连接取证**
+你的目标是找到数据库连接信息（主机、端口、用户、密码）。
+
+1.  **配置文件扫描**：
+    - 扫描常见 Web 应用配置文件（如 WordPress \`wp-config.php\`, Drupal \`wp-config.php\`, Spring Boot \`application.yml\`, .env 文件）。
+    - 命令示例：
+      - \`find /var/www -name "wp-config.php" -o -name ".env" -o -name "config.php" 2>/dev/null\`
+      - \`grep -rE "DB_PASSWORD|jdbc|redis" /var/www 2>/dev/null | head -n 10\`
+
+2.  **服务配置**：
+    - MySQL: \`cat /etc/my.cnf /etc/mysql/my.cnf 2>/dev/null\`
+    - Redis: \`grep -v '^#' /etc/redis/redis.conf | grep 'requirepass'\`
+
+3.  **历史记录挖掘**：
+    - 检查 \`.bash_history\` 中是否有带密码的 mysql 连接命令：
+      \`grep -E 'mysql -u|redis-cli' ~/.bash_history | head -n 20\`
+
+**安全警告**：找到密码后，请**脱敏**展示（如 \`pass****\`），但必须将**明文**完整保存到 \`update_context_info\` 中以便后续自动连接使用。`
+    },
+    {
+        id: 'persistence',
+        label: t.general_info_auto_persistence || "Persistence Check",
+        icon: <Save size={16} />,
+        prompt: `**任务：持久化后门排查 (Persistence Mechanisms)**
+请检查攻击者可能留下的自启动后门。对于任何**可疑项**，请加粗并标记 **[SUSPICIOUS]**。
+
+1.  **定时任务 (Cron)**：
+    - \`cat /etc/crontab\`
+    - \`ls -la /etc/cron.d/ /etc/cron.daily/ /etc/cron.hourly/\`
+    - \`cat /var/spool/cron/crontabs/* 2>/dev/null\`
+
+2.  **系统服务 (Systemd)**：
+    - \`systemctl list-unit-files --state=enabled | grep -v 'static'\` (列出所有自启服务)
+    - 检查最近修改的服务文件：\`find /etc/systemd/system -mtime -30 -type f\`
+
+3.  **启动脚本**：
+    - \`cat /etc/rc.local\`
+    - \`ls -la /etc/init.d/\`
+    - 检查 \`.bashrc\` / \`.profile\` 中的异常别名或导出：
+      \`grep -E 'alias|export' ~/.bashrc ~/.profile /etc/profile\`
+
+4.  **SSH 后门**：
+    - 检查 \`~/.ssh/authorized_keys\` 是否包含陌生公钥。
+
+请汇总所有自启动项，并指出哪些看起来不属于标准 Linux 发行版。`
+    },
+    {
+        id: 'network',
+        label: t.general_info_auto_network || "Network Connections",
+        icon: <Globe size={16} />,
+        prompt: `**任务：异常网络连接与反弹Shell排查**
+分析当前网络连接，寻找反弹 Shell 或 C2 连接迹象。
+
+1.  **建立的连接**：
+    - \`netstat -antp | grep 'ESTABLISHED'\`
+    - 关注非标准端口（如 4444, 5555, 6666）的外连。
+
+2.  **监听端口**：
+    - \`netstat -tulpn\`
+    - 注意绑定在 \`0.0.0.0\` 的未知高位端口。
+
+3.  **进程关联**：
+    - 对于可疑连接，查看 PID 对应的进程详情：
+      \`ls -l /proc/[PID]/exe\` (将 [PID] 替换为实际数字)
+
+4.  **DNS/Hosts**：
+    - \`cat /etc/hosts\`
+    - \`cat /etc/resolv.conf\`
+
+请列出所有**外连 IP** (Outbound Connections) 及其对应的进程名。如果发现连接到**公网 IP** 的 Shell 进程（bash/sh/python），请立即告警！`
     }
   ];
 
@@ -123,6 +233,7 @@ export default function GeneralInfoPanel({
 
             // Execute command
             let output = "";
+            let isCommandError = false;
             try {
               let targetSessions = sessions.filter((s) => selectedSessionIds.includes(s.id));
               if (targetSessions.length === 0 && currentSession) {
@@ -131,6 +242,7 @@ export default function GeneralInfoPanel({
 
               if (targetSessions.length === 0) {
                 output = t.no_active_session;
+                isCommandError = true;
               } else if (targetSessions.length === 1) {
                 const session = targetSessions[0];
                 const res: any = await invoke("exec_command", {
@@ -138,16 +250,12 @@ export default function GeneralInfoPanel({
                   sessionId: session.id,
                 });
                 output = res.stdout || res.stderr || t.no_output;
-                 if (output.length > 3000) {
-                     output = output.substring(0, 3000) + t.output_truncated;
-                 }
                 if (res.exit_code !== 0) {
                   output += `\n(${t.exit_code}: ${res.exit_code})`;
+                  isCommandError = true;
                 }
               } else {
-                 // Multi-session not fully supported in this simplified panel logic yet, 
-                 // but we'll just run on first for context gathering usually.
-                 // Or just join outputs.
+                 // Multi-session
                  const results = await Promise.all(
                   targetSessions.map(async (session) => {
                     try {
@@ -155,18 +263,25 @@ export default function GeneralInfoPanel({
                         cmd,
                         sessionId: session.id,
                       });
-                      let out = res.stdout || res.stderr || t.no_output;
-                      if (out.length > 1000) out = out.substring(0, 1000) + "...";
-                      return `[${session.ip}]:\n${out}`;
+                      const out = res.stdout || res.stderr || t.no_output;
+                      return { 
+                          text: `[${session.ip}]:\n${out}`, 
+                          isError: res.exit_code !== 0 
+                      };
                     } catch (e: any) {
-                      return `[${session.ip}]: Error ${e}`;
+                      return { 
+                          text: `[${session.ip}]: Error ${e}`, 
+                          isError: true 
+                      };
                     }
                   })
                  );
-                 output = results.join("\n\n");
+                 output = results.map(r => r.text).join("\n\n");
+                 isCommandError = results.some(r => r.isError);
               }
             } catch (e: any) {
               output = `${t.execution_failed}: ${e.toString()}`;
+              isCommandError = true;
             }
 
             // Update step with result
@@ -178,7 +293,7 @@ export default function GeneralInfoPanel({
                             ...step.toolCall,
                             isLoading: false,
                             output: output,
-                            isError: output.includes("Error") || output.includes("failed")
+                            isError: isCommandError
                         }
                     };
                 }

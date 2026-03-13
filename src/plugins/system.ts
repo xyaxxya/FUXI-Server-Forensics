@@ -46,7 +46,7 @@ export const systemCommands: PluginCommand[] = [
     cn_name: '发行版信息', 
     description: 'Standard Linux Standard Base (LSB) release information', 
     cn_description: '标准的 LSB 发行版信息', 
-    command: 'lsb_release -a', 
+    command: 'lsb_release -a 2>/dev/null', 
     icon: Server 
   },
   { 
@@ -69,6 +69,36 @@ export const systemCommands: PluginCommand[] = [
     cn_description: '读取 /proc/version 获取的详细内核信息', 
     command: "cat /proc/version | cut -d' ' -f1-4", 
     icon: Server 
+  },
+  { 
+    id: 'reboot_shutdown_hist', 
+    category: 'system', 
+    name: 'Reboot/Shutdown History', 
+    cn_name: '重启/关机历史', 
+    description: 'Recent reboot and shutdown records', 
+    cn_description: '最近系统重启与关机记录', 
+    command: "last -x | grep -E 'reboot|shutdown' | head -n 40", 
+    icon: Activity 
+  },
+  { 
+    id: 'kernel_warning_log', 
+    category: 'system', 
+    name: 'Kernel Warning Log', 
+    cn_name: '内核告警日志', 
+    description: 'Recent kernel warning and error events', 
+    cn_description: '近期内核告警和错误事件', 
+    command: "journalctl -k -p warning --no-pager | tail -n 200 || dmesg -T | tail -n 200", 
+    icon: Server 
+  },
+  { 
+    id: 'time_sync_status', 
+    category: 'system', 
+    name: 'Time Sync Status', 
+    cn_name: '时间同步状态', 
+    description: 'System clock and NTP synchronization status', 
+    cn_description: '系统时钟与 NTP 同步状态', 
+    command: "timedatectl status || chronyc tracking || ntpq -pn", 
+    icon: Activity 
   },
   { 
     id: 'disk_usage', 
@@ -219,7 +249,7 @@ export const systemCommands: PluginCommand[] = [
     cn_name: '系统温度', 
     description: 'System temperature sensors (if available)', 
     cn_description: '系统温度传感器数据（如果可用）', 
-    command: "sensors 2>/dev/null || cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | awk '{printf \"%.1f°C\n\", $1/1000}' | head -n 5 || echo 'Temperature sensors not available'", 
+    command: "sensors 2>/dev/null || cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | awk '{printf \"%.1f C\\n\", $1/1000}' | head -n 5 || echo 'Temperature sensors not available'", 
     icon: Activity, 
     checkExists: true 
   },

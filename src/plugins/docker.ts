@@ -78,5 +78,31 @@ export const dockerCommands: PluginCommand[] = [
     parserType: 'simpleList', 
     parserArgs: ['Repo', 'Tag', 'Size', 'Created'], 
     checkExists: true
+  },
+  { 
+    id: 'docker_privileged', 
+    category: 'docker', 
+    name: 'Privileged Containers', 
+    cn_name: '特权容器审计', 
+    description: 'Containers with privileged mode or sensitive host options', 
+    cn_description: '特权模式或高风险主机参数容器审计', 
+    command: "if command -v docker >/dev/null 2>&1; then docker ps -aq | xargs -r docker inspect --format '{{.Name}}|{{.HostConfig.Privileged}}|{{.HostConfig.NetworkMode}}|{{.HostConfig.PidMode}}|{{.HostConfig.UsernsMode}}|{{.HostConfig.CapAdd}}' ; else echo 'Docker Not Detected'; fi", 
+    icon: Box, 
+    parserType: 'simpleList', 
+    parserArgs: ['Container', 'Privileged', 'NetworkMode', 'PidMode', 'Userns', 'CapAdd'], 
+    checkExists: true
+  },
+  { 
+    id: 'docker_image_provenance', 
+    category: 'docker', 
+    name: 'Image Provenance', 
+    cn_name: '镜像来源审计', 
+    description: 'Image repository digest and creation details', 
+    cn_description: '镜像仓库摘要与创建来源信息', 
+    command: "if command -v docker >/dev/null 2>&1; then docker images --digests --format '{{.Repository}}|{{.Tag}}|{{.Digest}}|{{.ID}}|{{.CreatedSince}}' ; else echo 'Docker Not Detected'; fi", 
+    icon: Box, 
+    parserType: 'simpleList', 
+    parserArgs: ['Repo', 'Tag', 'Digest', 'ImageID', 'Created'], 
+    checkExists: true
   }
 ];

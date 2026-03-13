@@ -40,7 +40,7 @@ export const databaseCommands: PluginCommand[] = [
     cn_name: 'MySQL 包信息', 
     description: 'Installed MySQL/MariaDB package info', 
     cn_description: '已安装的 MySQL/MariaDB 软件包', 
-    command: "if command -v rpm >/dev/null 2>&1 && rpm -qa | grep -q mysql; then rpm -qa | grep mysql; else echo 'MySQL Package Not Detected'; fi", 
+    command: "if command -v rpm >/dev/null 2>&1 && rpm -qa | grep -qi mysql; then rpm -qa | grep -i mysql; elif command -v dpkg >/dev/null 2>&1 && dpkg -l | grep -qiE 'mysql|mariadb'; then dpkg -l | grep -iE 'mysql|mariadb'; else echo 'MySQL Package Not Detected' >&2; exit 1; fi", 
     icon: Database, 
     checkExists: true
   },
@@ -51,7 +51,7 @@ export const databaseCommands: PluginCommand[] = [
     cn_name: 'MySQL 服务', 
     description: 'Status of the MySQL system service', 
     cn_description: 'MySQL 系统服务的当前状态', 
-    command: "if command -v mysql >/dev/null 2>&1 || rpm -qa | grep -q mysql; then chkconfig --list mysqld 2>/dev/null || systemctl list-unit-files | grep mysql; else echo 'MySQL Service Not Detected'; fi", 
+    command: "if command -v mysql >/dev/null 2>&1 || rpm -qa | grep -q mysql; then chkconfig --list mysqld 2>/dev/null || systemctl list-unit-files | grep mysql; else echo 'MySQL Service Not Detected' >&2; exit 1; fi", 
     icon: Database, 
     checkExists: true
   },
@@ -62,7 +62,7 @@ export const databaseCommands: PluginCommand[] = [
     cn_name: 'Redis 版本', 
     description: 'Installed Redis server version', 
     cn_description: '已安装的 Redis 服务器版本', 
-    command: "if command -v redis-cli >/dev/null 2>&1; then redis-cli -v; else echo 'Redis Not Detected'; fi", 
+    command: "if command -v redis-cli >/dev/null 2>&1; then redis-cli -v; else echo 'Redis Not Detected' >&2; exit 1; fi", 
     icon: Database, 
     checkExists: true
   },
@@ -73,7 +73,7 @@ export const databaseCommands: PluginCommand[] = [
     cn_name: 'MongoDB 版本', 
     description: 'Installed MongoDB server version', 
     cn_description: '已安装的 MongoDB 服务器版本', 
-    command: "if command -v mongod >/dev/null 2>&1; then mongod --version; else echo 'MongoDB Not Detected'; fi", 
+    command: "if command -v mongod >/dev/null 2>&1; then mongod --version; else echo 'MongoDB Not Detected' >&2; exit 1; fi", 
     icon: Database, 
     checkExists: true
   },
@@ -84,7 +84,7 @@ export const databaseCommands: PluginCommand[] = [
     cn_name: 'MySQL 配置', 
     description: 'MySQL configuration file preview', 
     cn_description: 'MySQL 配置文件预览', 
-    command: "if command -v mysql >/dev/null 2>&1 || rpm -qa | grep -q mysql; then find /etc /usr/local/etc -name 'my.cnf' 2>/dev/null | head -n 1 | xargs cat | head -n 10; else echo 'MySQL Config Not Detected'; fi", 
+    command: "if command -v mysql >/dev/null 2>&1 || command -v mariadb >/dev/null 2>&1; then CFG=$(find /etc /usr/local/etc -name 'my.cnf' 2>/dev/null | head -n 1); if [ -n \"$CFG\" ]; then cat \"$CFG\"; else echo 'MySQL Config Not Detected' >&2; exit 1; fi; else echo 'MySQL Config Not Detected' >&2; exit 1; fi", 
     icon: FileText
   },
   { 
@@ -94,8 +94,30 @@ export const databaseCommands: PluginCommand[] = [
     cn_name: 'Redis 配置', 
     description: 'Redis configuration file preview', 
     cn_description: 'Redis 配置文件预览', 
-    command: "if command -v redis-cli >/dev/null 2>&1; then cat /etc/redis.conf | grep -v '^#' | grep -v '^$' | head -n 20; else echo 'Redis Config Not Detected'; fi", 
+    command: "if command -v redis-cli >/dev/null 2>&1; then cat /etc/redis.conf | grep -v '^#' | grep -v '^$'; else echo 'Redis Config Not Detected' >&2; exit 1; fi", 
     icon: FileText, 
+    checkExists: true
+  },
+  { 
+    id: 'db_slow_log', 
+    category: 'database', 
+    name: 'Database Slow Log', 
+    cn_name: '数据库慢日志', 
+    description: 'Recent slow query and database error logs', 
+    cn_description: '近期慢查询与数据库错误日志', 
+    command: "find /var/log /var/lib/mysql /var/lib/postgresql -type f \\( -name '*slow*.log*' -o -name '*mysql*error*.log*' -o -name '*postgresql*.log*' -o -name '*mongodb*.log*' \\) 2>/dev/null | head -n 12 | xargs -r tail -n 120", 
+    icon: FileText, 
+    checkExists: true
+  },
+  { 
+    id: 'db_permission_matrix', 
+    category: 'database', 
+    name: 'DB Permission Matrix', 
+    cn_name: '数据库权限矩阵', 
+    description: 'User and auth plugin matrix for MySQL/PostgreSQL/Redis', 
+    cn_description: 'MySQL/PostgreSQL/Redis 用户与认证矩阵', 
+    command: "echo '[MySQL]'; mysql -N -e \"select user,host,plugin from mysql.user\" 2>/dev/null || echo 'MySQL not available'; echo '[PostgreSQL]'; psql -Atqc \"select usename,usesuper,usecreatedb from pg_user\" 2>/dev/null || echo 'PostgreSQL not available'; echo '[Redis]'; redis-cli CONFIG GET requirepass 2>/dev/null || echo 'Redis not available'", 
+    icon: Database, 
     checkExists: true
   }
 ];

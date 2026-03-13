@@ -39,6 +39,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { id: 'system', icon: Cpu, labelKey: 'system' },
       { id: 'network', icon: Network, labelKey: 'network' },
+      { id: 'response', icon: ScanLine, labelKey: 'response' },
     ]
   },
   {

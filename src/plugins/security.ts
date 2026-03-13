@@ -36,7 +36,7 @@ export const securityCommands: PluginCommand[] = [
     cn_name: '远程登录用户', 
     description: 'Users allowed to login via SSH', 
     cn_description: '允许通过 SSH 远程登录的用户', 
-    command: "grep -E '^[^:]+:[^!*]' /etc/shadow | cut -d: -f1", 
+    command: "ALLOW=$(grep -hsE '^AllowUsers' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf 2>/dev/null | tail -n 1 | cut -d' ' -f2-); DENY=$(grep -hsE '^DenyUsers' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf 2>/dev/null | tail -n 1 | cut -d' ' -f2-); awk -F: '$7 !~ /(nologin|false)$/ {print $1}' /etc/passwd | while read u; do if [ -n \"$ALLOW\" ]; then echo \"$ALLOW\" | tr ' ' '\\n' | grep -Fxq \"$u\" || continue; fi; if [ -n \"$DENY\" ]; then echo \"$DENY\" | tr ' ' '\\n' | grep -Fxq \"$u\" && continue; fi; echo \"$u\"; done", 
     icon: Shield, 
     checkExists: true 
   },
@@ -80,7 +80,7 @@ export const securityCommands: PluginCommand[] = [
     description: 'Recent successful SSH login attempts', 
     cn_description: '近期 SSH 登录成功的历史记录', 
     // 分析 secure 日志获取成功登录信息
-    command: "cat /var/log/secure* 2>/dev/null | grep \"Accepted\" | sort -M | tail -n 20", 
+    command: "LOG_FILES=$(ls /var/log/secure* /var/log/auth.log* 2>/dev/null); if [ -n \"$LOG_FILES\" ]; then cat $LOG_FILES 2>/dev/null | grep \"Accepted\" | sort -M | tail -n 20 | awk '{print} END {if (NR==0) print \"No accepted login records found\"}'; else echo \"No auth logs found\"; fi", 
     icon: FileText, 
     parserType: 'authLog' 
   },
@@ -91,8 +91,63 @@ export const securityCommands: PluginCommand[] = [
     cn_name: '登录失败记录', 
     description: 'Recent failed SSH login attempts', 
     cn_description: '近期 SSH 登录失败的历史记录', 
-    command: "cat /var/log/secure* 2>/dev/null | grep \"Failed password\" | sort -M | tail -n 20", 
+    command: "LOG_FILES=$(ls /var/log/secure* /var/log/auth.log* 2>/dev/null); if [ -n \"$LOG_FILES\" ]; then cat $LOG_FILES 2>/dev/null | grep \"Failed password\" | sort -M | tail -n 20 | awk '{print} END {if (NR==0) print \"No failed login attempts found\"}'; else echo \"No auth logs found\"; fi", 
     icon: Activity, 
+    parserType: 'authLog' 
+  },
+  { 
+    id: 'sudo_audit_log', 
+    category: 'security', 
+    name: 'Sudo Audit Log', 
+    cn_name: 'Sudo 审计日志', 
+    description: 'Recent sudo privilege escalation events', 
+    cn_description: '近期 sudo 提权事件', 
+    command: "LOG_FILES=$(ls /var/log/secure* /var/log/auth.log* 2>/dev/null); if [ -n \"$LOG_FILES\" ]; then grep -h 'sudo:' $LOG_FILES 2>/dev/null | tail -n 200; else echo 'No sudo audit logs found'; fi", 
+    icon: FileText, 
+    parserType: 'authLog' 
+  },
+  { 
+    id: 'cron_audit_log', 
+    category: 'security', 
+    name: 'Cron Audit Log', 
+    cn_name: 'Cron 审计日志', 
+    description: 'Recent cron execution records', 
+    cn_description: '近期 cron 执行记录', 
+    command: "LOG_FILES=$(ls /var/log/cron* /var/log/syslog* /var/log/messages* 2>/dev/null); if [ -n \"$LOG_FILES\" ]; then grep -hEi 'CRON|crond' $LOG_FILES 2>/dev/null | tail -n 200; else echo 'No cron audit logs found'; fi", 
+    icon: Activity, 
+    parserType: 'authLog' 
+  },
+  { 
+    id: 'system_error_log', 
+    category: 'security', 
+    name: 'System Error Log', 
+    cn_name: '系统错误日志', 
+    description: 'Recent system error and critical logs', 
+    cn_description: '近期系统错误与严重级别日志', 
+    command: "journalctl -p err..alert --since '24 hours ago' --no-pager | tail -n 300 || grep -hEi 'error|critical|panic|fatal' /var/log/messages* /var/log/syslog* 2>/dev/null | tail -n 300", 
+    icon: FileText, 
+    parserType: 'authLog' 
+  },
+  { 
+    id: 'web_error_log', 
+    category: 'security', 
+    name: 'Web Error Log', 
+    cn_name: 'Web 错误日志', 
+    description: 'Recent web server error logs', 
+    cn_description: '近期 Web 服务错误日志', 
+    command: "find /var/log -type f \\( -name '*nginx*error*.log*' -o -name '*apache*error*.log*' -o -name '*httpd*error*.log*' \\) 2>/dev/null | head -n 10 | xargs -r tail -n 120", 
+    icon: FileText, 
+    parserType: 'authLog' 
+  },
+  { 
+    id: 'db_error_log', 
+    category: 'security', 
+    name: 'Database Error Log', 
+    cn_name: '数据库错误日志', 
+    description: 'Recent database error and slow query logs', 
+    cn_description: '近期数据库错误与慢查询日志', 
+    command: "find /var/log /var/lib/mysql /var/lib/postgresql -type f \\( -name '*mysql*error*.log*' -o -name '*mariadb*error*.log*' -o -name '*postgresql*.log*' -o -name '*slow*.log*' -o -name '*mongodb*.log*' \\) 2>/dev/null | head -n 12 | xargs -r tail -n 100", 
+    icon: FileText, 
     parserType: 'authLog' 
   }
 ];

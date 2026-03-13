@@ -310,11 +310,6 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
                 setStatus(format(t.running_command, session.ip, cmd));
                 const res: any = await invoke("exec_command", { cmd, sessionId: session.id });
                 output = res.stdout || res.stderr || t.no_output;
-                 if (output.length > 3000) {
-                    const keepHead = 500;
-                    const keepTail = 2500;
-                    output = output.substring(0, keepHead) + t.output_truncated + "\n" + output.substring(output.length - keepTail);
-                 }
                 if (res.exit_code !== 0) output += `\n(${t.exit_code}: ${res.exit_code})`;
               } else {
                 setStatus(format(t.running_on_servers, targetSessions.length, cmd));
@@ -322,12 +317,7 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
                   targetSessions.map(async (session) => {
                     try {
                       const res: any = await invoke("exec_command", { cmd, sessionId: session.id });
-                      let truncated = res.stdout || res.stderr || t.no_output;
-                      if (truncated.length > 1000) {
-                          const keepHead = 200;
-                          const keepTail = 800;
-                          truncated = truncated.substring(0, keepHead) + t.output_truncated + "\n" + truncated.substring(truncated.length - keepTail);
-                      }
+                      const truncated = res.stdout || res.stderr || t.no_output;
                       const exitInfo = res.exit_code !== 0 ? ` (${t.exit_code}: ${res.exit_code})` : "";
                       return `[${session.user}@${session.ip}]${exitInfo}:\n${truncated}`;
                     } catch (e: any) {

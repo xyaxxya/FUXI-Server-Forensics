@@ -128,6 +128,83 @@ body {
   animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* Readability Enhancements */
+pre {
+  line-height: 1.55;
+  tab-size: 2;
+}
+
+th,
+td {
+  vertical-align: top;
+}
+
+code {
+  word-break: break-word;
+}
+
+.custom-scrollbar {
+  scrollbar-gutter: stable;
+}
+
+button,
+input,
+select,
+textarea {
+  transition: background-color .2s ease, border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.panel-soft {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 1.25rem;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+  backdrop-filter: blur(10px);
+}
+
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 40px;
+  --font-xs: 12px;
+  --font-sm: 14px;
+  --font-md: 16px;
+  --font-lg: 20px;
+  --font-xl: 24px;
+  --line-tight: 1.35;
+  --line-normal: 1.55;
+}
+
+body {
+  font-size: var(--font-sm);
+  line-height: var(--line-normal);
+  color: #1e293b;
+}
+
+h1, h2, h3, h4 {
+  line-height: var(--line-tight);
+}
+
+.text-xs {
+  font-size: var(--font-xs) !important;
+}
+
+.text-sm {
+  font-size: var(--font-sm) !important;
+}
+
+.text-base {
+  font-size: var(--font-md) !important;
+}
+
+.text-lg {
+  font-size: var(--font-lg) !important;
+}
+
 /* --- STARRY MODE (DARK CYBER) OVERRIDES --- */
 body.starry-mode {
   --color-surface-base: #0f172a; /* Slate 900 */

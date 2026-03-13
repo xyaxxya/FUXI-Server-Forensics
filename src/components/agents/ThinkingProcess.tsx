@@ -25,12 +25,12 @@ interface ThinkingProcessProps {
   language: Language;
 }
 
-export default function ThinkingProcess({ steps, isFinished, language }: ThinkingProcessProps) {
+export default function ThinkingProcess({ steps = [], isFinished, language }: ThinkingProcessProps) {
   const [isExpanded, setIsExpanded] = useState(!isFinished);
   const t = translations[language];
 
   // Check if any step has a table
-  const hasTable = steps.some(step => {
+  const hasTable = (steps || []).some(step => {
     if (!step.toolCall?.output || step.toolCall.isError) return false;
     try {
         const parsed = JSON.parse(step.toolCall.output);
@@ -79,18 +79,18 @@ export default function ThinkingProcess({ steps, isFinished, language }: Thinkin
             {!isFinished && (
               <span className="flex items-center gap-1 text-[10px] font-medium bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full border border-indigo-100/50">
                 <Loader2 size={10} className="animate-spin" />
-                Processing
+                {t.processing_label}
               </span>
             )}
             {hasTable && (
                <span className="flex items-center gap-1 text-[10px] font-medium bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full border border-purple-100/50">
                    <Terminal size={10} />
-                   Data
+                   {t.data_label}
                </span>
             )}
           </div>
           <div className="text-xs text-slate-400 mt-0.5 font-medium">
-            {steps.length} {steps.length === 1 ? 'step' : 'steps'} of analysis
+            {steps.length} {steps.length === 1 ? t.thinking_step : t.thinking_steps} {t.thinking_analysis}
           </div>
         </div>
 
@@ -163,6 +163,7 @@ export default function ThinkingProcess({ steps, isFinished, language }: Thinkin
 
 function ToolExecutionBlock({ command, output, isError, isLoading, language }: { command: string, output?: string, isError?: boolean, isLoading?: boolean, language: Language }) {
   const [showOutput, setShowOutput] = useState(false);
+  const t = translations[language];
 
   // Try to parse output as DbQueryResult
   let tableData = null;
@@ -209,14 +210,14 @@ function ToolExecutionBlock({ command, output, isError, isLoading, language }: {
         {isLoading && (
           <div className="flex items-center gap-1.5 text-[10px] text-indigo-600 font-medium bg-indigo-50 px-2 py-1 rounded-md">
             <Loader2 size={10} className="animate-spin" />
-            Executing
+            {t.executing_label}
           </div>
         )}
         
         {tableData && (
              <span className="flex items-center gap-1.5 text-[10px] text-purple-600 bg-purple-50 border border-purple-100 px-2 py-1 rounded-md font-medium">
                  <Terminal size={10} />
-                 {tableData.rows.length} rows
+                 {tableData.rows.length} {t.rows_label}
              </span>
         )}
         
@@ -246,7 +247,7 @@ function ToolExecutionBlock({ command, output, isError, isLoading, language }: {
                         headers={tableData.headers} 
                         rows={tableData.rows} 
                         language={language}
-                        title="Result Set"
+                        title={t.result_set}
                     />
                 </div>
             ) : (

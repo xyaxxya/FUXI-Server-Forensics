@@ -5,6 +5,7 @@ import { securityCommands } from '../plugins/security';
 import { databaseCommands } from '../plugins/database';
 import { dockerCommands } from '../plugins/docker';
 import { k8sCommands } from '../plugins/k8s';
+import { responseCommands } from '../plugins/response';
 import { PluginCommand } from '../plugins/types';
 
 export const commands: PluginCommand[] = [
@@ -14,7 +15,8 @@ export const commands: PluginCommand[] = [
   ...securityCommands,
   ...databaseCommands,
   ...dockerCommands,
-  ...k8sCommands
+  ...k8sCommands,
+  ...responseCommands
 ];
 
 export type { PluginCommand };

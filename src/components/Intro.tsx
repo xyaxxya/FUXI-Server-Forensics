@@ -176,6 +176,7 @@ const FloatingParticles = () => {
 
 export default function Intro({ onComplete }: IntroProps) {
   const [progress, setProgress] = useState(0);
+  const isStarryMode = typeof window !== "undefined" && (document.body.classList.contains("starry-mode") || localStorage.getItem("starry_mode") === "true");
 
   useEffect(() => {
     // Total duration approx 5000ms (5s)
@@ -198,7 +199,7 @@ export default function Intro({ onComplete }: IntroProps) {
 
   return (
     <motion.div 
-      className="fixed inset-0 z-[9999] bg-white overflow-hidden font-sans select-none flex items-center justify-center"
+      className={`fixed inset-0 z-[9999] overflow-hidden font-sans select-none flex items-center justify-center ${isStarryMode ? "bg-[#070b16]" : "bg-white"}`}
       exit={{ opacity: 0, scale: 1.1, filter: "blur(10px)" }}
       transition={{ duration: 0.8 }}
     >
@@ -227,7 +228,7 @@ export default function Intro({ onComplete }: IntroProps) {
 
       {/* --- TOP STATUS BAR --- */}
       <motion.div 
-        className="absolute top-0 left-0 right-0 h-16 border-b border-slate-100 bg-white/90 backdrop-blur-md z-50 flex items-center justify-between px-8 shadow-sm"
+        className={`absolute top-0 left-0 right-0 h-16 border-b backdrop-blur-md z-50 flex items-center justify-between px-8 shadow-sm ${isStarryMode ? "border-slate-700/70 bg-slate-900/80" : "border-slate-100 bg-white/90"}`}
         initial={{ y: -100 }}
         animate={{ y: 0 }}
         transition={{ delay: 0.2, type: "spring", stiffness: 100 }}
@@ -261,7 +262,7 @@ export default function Intro({ onComplete }: IntroProps) {
         animate={{ x: 0, opacity: 1 }}
         transition={{ delay: 0.5, type: "spring" }}
       >
-        <div className="flex-1 border border-slate-100 rounded-xl bg-slate-50/80 p-5 relative overflow-hidden backdrop-blur-sm shadow-sm hover:shadow-md transition-shadow duration-500">
+        <div className={`flex-1 border rounded-xl p-5 relative overflow-hidden backdrop-blur-sm shadow-sm hover:shadow-md transition-shadow duration-500 ${isStarryMode ? "border-slate-700/70 bg-slate-900/70" : "border-slate-100 bg-slate-50/80"}`}>
           <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-[#409EFF] to-[#B37DEF]" />
           <div className="flex items-center gap-2 mb-4 text-[#409EFF]">
             <Server size={18} />
@@ -445,7 +446,7 @@ export default function Intro({ onComplete }: IntroProps) {
              <motion.div 
                key={mod}
                className={`p-4 rounded-xl border flex flex-col items-center justify-center gap-2 backdrop-blur-sm transition-all duration-300
-                 ${progress > (i * 25) ? 'bg-white/80 border-[#409EFF]/30 shadow-md scale-105' : 'bg-slate-50/50 border-slate-100 opacity-60 scale-100 grayscale'}
+                ${progress > (i * 25) ? (isStarryMode ? 'bg-slate-900/75 border-sky-500/40 shadow-md scale-105' : 'bg-white/80 border-[#409EFF]/30 shadow-md scale-105') : (isStarryMode ? 'bg-slate-900/45 border-slate-700/70 opacity-60 scale-100 grayscale' : 'bg-slate-50/50 border-slate-100 opacity-60 scale-100 grayscale')}
                `}
              >
                 {i === 0 && <Wifi size={20} className={progress > 0 ? "text-[#409EFF] animate-pulse" : "text-slate-300"} />}
@@ -467,7 +468,7 @@ export default function Intro({ onComplete }: IntroProps) {
              </motion.div>
            ))}
         </div>
-        <div className="mt-4 flex items-center justify-center gap-2 bg-white/50 p-2 rounded-lg border border-slate-100">
+        <div className={`mt-4 flex items-center justify-center gap-2 p-2 rounded-lg border ${isStarryMode ? "bg-slate-900/60 border-slate-700/70" : "bg-white/50 border-slate-100"}`}>
            <Activity size={14} className="text-[#32D74B] animate-bounce" />
            <span className="text-[10px] text-slate-500 font-mono">DIAGNOSTICS: OPTIMAL</span>
         </div>

@@ -551,14 +551,7 @@ ${text}
                                         cmd,
                                         sessionId: s.id
                                     });
-                                    let out = res.stdout || res.stderr || "(No Output)";
-                                    
-                                    // Truncate output if too long to save tokens
-                                    if (out.length > 1000) {
-                                        const keepHead = 200;
-                                        const keepTail = 800;
-                                        out = out.substring(0, keepHead) + t.output_truncated + "\n" + out.substring(out.length - keepTail);
-                                    }
+                                    const out = res.stdout || res.stderr || "(No Output)";
                                     
                                     const exit = res.exit_code !== 0 ? ` [Exit: ${res.exit_code}]` : "";
                                     return `[${s.user}@${s.ip}]${exit}:\n${out}`;
@@ -732,14 +725,7 @@ ${text}
                             const results = await Promise.all(targetSessions.map(async (s) => {
                                 try {
                                     const res: any = await invoke("exec_command", { cmd, sessionId: s.id });
-                                    let out = res.stdout || res.stderr || "(No Output)";
-                                    
-                                    // Truncate output if too long to save tokens
-                                    if (out.length > 1000) {
-                                        const keepHead = 200;
-                                        const keepTail = 800;
-                                        out = out.substring(0, keepHead) + t.output_truncated + "\n" + out.substring(out.length - keepTail);
-                                    }
+                                    const out = res.stdout || res.stderr || "(No Output)";
 
                                     const exit = res.exit_code !== 0 ? ` [Exit: ${res.exit_code}]` : "";
                                     return `[${s.user}@${s.ip}]${exit}:\n${out}`;

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Download, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Download, ChevronLeft, ChevronRight, Search, WrapText } from 'lucide-react';
 import { Language } from '../translations';
 
 interface DataTableProps {
@@ -12,10 +12,11 @@ interface DataTableProps {
 export default function DataTable({ headers, rows, language, title }: DataTableProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [wrapMode, setWrapMode] = useState(false);
   const rowsPerPage = 10;
 
   // Filter rows
-  const filteredRows = rows.filter(row => 
+  const filteredRows = rows.filter(row =>
     row.some(cell => String(cell).toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
@@ -23,6 +24,7 @@ export default function DataTable({ headers, rows, language, title }: DataTableP
   const totalPages = Math.ceil(filteredRows.length / rowsPerPage);
   const startIndex = (currentPage - 1) * rowsPerPage;
   const currentRows = filteredRows.slice(startIndex, startIndex + rowsPerPage);
+  const matchedRows = useMemo(() => filteredRows.length, [filteredRows.length]);
 
   const handleExportCSV = () => {
     // BOM for Excel to recognize UTF-8
@@ -43,7 +45,7 @@ export default function DataTable({ headers, rows, language, title }: DataTableP
   };
 
   return (
-    <div className="flex flex-col border border-slate-200 rounded-lg bg-white overflow-hidden shadow-sm my-2 w-full max-w-full">
+    <div className="flex flex-col border border-slate-200 rounded-xl bg-white overflow-hidden shadow-sm my-2 w-full max-w-full">
       {/* Header Toolbar */}
       <div className="flex items-center justify-between p-3 border-b border-slate-200 bg-slate-50">
         <div className="font-semibold text-slate-700 text-sm flex items-center gap-2">
@@ -51,6 +53,11 @@ export default function DataTable({ headers, rows, language, title }: DataTableP
             <span className="text-xs font-normal text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">
                 {rows.length} {language === 'zh' ? '行' : 'rows'}
             </span>
+            {searchTerm && (
+              <span className="text-xs font-normal text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+                {language === 'zh' ? `命中 ${matchedRows}` : `${matchedRows} matched`}
+              </span>
+            )}
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -63,6 +70,17 @@ export default function DataTable({ headers, rows, language, title }: DataTableP
               className="pl-8 pr-2 py-1 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-indigo-500 w-32 md:w-48 bg-white"
             />
           </div>
+          <button
+            onClick={() => setWrapMode(v => !v)}
+            className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border transition-colors ${
+              wrapMode
+                ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+            }`}
+          >
+            <WrapText size={12} />
+            {language === 'zh' ? '自动换行' : 'Wrap'}
+          </button>
           <button 
             onClick={handleExportCSV}
             className="flex items-center gap-1 px-3 py-1 bg-indigo-600 text-white text-xs rounded-md hover:bg-indigo-700 transition-colors shadow-sm font-medium whitespace-nowrap"
@@ -74,7 +92,7 @@ export default function DataTable({ headers, rows, language, title }: DataTableP
       </div>
 
       {/* Table Area */}
-      <div className="overflow-x-auto custom-scrollbar w-full">
+      <div className="overflow-auto custom-scrollbar w-full max-h-[520px]">
         <table className="w-full text-left border-collapse text-xs md:text-sm">
           <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
             <tr>
@@ -94,7 +112,13 @@ export default function DataTable({ headers, rows, language, title }: DataTableP
                     {startIndex + i + 1}
                     </td>
                     {row.map((cell, j) => (
-                    <td key={j} className="p-2 border-b border-slate-100 border-r border-slate-100 text-slate-600 truncate max-w-[300px] font-mono text-xs group-hover:text-slate-900 selection:bg-indigo-100" title={String(cell)}>
+                    <td
+                      key={j}
+                      className={`p-2 border-b border-slate-100 border-r border-slate-100 text-slate-600 max-w-[420px] font-mono text-xs group-hover:text-slate-900 selection:bg-indigo-100 align-top ${
+                        wrapMode ? "whitespace-pre-wrap break-all" : "truncate whitespace-nowrap"
+                      }`}
+                      title={String(cell)}
+                    >
                         {String(cell)}
                     </td>
                     ))}

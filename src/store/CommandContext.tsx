@@ -125,7 +125,7 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
   // Process command output to extract numeric value for chart
   const extractChartValue = (sessionId: string, id: string, stdout: string): number | { rx: number, tx: number } | null => {
     try {
-      if (id === 'network_stats') {
+      if (id === 'network_stats' || id === 'response_net_rate') {
         const rxMatch = stdout.match(/RX:\s*(\d+)/);
         const txMatch = stdout.match(/TX:\s*(\d+)/);
         if (rxMatch && txMatch) {
@@ -147,6 +147,36 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
           return result;
         }
         return null;
+      } else if (id === 'network_traffic') {
+        const match = stdout.match(/([A-Za-z0-9_.:-]+)\s+(\d+)\s+(\d+)/);
+        if (match) {
+          const rx = parseInt(match[2], 10);
+          const tx = parseInt(match[3], 10);
+          const now = Date.now();
+          let result = null;
+          const prev = prevNetworkBytesBySession.current[sessionId];
+          if (prev) {
+            const dt = (now - prev.time) / 1000;
+            if (dt > 0) {
+              result = {
+                rx: (rx - prev.rx) / dt,
+                tx: (tx - prev.tx) / dt
+              };
+            }
+          }
+          prevNetworkBytesBySession.current[sessionId] = { rx, tx, time: now };
+          return result;
+        }
+        return null;
+      } else if (id === 'response_conn_count') {
+        const match = stdout.match(/CONN:\s*(\d+)/);
+        return match ? parseFloat(match[1]) : null;
+      } else if (id === 'response_host_cpu') {
+        const match = stdout.match(/CPU:\s*(\d+(?:\.\d+)?)/);
+        return match ? parseFloat(match[1]) : null;
+      } else if (id === 'response_host_mem') {
+        const match = stdout.match(/MEM:\s*(\d+(?:\.\d+)?)/);
+        return match ? parseFloat(match[1]) : null;
       } else if (id === 'cpu_usage') {
         // Example: "CPU: 25.5%"
         const match = stdout.match(/CPU:\s*(\d+\.\d+)%/);

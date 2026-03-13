@@ -50,9 +50,44 @@ export const k8sCommands: PluginCommand[] = [
     cn_name: 'K8s Pod 列表', 
     description: 'List of pods in all namespaces', 
     cn_description: '所有命名空间下的 Pod 列表', 
-    command: "if command -v kubectl >/dev/null 2>&1; then kubectl get pods --all-namespaces --no-headers | head -n 20 | awk '{print $1 \"|\" $2 \"|\" $4 \"|\" $5}'; else echo 'Kubernetes Not Detected'; fi", 
+    command: "if command -v kubectl >/dev/null 2>&1; then kubectl get pods --all-namespaces --no-headers | awk '{print $1 \"|\" $2 \"|\" $4 \"|\" $5}'; else echo 'Kubernetes Not Detected'; fi", 
     icon: Cloud, 
     parserType: 'k8sPods', 
+    checkExists: true
+  },
+  { 
+    id: 'k8s_events', 
+    category: 'k8s', 
+    name: 'K8s Events', 
+    cn_name: 'K8s 事件审计', 
+    description: 'Recent Kubernetes events across all namespaces', 
+    cn_description: '全命名空间近期 Kubernetes 事件', 
+    command: "if command -v kubectl >/dev/null 2>&1; then kubectl get events -A --sort-by=.lastTimestamp; else echo 'Kubernetes Not Detected'; fi", 
+    icon: Cloud, 
+    checkExists: true
+  },
+  { 
+    id: 'k8s_rbac', 
+    category: 'k8s', 
+    name: 'K8s RBAC Audit', 
+    cn_name: 'K8s RBAC 审计', 
+    description: 'RoleBinding and ClusterRoleBinding overview', 
+    cn_description: 'RoleBinding 与 ClusterRoleBinding 审计总览', 
+    command: "if command -v kubectl >/dev/null 2>&1; then kubectl get rolebinding,clusterrolebinding -A; else echo 'Kubernetes Not Detected'; fi", 
+    icon: Cloud, 
+    checkExists: true
+  },
+  { 
+    id: 'k8s_privileged_workload', 
+    category: 'k8s', 
+    name: 'Privileged Workloads', 
+    cn_name: '特权工作负载审计', 
+    description: 'Pods with privileged/hostNetwork/hostPID settings', 
+    cn_description: '特权、hostNetwork、hostPID 相关 Pod 审计', 
+    command: "if command -v kubectl >/dev/null 2>&1; then kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}{\"|\"}{.metadata.name}{\"|\"}{.spec.hostNetwork}{\"|\"}{.spec.hostPID}{\"|\"}{range .spec.containers[*]}{.securityContext.privileged}{\",\"}{end}{\"|\"}{range .spec.containers[*]}{.image}{\",\"}{end}{\"\\n\"}{end}'; else echo 'Kubernetes Not Detected'; fi", 
+    icon: Cloud, 
+    parserType: 'simpleList', 
+    parserArgs: ['Namespace', 'Pod', 'HostNetwork', 'HostPID', 'Privileged', 'Images'], 
     checkExists: true
   }
 ];

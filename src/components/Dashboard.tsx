@@ -17,7 +17,9 @@ import {
   Cpu,
   Server,
   Layout,
-  Clock
+  WrapText,
+  Copy,
+  CheckCheck
 } from "lucide-react";
 import { translations, Language } from "../translations";
 import { commands, PluginCommand } from "../config/commands";
@@ -29,6 +31,7 @@ import GeneralAgent from "./agents/GeneralAgent";
 import AgentPanel from "./agents/AgentPanel";
 import GeneralInfoPanel from "./agents/GeneralInfoPanel";
 import DatabaseAgent from "./agents/DatabaseAgent";
+import ResponsePanel from "./ResponsePanel";
 import { AISettings } from "../lib/ai";
 import { APP_VERSION } from "../config/app";
 
@@ -120,15 +123,35 @@ const parsers: Record<
 function TableDisplay({ data, language }: { data: TableData; language: Language }) {
   const t = translations[language];
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
+  const [wrapMode, setWrapMode] = useState(false);
 
   const selectedRowData = selectedRowIndex !== null ? data.rows[selectedRowIndex] : null;
 
   return (
     <div className="relative flex flex-col h-full max-h-[600px]">
+      <div className="flex items-center justify-between mb-2 px-1">
+        <div className="text-xs text-slate-500">
+          {language === "zh" ? `共 ${data.rows.length} 条` : `${data.rows.length} rows`}
+        </div>
+        <button
+          onClick={() => setWrapMode(v => !v)}
+          className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-xs transition-colors ${
+            wrapMode
+              ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+              : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+          }`}
+        >
+          <WrapText size={12} />
+          {language === "zh" ? "自动换行" : "Wrap"}
+        </button>
+      </div>
       <div className="overflow-x-auto custom-scrollbar flex-1 pb-10">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr>
+              <th className="p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 w-10 text-center bg-slate-50/80 sticky top-0 z-10 backdrop-blur-md">
+                #
+              </th>
               {data.headers.map((h, i) => (
                 <th
                   key={i}
@@ -148,13 +171,16 @@ function TableDisplay({ data, language }: { data: TableData; language: Language 
                   selectedRowIndex === i ? "bg-blue-100/50" : "hover:bg-blue-50/30"
                 }`}
               >
+                <td className="p-3 text-xs text-slate-400 font-mono border-b border-slate-100 text-center align-top">
+                  {i + 1}
+                </td>
                 {row.map((cell, j) => (
                   <td
                     key={j}
-                    className={`p-3 text-sm font-mono whitespace-nowrap truncate ${
+                    className={`p-3 text-sm font-mono align-top ${
                       data.headers[j] === "th_credentials" 
                         ? "max-w-none text-red-600 font-bold group-hover:text-red-700" 
-                        : "text-slate-600 group-hover:text-slate-800 max-w-[300px]"
+                        : `text-slate-600 group-hover:text-slate-800 max-w-[420px] ${wrapMode ? "whitespace-pre-wrap break-all" : "whitespace-nowrap truncate"}`
                     }`}
                     title={cell}
                   >
@@ -210,6 +236,57 @@ function TableDisplay({ data, language }: { data: TableData; language: Language 
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function RawOutputDisplay({ value, language }: { value: string; language: Language }) {
+  const [wrapMode, setWrapMode] = useState(true);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value || "");
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+    }
+  };
+
+  return (
+    <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50">
+      <div className="px-3 py-2 border-b border-slate-200 bg-white flex items-center justify-between">
+        <span className="text-xs text-slate-500">
+          {language === "zh" ? "原始输出" : "Raw Output"}
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setWrapMode(v => !v)}
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-xs ${
+              wrapMode
+                ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                : "bg-white text-slate-600 border-slate-200"
+            }`}
+          >
+            <WrapText size={12} />
+            {language === "zh" ? "换行" : "Wrap"}
+          </button>
+          <button
+            onClick={handleCopy}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-md border text-xs bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+          >
+            {copied ? <CheckCheck size={12} /> : <Copy size={12} />}
+            {language === "zh" ? "复制" : "Copy"}
+          </button>
+        </div>
+      </div>
+      <pre
+        className={`font-mono text-xs text-slate-700 overflow-auto max-h-80 custom-scrollbar p-3 ${
+          wrapMode ? "whitespace-pre-wrap break-all" : "whitespace-pre"
+        }`}
+      >
+        {value || "Empty output"}
+      </pre>
     </div>
   );
 }
@@ -270,6 +347,7 @@ function CommandCard({
   const t = translations[language];
   const [showTooltip, setShowTooltip] = useState(false);
   const tooltipTimeout = useRef<any>(null);
+  const CardIcon = def.icon || Activity;
 
   const handleMouseEnter = () => {
     tooltipTimeout.current = setTimeout(() => {
@@ -331,9 +409,7 @@ function CommandCard({
 
       if (typeof parsedData === "string") {
         content = (
-          <pre className="font-mono text-xs text-slate-600 whitespace-pre-wrap overflow-auto max-h-64 custom-scrollbar p-3 bg-slate-50 rounded-lg border border-slate-100">
-            {parsedData || "Empty output"}
-          </pre>
+          <RawOutputDisplay value={parsedData} language={language} />
         );
       } else {
         content = <TableDisplay data={parsedData} language={language} />;
@@ -424,9 +500,7 @@ function CommandCard({
 
       if (typeof parsedData === "string") {
         content = (
-          <pre className="font-mono text-xs text-slate-600 whitespace-pre-wrap overflow-auto max-h-64 custom-scrollbar p-3 bg-slate-50 rounded-lg border border-slate-100">
-            {parsedData || "Empty output"}
-          </pre>
+          <RawOutputDisplay value={parsedData} language={language} />
         );
       } else {
         content = <TableDisplay data={parsedData} language={language} />;
@@ -439,18 +513,14 @@ function CommandCard({
       layout
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      className={`bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/60 overflow-visible relative hover:shadow-lg hover:border-sky-200 transition-all duration-300 flex flex-col group overflow-hidden ${
+      whileHover={{ y: -2 }}
+      className={`bg-white/85 backdrop-blur-xl rounded-3xl shadow-[0_8px_30px_rgba(15,23,42,0.06)] border border-slate-200/70 overflow-visible relative hover:shadow-[0_12px_36px_rgba(14,165,233,0.12)] hover:border-sky-200/80 transition-all duration-300 flex flex-col group overflow-hidden ${
         className || ""
       }`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {/* Holographic Shine Effect on Hover - Removed per user request */}
-      {/* <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/40 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 pointer-events-none z-10" /> */}
-
-      {/* Tech Corner Accents */}
-      <div className="absolute -top-[1px] -left-[1px] w-3 h-3 border-t-2 border-l-2 border-sky-500/0 group-hover:border-sky-500/50 rounded-tl-lg transition-colors duration-300" />
-      <div className="absolute -bottom-[1px] -right-[1px] w-3 h-3 border-b-2 border-r-2 border-sky-500/0 group-hover:border-sky-500/50 rounded-br-lg transition-colors duration-300" />
+      <div className="h-1 w-full bg-gradient-to-r from-sky-500/70 via-indigo-500/40 to-transparent" />
 
       {/* Tooltip */}
       <AnimatePresence>
@@ -472,13 +542,13 @@ function CommandCard({
         )}
       </AnimatePresence>
 
-      <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-white/50">
+      <div className="px-6 py-4 border-b border-slate-100/90 flex items-center justify-between bg-white/60">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform duration-300">
-            <Activity size={16} />
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-50 to-indigo-50 flex items-center justify-center text-sky-600 group-hover:scale-105 transition-transform duration-300 shadow-sm border border-sky-100/60">
+            <CardIcon size={16} />
           </div>
           <div className="flex flex-col leading-tight">
-            <span className="font-semibold text-slate-700">{title}</span>
+            <span className="font-semibold text-slate-800">{title}</span>
             {data?.ts && (
               <span className="text-[10px] text-slate-400">
                 Updated {new Date(data.ts).toLocaleTimeString()}
@@ -499,7 +569,7 @@ function CommandCard({
           </button>
         </div>
       </div>
-      <div className="p-5">{content}</div>
+      <div className="p-6">{content}</div>
     </motion.div>
   );
 }
@@ -546,8 +616,9 @@ export default function Dashboard({
   const isAgentPanel = activeTab === "agent-panel";
   const isContextPanel = activeTab === "agent-context";
   const isDatabaseAgent = activeTab === "agent-database";
+  const isResponsePanel = activeTab === "response";
   const isTerminal = activeTab === "terminal";
-  const isMetrics = !isGeneralAgent && !isAgentPanel && !isContextPanel && !isDatabaseAgent && !isTerminal;
+  const isMetrics = !isGeneralAgent && !isAgentPanel && !isContextPanel && !isDatabaseAgent && !isResponsePanel && !isTerminal;
 
   // Filter commands
   const tabCommands = commands.filter((c) => c.category === activeTab);
@@ -557,6 +628,20 @@ export default function Dashboard({
       title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       c.id.toLowerCase().includes(searchTerm.toLowerCase())
     );
+  });
+
+  // Filter out commands with errors
+  const visibleCommands = filteredCommands.filter((cmd) => {
+    const data = getCommandData(cmd.id);
+    const isLoading = loading[cmd.id] || false;
+    
+    // If we have data and it's not loading, check for errors
+    if (data && !isLoading) {
+      // If there is stderr output, consider it an error and hide it
+      if (data.stderr) return false;
+    }
+    
+    return true;
   });
 
   const currentTaskCmd = commands.find((c) => c.id === currentTaskId);
@@ -631,6 +716,10 @@ export default function Dashboard({
         />
       </div>
 
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isResponsePanel ? 'hidden' : ''}`}>
+        <ResponsePanel language={language} active={isResponsePanel} />
+      </div>
+
       {/* Terminal View */}
       <div className={`flex-1 h-full p-6 flex flex-col glass-dark overflow-hidden relative ${!isTerminal ? 'hidden' : ''}`}>
         <div className="flex-1 bg-black/80 backdrop-blur-md rounded-xl overflow-hidden border border-white/10 shadow-2xl relative z-10 ring-1 ring-white/5">
@@ -642,39 +731,29 @@ export default function Dashboard({
       <div className={`flex-1 flex flex-col h-screen overflow-hidden glass relative ${!isMetrics ? 'hidden' : ''}`}>
       
       {/* Top Bar */}
-      <div className="px-10 py-8 flex items-center justify-between relative z-20">
+      <div className="px-8 md:px-10 py-8 flex items-center justify-between relative z-20">
         <div>
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <h1 className="text-4xl font-black text-slate-800 tracking-tight capitalize flex items-center gap-3">
+            <h1 className="text-3xl md:text-4xl font-black text-slate-800 tracking-tight capitalize flex items-center gap-3">
               {activeTab === 'system' && <Cpu className="text-sky-500" size={36} />}
               {activeTab === 'network' && <Globe className="text-sky-500" size={36} />}
               {activeTab === 'services' && <Server className="text-sky-500" size={36} />}
               {activeTab === 'docker' && <Layout className="text-sky-500" size={36} />}
               {t[activeTab as keyof typeof t] || activeTab}
             </h1>
-            <div className="h-1 w-24 bg-gradient-to-r from-sky-500 to-transparent mt-2 rounded-full" />
-            
-            {/* System Ticker */}
-            <div className="mt-3 flex items-center gap-4 text-xs font-mono text-slate-500">
-                <span className="flex items-center gap-1">
-                    <Clock size={12} className="text-sky-500" />
-                    UPTIME: 42:12:09
-                </span>
-                <span className="text-slate-300">|</span>
-                <span className="flex items-center gap-1">
-                    <Activity size={12} className="text-emerald-500" />
-                    SYS_LOAD: 0.45
-                </span>
-            </div>
+            <div className="h-1 w-20 bg-gradient-to-r from-sky-500 to-indigo-500 mt-2 rounded-full" />
+            <p className="mt-3 text-sm text-slate-500 max-w-xl">
+              {language === "zh" ? "实时查看核心指标与取证结果，支持快速检索与聚焦分析。" : "Realtime metrics and forensic outputs with fast search and focused analysis."}
+            </p>
           </motion.div>
           
           {/* Connection Status Indicator */}
           {currentSession && (
-            <div className="flex items-center gap-2 mt-4 bg-white/60 backdrop-blur px-3 py-1.5 rounded-full border border-sky-100/50 w-fit shadow-sm">
+            <div className="flex items-center gap-2 mt-4 bg-white/70 backdrop-blur px-3 py-1.5 rounded-full border border-sky-100/60 w-fit shadow-sm">
               <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
               <span className="text-xs font-semibold text-slate-600">
                 {t.connected_to}{" "}
@@ -686,7 +765,7 @@ export default function Dashboard({
           )}
         </div>
 
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4 md:gap-6">
           {/* Progress Indicator */}
           {progress < 100 && progress > 0 && (
             <div className="flex flex-col items-end mr-4">
@@ -708,7 +787,7 @@ export default function Dashboard({
 
           {/* Monitoring Status */}
           {isMonitoring && (
-            <div className="flex items-center gap-2 mr-4 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
+            <div className="hidden md:flex items-center gap-2 mr-2 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
               <Activity size={14} className="text-emerald-500 animate-pulse" />
               <span className="text-xs font-bold text-emerald-600">
                 {t.monitoring_metrics.replace('{0}', monitoredCommandIds.length.toString())}
@@ -726,7 +805,7 @@ export default function Dashboard({
               placeholder={t.search_metrics}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2.5 bg-white/80 backdrop-blur-sm border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 transition-all w-64 shadow-sm hover:shadow-md"
+              className="pl-10 pr-4 py-2.5 bg-white/85 backdrop-blur-sm border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 transition-all w-52 md:w-64 shadow-sm hover:shadow-md"
             />
           </div>
 
@@ -834,7 +913,7 @@ export default function Dashboard({
       </AnimatePresence>
 
       {/* Content Area */}
-      <div className="flex-1 overflow-y-auto px-8 pb-8 custom-scrollbar relative z-10">
+      <div className="flex-1 overflow-y-auto px-6 md:px-8 pb-8 custom-scrollbar relative z-10">
         {activeTab === "database" && (
           <div className="mb-6 flex justify-end">
             <button
@@ -848,7 +927,7 @@ export default function Dashboard({
         )}
 
         {/* Command Cards */}
-        {filteredCommands.length === 0 ? (
+        {visibleCommands.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-[60vh] text-center">
             <div className="w-24 h-24 rounded-3xl bg-white/50 backdrop-blur shadow-xl shadow-sky-500/10 flex items-center justify-center mb-6 border border-white">
               <Cloud className="text-sky-400" size={48} />
@@ -875,9 +954,9 @@ export default function Dashboard({
                     }
                 }
             }}
-            className="grid grid-cols-1 xl:grid-cols-2 gap-8 pb-24"
+            className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-24"
           >
-            {filteredCommands.map((cmd) => (
+            {visibleCommands.map((cmd) => (
               <CommandCard
                 key={cmd.id}
                 def={cmd}

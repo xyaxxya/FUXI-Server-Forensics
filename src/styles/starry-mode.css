@@ -1,308 +1,105 @@
-/* Starry Sky Mode - Sci-Fi Theme Overrides */
-
 body.starry-mode {
-  /* --- Core Variables --- */
-  --sci-fi-bg: rgba(5, 12, 22, 0.85);
-  --sci-fi-bg-lighter: rgba(10, 25, 40, 0.7);
-  --sci-fi-border: rgba(0, 243, 255, 0.3);
-  --sci-fi-border-dim: rgba(0, 243, 255, 0.1);
-  --sci-fi-text: #e0f7ff;
-  --sci-fi-text-dim: #94a3b8;
-  --sci-fi-accent: #00f3ff;
-  --sci-fi-glow: 0 0 10px rgba(0, 243, 255, 0.3);
-  
-  /* Override Global Colors */
-  background-color: #000205 !important;
-  color: var(--sci-fi-text) !important;
+  --starry-bg: #070b16;
+  --starry-surface: rgba(15, 23, 42, 0.72);
+  --starry-surface-strong: rgba(15, 23, 42, 0.86);
+  --starry-border: rgba(148, 163, 184, 0.24);
+  --starry-text: #e2e8f0;
+  --starry-muted: #94a3b8;
+  --starry-accent: #38bdf8;
+  background-color: var(--starry-bg) !important;
+  color: var(--starry-text) !important;
 }
 
-/* --- Global Overrides --- */
-
-/* App Root Background Override */
 body.starry-mode .bg-\[\#F8FAFC\] {
   background-color: transparent !important;
 }
 
-/* Scrollbars */
-body.starry-mode ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-body.starry-mode ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.4);
-}
-body.starry-mode ::-webkit-scrollbar-thumb {
-  background: rgba(0, 243, 255, 0.3);
-  border-radius: 3px;
-}
-body.starry-mode ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 243, 255, 0.6);
-  box-shadow: 0 0 10px var(--sci-fi-accent);
+body.starry-mode .bg-\[\#f8fafc\] {
+  background-color: rgba(2, 6, 23, 0.78) !important;
 }
 
-/* Glass Effect Overrides */
 body.starry-mode .glass,
 body.starry-mode .glass-dark {
-  background: rgba(5, 10, 20, 0.6) !important;
-  backdrop-filter: blur(20px) !important;
-  border: 1px solid var(--sci-fi-border-dim) !important;
-  box-shadow: inset 0 0 20px rgba(0, 243, 255, 0.05) !important;
+  background: var(--starry-surface) !important;
+  border-color: var(--starry-border) !important;
+  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.45) !important;
 }
 
-/* --- Component Specific Overrides --- */
-
-/* 1. Sidebar */
-body.starry-mode .w-64.glass {
-  background: rgba(3, 7, 14, 0.8) !important;
-  border-right: 1px solid var(--sci-fi-border) !important;
+body.starry-mode .panel-soft,
+body.starry-mode .bg-white,
+body.starry-mode .bg-white\/90,
+body.starry-mode .bg-white\/85,
+body.starry-mode .bg-white\/80,
+body.starry-mode .bg-white\/50,
+body.starry-mode .bg-slate-50\/80,
+body.starry-mode .bg-slate-50\/50,
+body.starry-mode .bg-slate-50 {
+  background-color: var(--starry-surface-strong) !important;
+  border-color: var(--starry-border) !important;
 }
 
-/* Sidebar Item - Active */
-body.starry-mode .text-sky-600.bg-sky-100\/50 {
-  background-color: rgba(0, 243, 255, 0.15) !important;
-  color: var(--sci-fi-accent) !important;
-  border: 1px solid rgba(0, 243, 255, 0.3);
-  box-shadow: 0 0 15px rgba(0, 243, 255, 0.1) inset;
+body.starry-mode .text-slate-900,
+body.starry-mode .text-slate-800,
+body.starry-mode .text-slate-700 {
+  color: var(--starry-text) !important;
 }
 
-/* Sidebar Item - Inactive Hover */
-body.starry-mode .group-hover\:bg-slate-100\/50:hover {
-  background-color: rgba(255, 255, 255, 0.05) !important;
-}
-
-/* Sidebar Text */
-body.starry-mode .text-slate-800 {
-  color: #fff !important;
-  text-shadow: 0 0 5px rgba(0, 243, 255, 0.5);
-}
+body.starry-mode .text-slate-600,
 body.starry-mode .text-slate-500,
 body.starry-mode .text-slate-400 {
-  color: var(--sci-fi-text-dim) !important;
+  color: var(--starry-muted) !important;
 }
 
-/* 2. Server Sidebar */
-/* Active Server Card */
-body.starry-mode .bg-white\/60.border-sky-300\/50 {
-  background: rgba(0, 243, 255, 0.1) !important;
-  border-color: var(--sci-fi-accent) !important;
-  box-shadow: 0 0 20px rgba(0, 243, 255, 0.15) !important;
+body.starry-mode .border-slate-100,
+body.starry-mode .border-slate-200,
+body.starry-mode .border-slate-300 {
+  border-color: var(--starry-border) !important;
 }
 
-/* Inactive Server Card */
-body.starry-mode .bg-white\/10 {
-  background: rgba(255, 255, 255, 0.03) !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
+body.starry-mode input,
+body.starry-mode textarea,
+body.starry-mode select {
+  background: rgba(2, 6, 23, 0.55) !important;
+  color: var(--starry-text) !important;
+  border-color: rgba(148, 163, 184, 0.32) !important;
 }
 
-/* 3. Dashboard Command Cards */
-/* Make the main dashboard container transparent so stars show through between cards */
-body.starry-mode .glass.h-screen {
-  background: transparent !important;
-  backdrop-filter: none !important;
-  border: none !important;
-  box-shadow: none !important;
-}
-
-/* The main card container */
-body.starry-mode .bg-white.rounded-2xl.shadow-sm {
-  background: rgba(6, 13, 25, 0.7) !important;
-  border: 1px solid rgba(0, 243, 255, 0.2) !important;
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5) !important;
-  position: relative;
-  overflow: hidden;
-}
-
-/* Card Header */
-body.starry-mode .bg-white\/50 {
-  background: rgba(0, 243, 255, 0.05) !important;
-  border-bottom: 1px solid rgba(0, 243, 255, 0.1) !important;
-}
-
-/* Card Holographic Corner Effect */
-body.starry-mode .bg-white.rounded-2xl.shadow-sm::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0;
-  width: 20px; height: 20px;
-  border-top: 2px solid var(--sci-fi-accent);
-  border-left: 2px solid var(--sci-fi-accent);
-  border-radius: 12px 0 0 0;
-  opacity: 0.8;
-  pointer-events: none;
-}
-body.starry-mode .bg-white.rounded-2xl.shadow-sm::after {
-  content: '';
-  position: absolute;
-  bottom: 0; right: 0;
-  width: 20px; height: 20px;
-  border-bottom: 2px solid var(--sci-fi-accent);
-  border-right: 2px solid var(--sci-fi-accent);
-  border-radius: 0 0 12px 0;
-  opacity: 0.8;
-  pointer-events: none;
-}
-
-/* Card Titles */
-body.starry-mode .font-semibold.text-slate-700 {
-  color: var(--sci-fi-accent) !important;
-  font-family: 'Orbitron', sans-serif;
-  letter-spacing: 1px;
-}
-
-/* 4. Tables inside Cards */
-/* Table Header */
-body.starry-mode th.bg-slate-50\/50 {
-  background: rgba(0, 243, 255, 0.1) !important;
-  color: var(--sci-fi-accent) !important;
-  border-bottom: 1px solid rgba(0, 243, 255, 0.2) !important;
-}
-
-/* Table Rows */
-body.starry-mode td.text-slate-600,
-body.starry-mode td.text-slate-800 {
-  color: #d1d5db !important;
-}
-
-/* Row Hover */
-body.starry-mode tr.hover\:bg-blue-50\/50:hover {
-  background-color: rgba(0, 243, 255, 0.05) !important;
-}
-
-/* Selected Row */
-body.starry-mode tr.bg-blue-100\/50 {
-  background-color: rgba(0, 243, 255, 0.15) !important;
-  box-shadow: inset 3px 0 0 var(--sci-fi-accent);
-}
-
-/* Pre/Code blocks */
-body.starry-mode pre.bg-slate-50 {
-  background-color: #050a10 !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  color: #a5b4fc !important;
-}
-
-/* 5. Modals (Settings, MySQL, etc) */
-body.starry-mode .fixed.bg-slate-900\/50 {
-  background-color: rgba(0, 0, 0, 0.6) !important;
-}
-
-body.starry-mode .bg-white.w-full.max-w-6xl,
-body.starry-mode .bg-white.w-full.max-w-md {
-  background: rgba(5, 12, 22, 0.85) !important;
-  border: 1px solid var(--sci-fi-accent) !important;
-  box-shadow: 0 0 50px rgba(0, 243, 255, 0.15) !important;
-  backdrop-filter: blur(15px);
-}
-
-/* Modal Headers */
-body.starry-mode .border-slate-200 {
-  border-color: rgba(255, 255, 255, 0.1) !important;
-}
-
-/* Modal Inputs */
-body.starry-mode input[type="text"],
-body.starry-mode input[type="password"],
-body.starry-mode textarea {
-  background: rgba(0, 0, 0, 0.4) !important;
-  border: 1px solid rgba(0, 243, 255, 0.3) !important;
-  color: #fff !important;
-}
 body.starry-mode input:focus,
-body.starry-mode textarea:focus {
-  border-color: var(--sci-fi-accent) !important;
-  box-shadow: 0 0 15px rgba(0, 243, 255, 0.3) !important;
+body.starry-mode textarea:focus,
+body.starry-mode select:focus {
+  border-color: var(--starry-accent) !important;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.16) !important;
 }
 
-/* Toggle Switch specific */
-body.starry-mode input:checked + div.bg-slate-200 {
-  background-color: rgba(255, 255, 255, 0.2) !important;
-}
-body.starry-mode input:checked + div.peer-checked\:bg-purple-600 {
-  background-color: var(--sci-fi-accent) !important;
-  box-shadow: 0 0 10px var(--sci-fi-accent);
+body.starry-mode pre {
+  background: rgba(2, 6, 23, 0.76) !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  color: #cbd5e1 !important;
 }
 
-/* 6. General UI Elements */
-/* Icons */
+body.starry-mode th {
+  background: rgba(30, 41, 59, 0.68) !important;
+  color: #cbd5e1 !important;
+}
+
+body.starry-mode tr:hover {
+  background: rgba(56, 189, 248, 0.08) !important;
+}
+
+body.starry-mode .text-sky-500,
 body.starry-mode .text-blue-500,
-body.starry-mode .text-sky-500 {
-  color: var(--sci-fi-accent) !important;
-  filter: drop-shadow(0 0 5px rgba(0, 243, 255, 0.5));
+body.starry-mode .text-indigo-500 {
+  color: var(--starry-accent) !important;
+  filter: none !important;
 }
 
-body.starry-mode .bg-blue-50,
 body.starry-mode .bg-sky-50,
+body.starry-mode .bg-blue-50,
 body.starry-mode .bg-indigo-50 {
-  background-color: rgba(0, 243, 255, 0.1) !important;
+  background-color: rgba(56, 189, 248, 0.12) !important;
 }
 
-/* Buttons */
-body.starry-mode button.bg-white {
-  background: transparent !important;
-  border: 1px solid rgba(255, 255, 255, 0.2) !important;
-  color: #fff !important;
-}
-body.starry-mode button.bg-white:hover {
-  border-color: var(--sci-fi-accent) !important;
-  color: var(--sci-fi-accent) !important;
-  box-shadow: 0 0 10px rgba(0, 243, 255, 0.2);
-}
-
-/* 7. Settings Modal Specifics */
-body.starry-mode .bg-slate-50 {
-  background-color: transparent !important;
-}
-body.starry-mode .bg-white {
-  background-color: transparent !important;
-}
-
-/* Fix for sidebar in settings modal */
-body.starry-mode .w-64.bg-white {
-  background-color: rgba(0, 0, 0, 0.2) !important;
-  border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
-}
-
-/* Active Tab in Settings */
-body.starry-mode .bg-blue-50.text-blue-600,
-body.starry-mode .bg-indigo-50.text-indigo-600 {
-  background: linear-gradient(90deg, rgba(0, 243, 255, 0.2), transparent) !important;
-  color: #fff !important;
-  border-left: 3px solid var(--sci-fi-accent);
-  border-radius: 4px !important;
-}
-
-/* 8. Terminal specific */
-body.starry-mode .glass-dark {
-  background: rgba(0, 0, 0, 0.7) !important;
-  border: 1px solid rgba(0, 243, 255, 0.2) !important;
-}
-
-/* 9. Chat Interface (General Agent) */
-/* Chat Bubbles */
-body.starry-mode .bg-slate-50.text-slate-800.border {
-  background-color: rgba(0, 243, 255, 0.05) !important;
-  border-color: rgba(0, 243, 255, 0.2) !important;
-  color: #e2e8f0 !important;
-}
-
-/* Input Area */
-body.starry-mode .bg-white\/80 {
-  background: rgba(5, 12, 22, 0.8) !important;
-  border-top: 1px solid var(--sci-fi-accent) !important;
-}
-
-body.starry-mode .bg-slate-100\/50 {
-  background: rgba(0, 243, 255, 0.05) !important;
-  border: 1px solid rgba(0, 243, 255, 0.2) !important;
-  color: #fff !important;
-}
-
-body.starry-mode .bg-slate-100\/50:focus-within {
-  background: rgba(0, 243, 255, 0.1) !important;
-  border-color: var(--sci-fi-accent) !important;
-  box-shadow: 0 0 15px rgba(0, 243, 255, 0.1);
-}
-
-body.starry-mode textarea::placeholder {
-  color: rgba(255, 255, 255, 0.3) !important;
+body.starry-mode .fixed.bg-slate-900\/50,
+body.starry-mode .fixed.inset-0 {
+  background-color: rgba(2, 6, 23, 0.7) !important;
 }

@@ -1,6 +1,6 @@
 import { LucideIcon } from 'lucide-react';
 
-export type CommandCategory = 'system' | 'network' | 'web' | 'security' | 'database' | 'docker' | 'k8s';
+export type CommandCategory = 'system' | 'network' | 'web' | 'security' | 'database' | 'docker' | 'k8s' | 'response';
 
 export type ParserType = 'disk' | 'process' | 'network' | 'ports' | 'docker' | 'k8sNodes' | 'k8sPods' | 'simpleList' | 'lsOutput' | 'authLog' | 'raw' | 'memory' | 'boot' | 'diskIO';
 

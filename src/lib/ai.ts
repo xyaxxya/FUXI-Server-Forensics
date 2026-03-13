@@ -309,7 +309,7 @@ export async function sendToAI(
 
       const data = await response.json();
       const textContent =
-        (Array.isArray(data.content) ? data.content.find((c: any) => c.type === "text")?.text : "") || "";
+        (Array.isArray(data.content) ? (data.content.find((c: any) => c.type === "text")?.text || "") : "") || "";
       const toolUses = Array.isArray(data.content) ? data.content.filter((c: any) => c.type === "tool_use") : [];
 
       const tool_calls = toolUses.map((t: any) => ({

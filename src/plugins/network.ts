@@ -36,9 +36,49 @@ export const networkCommands: PluginCommand[] = [
     cn_name: '监听端口', 
     description: 'Currently listening TCP/UDP ports and associated processes', 
     cn_description: '当前正在监听的 TCP/UDP 端口及对应进程', 
-    command: "netstat -anltp | awk 'NR>1 {print $7 \"|\" $1 \"|\" $5}' | head -n 10",
+    command: "ss -lntup 2>/dev/null | awk 'NR>1 {print $1 \"|\" $5 \"|\" $7}'",
     icon: Server, 
     parserType: 'ports' 
+  },
+  { 
+    id: 'all_connections', 
+    category: 'network', 
+    name: 'All Connections', 
+    cn_name: '全连接快照', 
+    description: 'All TCP/UDP connections with processes', 
+    cn_description: '所有 TCP/UDP 连接及对应进程快照', 
+    command: "ss -tunap 2>/dev/null", 
+    icon: Server 
+  },
+  { 
+    id: 'route_snapshot', 
+    category: 'network', 
+    name: 'Route Snapshot', 
+    cn_name: '路由快照', 
+    description: 'Kernel routing table snapshot', 
+    cn_description: '内核路由表快照', 
+    command: "ip route show table all", 
+    icon: Server 
+  },
+  { 
+    id: 'neighbor_snapshot', 
+    category: 'network', 
+    name: 'Neighbor Snapshot', 
+    cn_name: '邻居表快照', 
+    description: 'ARP/NDP neighbor cache snapshot', 
+    cn_description: 'ARP/NDP 邻居缓存快照', 
+    command: "ip neigh show", 
+    icon: Server 
+  },
+  { 
+    id: 'firewall_rules_snapshot', 
+    category: 'network', 
+    name: 'Firewall Rules Snapshot', 
+    cn_name: '防火墙规则快照', 
+    description: 'iptables/nftables/ufw rules snapshot', 
+    cn_description: 'iptables/nftables/ufw 规则快照', 
+    command: "iptables -S 2>/dev/null || nft list ruleset 2>/dev/null || ufw status verbose 2>/dev/null || echo 'No firewall rules detected'", 
+    icon: Server 
   },
   { 
     id: 'network_traffic', 
