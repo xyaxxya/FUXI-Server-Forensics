@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence, useAnimation } from "framer-motion";
 import { 
   Lock, Server, Activity, Wifi, Database, Disc, Zap, Cpu
@@ -20,6 +20,8 @@ const THEME = {
 
 interface IntroProps {
   onComplete: () => void;
+  bootReady?: boolean;
+  bootStatusText?: string;
 }
 
 // --- HELPER COMPONENTS ---
@@ -174,28 +176,33 @@ const FloatingParticles = () => {
   );
 };
 
-export default function Intro({ onComplete }: IntroProps) {
+export default function Intro({ onComplete, bootReady = false, bootStatusText = "" }: IntroProps) {
   const [progress, setProgress] = useState(0);
+  const completedRef = useRef(false);
   const isStarryMode = typeof window !== "undefined" && (document.body.classList.contains("starry-mode") || localStorage.getItem("starry_mode") === "true");
 
   useEffect(() => {
-    // Total duration approx 5000ms (5s)
-    // 100 steps * 50ms = 5000ms
     const interval = setInterval(() => {
       setProgress(prev => {
         if (prev >= 100) {
           clearInterval(interval);
-          setTimeout(onComplete, 800); // Wait a bit before unmounting
+          if (!completedRef.current) {
+            completedRef.current = true;
+            setTimeout(onComplete, 500);
+          }
           return 100;
         }
-        // Consistent progress for 5s duration (100 / (5000/50) = 1)
-        const increment = 1; 
-        return Math.min(prev + increment, 100);
+        if (!bootReady && prev >= 92) {
+          return 92;
+        }
+        const increment = bootReady ? 2.4 : 0.9;
+        const next = Math.min(prev + increment, 100);
+        return next;
       });
-    }, 50); // Tick every 50ms
+    }, 50);
 
     return () => clearInterval(interval);
-  }, [onComplete]);
+  }, [onComplete, bootReady]);
 
   return (
     <motion.div 
@@ -426,11 +433,14 @@ export default function Intro({ onComplete }: IntroProps) {
                 )}
                 {progress >= 90 && (
                    <motion.span key="ready" initial={{y:10, opacity:0}} animate={{y:0, opacity:1}} exit={{y:-10, opacity:0}} className="text-sm font-mono font-bold text-[#32D74B] tracking-wider">
-                      SYSTEM READY
+                      {bootReady ? "SYSTEM READY" : "WAITING SECURITY CHECK"}
                    </motion.span>
                 )}
              </AnimatePresence>
           </div>
+          {bootStatusText && (
+            <div className="mt-1 text-[11px] text-slate-500">{bootStatusText}</div>
+          )}
         </motion.div>
       </div>
 

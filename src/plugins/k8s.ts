@@ -64,7 +64,8 @@ export const k8sCommands: PluginCommand[] = [
     cn_description: '全命名空间近期 Kubernetes 事件', 
     command: "if command -v kubectl >/dev/null 2>&1; then kubectl get events -A --sort-by=.lastTimestamp; else echo 'Kubernetes Not Detected'; fi", 
     icon: Cloud, 
-    checkExists: true
+    checkExists: true,
+    parserType: 'k8sEvents'
   },
   { 
     id: 'k8s_rbac', 
@@ -75,7 +76,8 @@ export const k8sCommands: PluginCommand[] = [
     cn_description: 'RoleBinding 与 ClusterRoleBinding 审计总览', 
     command: "if command -v kubectl >/dev/null 2>&1; then kubectl get rolebinding,clusterrolebinding -A; else echo 'Kubernetes Not Detected'; fi", 
     icon: Cloud, 
-    checkExists: true
+    checkExists: true,
+    parserType: 'k8sRbac'
   },
   { 
     id: 'k8s_privileged_workload', 

@@ -50,7 +50,8 @@ export const dockerCommands: PluginCommand[] = [
     cn_description: 'Docker 系统级详细信息', 
     command: "if command -v docker >/dev/null 2>&1; then docker info; else echo 'Docker Not Detected'; fi", 
     icon: Box, 
-    checkExists: true
+    checkExists: true,
+    parserType: 'dockerInfo'
   },
   { 
     id: 'docker_containers', 
@@ -88,8 +89,7 @@ export const dockerCommands: PluginCommand[] = [
     cn_description: '特权模式或高风险主机参数容器审计', 
     command: "if command -v docker >/dev/null 2>&1; then docker ps -aq | xargs -r docker inspect --format '{{.Name}}|{{.HostConfig.Privileged}}|{{.HostConfig.NetworkMode}}|{{.HostConfig.PidMode}}|{{.HostConfig.UsernsMode}}|{{.HostConfig.CapAdd}}' ; else echo 'Docker Not Detected'; fi", 
     icon: Box, 
-    parserType: 'simpleList', 
-    parserArgs: ['Container', 'Privileged', 'NetworkMode', 'PidMode', 'Userns', 'CapAdd'], 
+    parserType: 'dockerPrivileged', 
     checkExists: true
   },
   { 

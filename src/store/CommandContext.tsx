@@ -57,6 +57,16 @@ interface ServerGroup {
   color: string;
 }
 
+type ProxyType = 'direct' | 'socks5' | 'http';
+
+interface ProxyConfig {
+  type: ProxyType;
+  host: string;
+  port: number;
+  username?: string;
+  password?: string;
+}
+
 interface CommandContextType {
   data: Record<string, CommandResult>;
   loading: Record<string, boolean>;
@@ -80,7 +90,7 @@ interface CommandContextType {
   clearData: () => void;
   clearChartData: (id?: string) => void;
   clearCommandHistory: () => void;
-  connectSSH: (ip: string, port: number, user: string, pass: string) => Promise<string>;
+  connectSSH: (ip: string, port: number, user: string, pass: string, proxy?: ProxyConfig) => Promise<string>;
   disconnectSSH: (sessionId?: string) => Promise<string>;
   listSessions: () => Promise<Session[]>;
   switchSession: (sessionId: string) => Promise<string>;
@@ -295,9 +305,16 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
   };
 
   // SSH Session Management
-  const connectSSH = async (ip: string, port: number, user: string, pass: string): Promise<string> => {
+  const connectSSH = async (
+    ip: string,
+    port: number,
+    user: string,
+    pass: string,
+    proxy?: ProxyConfig
+  ): Promise<string> => {
     try {
-      const sessionId = await invoke<string>('connect_ssh', { ip, port, user, pass });
+      const proxyPayload = proxy && proxy.type !== 'direct' ? proxy : undefined;
+      const sessionId = await invoke<string>('connect_ssh', { ip, port, user, pass, proxy: proxyPayload });
       await updateSessions();
       return sessionId;
     } catch (e: any) {

@@ -32,16 +32,318 @@ import AgentPanel from "./agents/AgentPanel";
 import GeneralInfoPanel from "./agents/GeneralInfoPanel";
 import DatabaseAgent from "./agents/DatabaseAgent";
 import ResponsePanel from "./ResponsePanel";
+import PentestPanel from "./PentestPanel";
 import { AISettings } from "../lib/ai";
 import { APP_VERSION } from "../config/app";
 
 // --- Types ---
 type TableData = { headers: string[]; rows: string[][] };
+type SecurityLogStatus = "success" | "failed" | "warn" | "info";
+type SecurityLogEntry = {
+  time: string;
+  actor: string;
+  source: string;
+  action: string;
+  detail: string;
+  status: SecurityLogStatus;
+  raw: string;
+};
+type SecurityLogData = {
+  kind: "securityLog";
+  logKind: string;
+  title: string;
+  rows: SecurityLogEntry[];
+  stats: {
+    total: number;
+    success: number;
+    failed: number;
+    warn: number;
+    info: number;
+    uniqueSources: number;
+  };
+  raw: string;
+};
+
+const parseSyslogLine = (line: string) => {
+  const match = line.match(/^([A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2})\s+(\S+)\s+([^:]+):\s*(.*)$/);
+  if (!match) return null;
+  return {
+    time: match[1],
+    host: match[2],
+    process: match[3],
+    message: match[4],
+  };
+};
+
+const getIp = (text: string) => text.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/)?.[0] || "-";
+const getPort = (text: string) => text.match(/\bport\s+(\d+)\b/i)?.[1] || "";
+const getServiceName = (process: string) => process.replace(/\[\d+\]$/, "");
+const getLooseTime = (line: string) => {
+  const iso = line.match(/^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z)?)/);
+  if (iso) return iso[1];
+  const slash = line.match(/^(\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2})/);
+  if (slash) return slash[1];
+  return "-";
+};
+const buildLogData = (logKind: string, title: string, rows: SecurityLogEntry[], raw: string): SecurityLogData => {
+  return {
+    kind: "securityLog",
+    logKind,
+    title,
+    rows,
+    stats: {
+      total: rows.length,
+      success: rows.filter((r) => r.status === "success").length,
+      failed: rows.filter((r) => r.status === "failed").length,
+      warn: rows.filter((r) => r.status === "warn").length,
+      info: rows.filter((r) => r.status === "info").length,
+      uniqueSources: new Set(rows.map((r) => r.source).filter((s) => s !== "-")).size,
+    },
+    raw,
+  };
+};
+const isSecurityLogData = (data: unknown): data is SecurityLogData => {
+  return !!data && typeof data === "object" && "kind" in data && (data as SecurityLogData).kind === "securityLog";
+};
+const isTableData = (data: unknown): data is TableData => {
+  return !!data && typeof data === "object" && "headers" in data && "rows" in data;
+};
+
+const parseSecurityLog = (output: string, args?: { logKind?: string }): SecurityLogData | string => {
+  const raw = output || "";
+  const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+  const logKind = args?.logKind || "";
+  const titleMap: Record<string, string> = {
+    login_success: "SSH 登录成功解读",
+    login_failed: "SSH 登录失败解读",
+    sudo: "Sudo 审计解读",
+    cron: "Cron 审计解读",
+    system_error: "系统错误日志解读",
+    web_error: "Web 错误日志解读",
+    db_error: "数据库错误日志解读",
+  };
+  const title = titleMap[logKind] || "安全日志解读";
+  if (!lines.length) return buildLogData(logKind, title, [], raw);
+  const rows: SecurityLogEntry[] = [];
+
+  for (const line of lines) {
+    const parsed = parseSyslogLine(line);
+    const message = parsed?.message || line;
+    const time = parsed?.time || getLooseTime(line);
+    const process = parsed?.process || "unknown";
+
+    if (logKind === "login_success" || logKind === "login_failed") {
+      const userMatch = message.match(/for\s+(invalid user\s+)?([^\s]+)\s+from/i);
+      const user = userMatch?.[2] || "unknown";
+      const ip = getIp(message);
+      const port = getPort(message);
+      const source = ip === "-" ? "-" : `${ip}${port ? `:${port}` : ""}`;
+      const isSuccess = /Accepted\s+(password|publickey)/i.test(message);
+      const isFailed = /Failed password|authentication failure/i.test(message);
+      const status: SecurityLogStatus = isSuccess ? "success" : isFailed ? "failed" : "warn";
+      const action = isSuccess ? "SSH 登录成功" : isFailed ? "SSH 登录失败" : "SSH 登录事件";
+      const detail = `用户 ${user}${source !== "-" ? `，来源 ${source}` : ""}`;
+      rows.push({
+        time,
+        actor: user,
+        source,
+        action,
+        detail,
+        status,
+        raw: line,
+      });
+      continue;
+    }
+
+    if (logKind === "sudo") {
+      const commandMatch = message.match(/COMMAND=(.+)$/);
+      const actorMatch = message.match(/^(\S+)\s*:/);
+      const actor = actorMatch?.[1] || "unknown";
+      if (commandMatch) {
+        rows.push({
+          time,
+          actor,
+          source: "本机",
+          action: "执行 sudo 命令",
+          detail: commandMatch[1].trim(),
+          status: "info",
+          raw: line,
+        });
+      } else if (/session opened/i.test(message)) {
+        rows.push({
+          time,
+          actor,
+          source: "本机",
+          action: "sudo 会话开启",
+          detail: message,
+          status: "info",
+          raw: line,
+        });
+      } else if (/session closed/i.test(message)) {
+        rows.push({
+          time,
+          actor,
+          source: "本机",
+          action: "sudo 会话关闭",
+          detail: message,
+          status: "info",
+          raw: line,
+        });
+      }
+      continue;
+    }
+
+    if (logKind === "cron") {
+      const actorMatch = message.match(/\(([^)]+)\)\s+CMD/i);
+      const actor = actorMatch?.[1] || "root";
+      const cmdMatch = message.match(/CMD\s+\((.*)\)\s*$/i);
+      rows.push({
+        time,
+        actor,
+        source: "本机",
+        action: "执行定时任务",
+        detail: cmdMatch?.[1] || message,
+        status: "info",
+        raw: line,
+      });
+      continue;
+    }
+
+    if (logKind === "system_error") {
+      const source = getIp(message);
+      const service = getServiceName(process);
+      if (/client sent invalid protocol identifier/i.test(message)) {
+        const protocolMatch = message.match(/identifier\s+"([^"]+)"/i);
+        rows.push({
+          time,
+          actor: service,
+          source,
+          action: "疑似协议探测 SSH 端口",
+          detail: protocolMatch?.[1] ? `请求标识: ${protocolMatch[1]}` : message,
+          status: "warn",
+          raw: line,
+        });
+        continue;
+      }
+      if (/banner line contains invalid characters/i.test(message)) {
+        rows.push({
+          time,
+          actor: service,
+          source,
+          action: "SSH 握手异常字符",
+          detail: message,
+          status: "warn",
+          raw: line,
+        });
+        continue;
+      }
+      if (/kex_protocol_error/i.test(message)) {
+        rows.push({
+          time,
+          actor: service,
+          source,
+          action: "密钥交换协议异常",
+          detail: message,
+          status: "failed",
+          raw: line,
+        });
+        continue;
+      }
+      if (/Connection closed by remote host|Connection reset by peer/i.test(message)) {
+        rows.push({
+          time,
+          actor: service,
+          source,
+          action: "远端异常断开连接",
+          detail: message,
+          status: "info",
+          raw: line,
+        });
+        continue;
+      }
+      rows.push({
+        time,
+        actor: service,
+        source,
+        action: "系统错误事件",
+        detail: message,
+        status: /panic|fatal|critical/i.test(message) ? "failed" : "warn",
+        raw: line,
+      });
+      continue;
+    }
+
+    if (logKind === "web_error") {
+      const source = message.match(/client:\s*([^,\s]+)/i)?.[1] || getIp(message);
+      const request = message.match(/request:\s*"([^"]+)"/i)?.[1];
+      const level = message.match(/\[(error|warn|crit|alert)\]/i)?.[1]?.toLowerCase() || "";
+      const status: SecurityLogStatus = level === "warn" ? "warn" : level ? "failed" : /error|exception|timeout|refused/i.test(message) ? "failed" : "warn";
+      rows.push({
+        time,
+        actor: getServiceName(process) === "unknown" ? "web" : getServiceName(process),
+        source,
+        action: status === "failed" ? "Web 服务错误" : "Web 风险告警",
+        detail: request ? `请求 ${request}` : message,
+        status,
+        raw: line,
+      });
+      continue;
+    }
+
+    if (logKind === "db_error") {
+      const source = message.match(/host[=:]\s*([^\s,]+)/i)?.[1] || getIp(message);
+      const service = getServiceName(process) === "unknown" ? "database" : getServiceName(process);
+      if (/Query_time:\s*[\d.]+/i.test(message) || /slow query/i.test(message)) {
+        rows.push({
+          time,
+          actor: service,
+          source,
+          action: "慢查询事件",
+          detail: message,
+          status: "warn",
+          raw: line,
+        });
+        continue;
+      }
+      const isFailed = /error|fatal|panic|crash|deadlock/i.test(message);
+      rows.push({
+        time,
+        actor: service,
+        source,
+        action: isFailed ? "数据库错误" : "数据库告警",
+        detail: message,
+        status: isFailed ? "failed" : "warn",
+        raw: line,
+      });
+      continue;
+    }
+  }
+
+  if (!rows.length && logKind) return buildLogData(logKind, title, [], raw);
+  if (!rows.length) return raw;
+  return buildLogData(logKind, title, rows, raw);
+};
+
+const splitNonEmptyLines = (output: string) => (output || "").split("\n").map((l) => l.trim()).filter(Boolean);
+const extractIpPort = (text: string) => {
+  const match = text.match(/(.*):(\d+)$/);
+  if (!match) return { ip: text, port: "-" };
+  return { ip: match[1], port: match[2] };
+};
+const toKeyValueTable = (output: string, label = "项目", value = "内容"): TableData => {
+  const lines = splitNonEmptyLines(output);
+  const rows = lines.map((line) => {
+    const pair = line.split(/[:=]\s*/, 2);
+    if (pair.length === 2) return [pair[0].trim(), pair[1].trim()];
+    return [line, "-"];
+  });
+  return { headers: [label, value], rows };
+};
 
 // --- Parsers ---
 const parsers: Record<
   string,
-  (output: string, args?: any) => TableData | string
+  (output: string, args?: any) => TableData | string | SecurityLogData
 > = {
   disk: (output) => {
     const lines = output.trim().split("\n");
@@ -82,8 +384,8 @@ const parsers: Record<
   lsOutput: (output) => {
     return output;
   },
-  authLog: (output) => {
-    return output;
+  authLog: (output, args) => {
+    return parseSecurityLog(output, args);
   },
   k8sNodes: (output) => {
     const lines = output.trim().split("\n");
@@ -114,6 +416,289 @@ const parsers: Record<
     const headers = ["th_device", "th_read_sec", "th_write_sec", "th_read_kb", "th_write_kb", "th_util"];
     const rows = lines.map((line) => line.split("|"));
     return { headers, rows };
+  },
+  uptimeHuman: (output) => ({ headers: ["运行状态"], rows: [[output.trim() || "-"]] }),
+  linuxRelease: (output) => toKeyValueTable(output, "发行版字段", "值"),
+  rebootHistory: (output) => {
+    const lines = splitNonEmptyLines(output);
+    const rows = lines.map((line) => {
+      const parts = line.split(/\s+/);
+      return [parts[0] || "-", parts[2] || "-", parts.slice(3, 8).join(" "), parts.slice(8).join(" ") || "-"];
+    });
+    return { headers: ["事件", "终端", "时间段", "细节"], rows };
+  },
+  timeSync: (output) => {
+    const lines = splitNonEmptyLines(output);
+    const rows = lines.map((line) => {
+      if (line.includes(":")) {
+        const [k, v] = line.split(/:\s*/, 2);
+        return [k.trim(), v?.trim() || "-"];
+      }
+      return ["状态信息", line];
+    });
+    return { headers: ["同步项", "结果"], rows };
+  },
+  processStats: (output) => {
+    const lines = splitNonEmptyLines(output);
+    const total = lines[0] || "0";
+    const uptimePart = lines[1] || "-";
+    const taskPart = lines[2] || "-";
+    return {
+      headers: ["指标", "值"],
+      rows: [
+        ["进程总数", total],
+        ["运行时长片段", uptimePart],
+        ["任务分布", taskPart],
+      ],
+    };
+  },
+  netTraffic: (output) => {
+    const lines = splitNonEmptyLines(output);
+    const rows: string[][] = [];
+    for (let i = 0; i < lines.length; i += 2) {
+      const rx = lines[i] || "";
+      const tx = lines[i + 1] || "";
+      const rxPackets = rx.match(/RX packets\s+(\d+)/)?.[1] || "-";
+      const rxBytes = rx.match(/bytes\s+(\d+)/)?.[1] || "-";
+      const txPackets = tx.match(/TX packets\s+(\d+)/)?.[1] || "-";
+      const txBytes = tx.match(/bytes\s+(\d+)/)?.[1] || "-";
+      rows.push([`网卡${rows.length + 1}`, rxPackets, txPackets, rxBytes, txBytes]);
+    }
+    return { headers: ["接口", "RX包数", "TX包数", "RX字节", "TX字节"], rows };
+  },
+  temperature: (output) => {
+    const lines = splitNonEmptyLines(output);
+    const rows = lines.map((line, i) => {
+      const tempMatch = line.match(/(-?\d+(?:\.\d+)?)\s*°?\s*[CF]/i) || line.match(/(-?\d+(?:\.\d+)?)/);
+      const value = tempMatch?.[1] ? `${tempMatch[1]}°C` : "-";
+      const status = tempMatch?.[1] && Number(tempMatch[1]) >= 80 ? "偏高" : "正常";
+      return [`传感器${i + 1}`, value, status, line];
+    });
+    return { headers: ["来源", "温度", "状态", "原始片段"], rows };
+  },
+  sudoPerm: (output) => {
+    const lines = splitNonEmptyLines(output);
+    const rows = lines.map((line) => {
+      const principal = line.split(/\s+/)[0] || "-";
+      const nopasswd = /NOPASSWD/i.test(line) ? "是" : "否";
+      return [principal, nopasswd, line];
+    });
+    return { headers: ["主体", "免密执行", "规则"], rows };
+  },
+  firewallStatus: (output) => {
+    const lines = splitNonEmptyLines(output);
+    const engine = lines.some((l) => /firewalld/i.test(l)) ? "firewalld" : lines.some((l) => /ufw/i.test(l)) ? "ufw" : "unknown";
+    const active = lines.some((l) => /active|running|Status:\s*active/i.test(l)) ? "是" : "否";
+    const policy = lines.find((l) => /Default|default/i.test(l)) || "-";
+    return { headers: ["防火墙引擎", "已启用", "默认策略", "原始摘要"], rows: [[engine, active, policy, lines.slice(0, 2).join(" | ") || "-"]] };
+  },
+  cronJobs: (output) => {
+    const lines = splitNonEmptyLines(output).filter((l) => !l.startsWith("#"));
+    const rows = lines.map((line) => {
+      const parts = line.split(/\s+/);
+      if (parts.length < 6) return ["-", "-", "-", "-", "-", line];
+      const cmd = parts.slice(5).join(" ");
+      return [parts[0], parts[1], parts[2], parts[3], parts[4], cmd || "-"];
+    });
+    return { headers: ["分", "时", "日", "月", "周", "命令"], rows };
+  },
+  ssConnections: (output) => {
+    const lines = splitNonEmptyLines(output).filter((l) => !/^Netid|^State/i.test(l));
+    const rows = lines.map((line) => {
+      const parts = line.split(/\s+/);
+      const proto = parts[0] || "-";
+      const state = parts[1] || "-";
+      const local = parts[4] || "-";
+      const peer = parts[5] || "-";
+      const proc = parts.slice(6).join(" ") || "-";
+      const localParts = extractIpPort(local);
+      const peerParts = extractIpPort(peer);
+      return [proto, state, localParts.ip, localParts.port, peerParts.ip, peerParts.port, proc];
+    });
+    return { headers: ["协议", "状态", "本地IP", "本地端口", "远端IP", "远端端口", "进程"], rows };
+  },
+  routeSnapshot: (output) => {
+    const lines = splitNonEmptyLines(output);
+    const rows = lines.map((line) => {
+      const dest = line.split(" ")[0] || "-";
+      const via = line.match(/\bvia\s+([^\s]+)/)?.[1] || "-";
+      const dev = line.match(/\bdev\s+([^\s]+)/)?.[1] || "-";
+      const metric = line.match(/\bmetric\s+([^\s]+)/)?.[1] || "-";
+      return [dest, via, dev, metric, line];
+    });
+    return { headers: ["目标网段", "下一跳", "网卡", "优先级", "原始规则"], rows };
+  },
+  neighborSnapshot: (output) => {
+    const lines = splitNonEmptyLines(output);
+    const rows = lines.map((line) => {
+      const ip = line.split(/\s+/)[0] || "-";
+      const dev = line.match(/\bdev\s+([^\s]+)/)?.[1] || "-";
+      const mac = line.match(/\blladdr\s+([^\s]+)/)?.[1] || "-";
+      const state = line.split(/\s+/).slice(-1)[0] || "-";
+      return [ip, dev, mac, state];
+    });
+    return { headers: ["IP", "网卡", "MAC", "状态"], rows };
+  },
+  firewallRules: (output) => {
+    const lines = splitNonEmptyLines(output);
+    const rows = lines.map((line) => {
+      const engine = line.startsWith("-") ? "iptables" : /table|chain|hook|policy/i.test(line) ? "nftables" : /Status|ALLOW|DENY/i.test(line) ? "ufw" : "unknown";
+      const action = line.match(/\b(ACCEPT|DROP|REJECT|ALLOW|DENY)\b/i)?.[1]?.toUpperCase() || "-";
+      const src = line.match(/\bsource\s+([^\s]+)/i)?.[1] || line.match(/\bfrom\s+([^\s]+)/i)?.[1] || "-";
+      const dst = line.match(/\bdestination\s+([^\s]+)/i)?.[1] || line.match(/\bto\s+([^\s]+)/i)?.[1] || "-";
+      return [engine, action, src, dst, line];
+    });
+    return { headers: ["引擎", "动作", "来源", "目标", "规则"], rows };
+  },
+  dnsConfig: (output) => {
+    const lines = splitNonEmptyLines(output);
+    const rows = lines.map((line, i) => [String(i + 1), line.replace(/^nameserver\s+/i, "")]);
+    return { headers: ["序号", "DNS服务器"], rows };
+  },
+  btAuth: (output) => {
+    try {
+      const data = JSON.parse(output || "{}");
+      const rows = Object.entries(data).map(([k, v]) => [k, typeof v === "object" ? JSON.stringify(v) : String(v)]);
+      return { headers: ["认证字段", "值"], rows };
+    } catch {
+      return toKeyValueTable(output, "认证字段", "值");
+    }
+  },
+  btUser: (output) => {
+    try {
+      const data = JSON.parse(output || "{}");
+      const rows = Object.entries(data).map(([k, v]) => [k, typeof v === "object" ? JSON.stringify(v) : String(v)]);
+      return { headers: ["用户字段", "值"], rows };
+    } catch {
+      return toKeyValueTable(output, "用户字段", "值");
+    }
+  },
+  nginxInfo: (output) => {
+    const merged = output.replace(/\n/g, " ");
+    const version = merged.match(/nginx\/([^\s]+)/i)?.[1] || "-";
+    const openssl = merged.match(/OpenSSL\s+([^\s]+)/i)?.[1] || "-";
+    const built = merged.match(/built\s+with\s+([^)]+)\)/i)?.[1] || "-";
+    return { headers: ["Nginx版本", "OpenSSL", "构建信息"], rows: [[version, openssl, built]] };
+  },
+  nginxConfig: (output) => {
+    const lines = splitNonEmptyLines(output);
+    const includeCount = lines.filter((l) => /^\s*include\s+/i.test(l)).length;
+    const serverCount = lines.filter((l) => /\bserver\s*\{/i.test(l)).length;
+    const listenPorts = Array.from(new Set(lines.map((l) => l.match(/\blisten\s+(\d+)/)?.[1]).filter(Boolean))).join(",") || "-";
+    const serverNames = lines.filter((l) => /\bserver_name\b/i.test(l)).slice(0, 5).map((l) => l.replace(/.*server_name\s+/i, "").replace(/;$/, "")).join(" | ") || "-";
+    return { headers: ["Server块数量", "Listen端口", "Include条数", "示例域名"], rows: [[String(serverCount), listenPorts, String(includeCount), serverNames]] };
+  },
+  tlsCert: (output) => {
+    const lines = splitNonEmptyLines(output);
+    const notBefore = lines.find((l) => /notBefore=/i.test(l))?.replace(/notBefore=/i, "") || "-";
+    const notAfter = lines.find((l) => /notAfter=/i.test(l))?.replace(/notAfter=/i, "") || "-";
+    const issuer = lines.find((l) => /^issuer=/i.test(l))?.replace(/^issuer=/i, "") || "-";
+    const subject = lines.find((l) => /^subject=/i.test(l))?.replace(/^subject=/i, "") || "-";
+    const serial = lines.find((l) => /^serial=/i.test(l))?.replace(/^serial=/i, "") || "-";
+    const certPath = lines.find((l) => /^CERT_PATH:/i.test(l))?.replace(/^CERT_PATH:/i, "") || "-";
+    return { headers: ["证书路径", "主题", "签发者", "生效时间", "到期时间", "序列号"], rows: [[certPath, subject, issuer, notBefore, notAfter, serial]] };
+  },
+  webAccessLog: (output) => {
+    const lines = splitNonEmptyLines(output);
+    const rows = lines.map((line) => {
+      const ip = line.match(/^(\S+)/)?.[1] || "-";
+      const time = line.match(/\[([^\]]+)\]/)?.[1] || "-";
+      const req = line.match(/"([A-Z]+)\s+([^"\s]+)[^"]*"/);
+      const status = line.match(/"\s+(\d{3})\s+/)?.[1] || "-";
+      return [time, ip, req?.[1] || "-", req?.[2] || "-", status, line];
+    });
+    return { headers: ["时间", "来源IP", "方法", "路径", "状态码", "原始行"], rows };
+  },
+  packageList: (output) => {
+    const lines = splitNonEmptyLines(output);
+    const rows = lines.map((line) => {
+      if (/^ii\s+/.test(line)) {
+        const parts = line.split(/\s+/);
+        return [parts[1] || "-", parts[2] || "-", "dpkg", line];
+      }
+      const rpm = line.match(/^([^-]+)-([0-9][^-]*)/);
+      if (rpm) return [rpm[1], rpm[2], "rpm", line];
+      return [line, "-", "unknown", line];
+    });
+    return { headers: ["包名", "版本", "来源", "原始"], rows };
+  },
+  serviceStatus: (output) => {
+    const lines = splitNonEmptyLines(output);
+    const rows = lines.map((line) => {
+      const svc = line.split(/\s+/)[0] || "-";
+      const enabled = /\benabled\b/i.test(line) || /\bon\b/i.test(line) ? "是" : "否";
+      return [svc, enabled, line];
+    });
+    return { headers: ["服务", "开机启动", "原始"], rows };
+  },
+  dbSlowLog: (output) => {
+    const lines = splitNonEmptyLines(output);
+    const rows = lines.map((line) => {
+      const isSlow = /Query_time:\s*[\d.]+|slow/i.test(line);
+      const isErr = /error|fatal|panic|deadlock/i.test(line);
+      return [isErr ? "错误" : isSlow ? "慢查询" : "事件", line];
+    });
+    return { headers: ["类型", "详情"], rows };
+  },
+  dbPermissionMatrix: (output) => {
+    const lines = splitNonEmptyLines(output);
+    let engine = "unknown";
+    const rows: string[][] = [];
+    for (const line of lines) {
+      if (/^\[MySQL\]/i.test(line)) {
+        engine = "MySQL";
+        continue;
+      }
+      if (/^\[PostgreSQL\]/i.test(line)) {
+        engine = "PostgreSQL";
+        continue;
+      }
+      if (/^\[Redis\]/i.test(line)) {
+        engine = "Redis";
+        continue;
+      }
+      const parts = line.split(/[|\s]+/).filter(Boolean);
+      rows.push([engine, parts.slice(0, 4).join(" | ") || line]);
+    }
+    return { headers: ["引擎", "权限信息"], rows };
+  },
+  dockerInfo: (output) => {
+    const lines = splitNonEmptyLines(output);
+    const pick = (key: string) => lines.find((l) => l.toLowerCase().startsWith(`${key.toLowerCase()}:`))?.split(":").slice(1).join(":").trim() || "-";
+    return {
+      headers: ["服务器版本", "存储驱动", "日志驱动", "CPU核数", "总内存"],
+      rows: [[pick("Server Version"), pick("Storage Driver"), pick("Logging Driver"), pick("CPUs"), pick("Total Memory")]],
+    };
+  },
+  dockerPrivileged: (output) => {
+    const lines = splitNonEmptyLines(output);
+    const rows = lines.map((line) => {
+      const parts = line.split("|");
+      const name = parts[0] || "-";
+      const privileged = parts[1] === "true" ? "是" : "否";
+      const networkMode = parts[2] || "-";
+      const pidMode = parts[3] || "-";
+      const userns = parts[4] || "-";
+      const capAdd = (parts[5] || "").replace(/[\[\]]/g, "") || "-";
+      return [name, privileged, networkMode, pidMode, userns, capAdd];
+    });
+    return { headers: ["容器", "特权模式", "网络模式", "PID模式", "Userns", "附加能力"], rows };
+  },
+  k8sEvents: (output) => {
+    const lines = splitNonEmptyLines(output).filter((l) => !/^NAMESPACE\s+/i.test(l));
+    const rows = lines.map((line) => {
+      const parts = line.split(/\s+/);
+      return [parts[0] || "-", parts[1] || "-", parts[2] || "-", parts[3] || "-", parts.slice(4).join(" ") || "-"];
+    });
+    return { headers: ["命名空间", "最近时间", "类型", "对象", "信息"], rows };
+  },
+  k8sRbac: (output) => {
+    const lines = splitNonEmptyLines(output).filter((l) => !/^NAMESPACE\s+/i.test(l));
+    const rows = lines.map((line) => {
+      const parts = line.split(/\s+/);
+      return [parts[0] || "-", parts[1] || "-", parts[2] || "-", parts.slice(3).join(" ") || "-"];
+    });
+    return { headers: ["命名空间", "类型", "名称", "角色或详情"], rows };
   },
   raw: (output) => output,
 };
@@ -291,6 +876,102 @@ function RawOutputDisplay({ value, language }: { value: string; language: Langua
   );
 }
 
+function SecurityLogDisplay({ data, language }: { data: SecurityLogData; language: Language }) {
+  const [wrapMode, setWrapMode] = useState(false);
+  const statCards =
+    data.logKind === "login_success" || data.logKind === "login_failed"
+      ? [
+          { labelZh: "总事件", labelEn: "Total", value: data.stats.total, style: "border-slate-200 bg-slate-50 text-slate-700" },
+          { labelZh: "成功", labelEn: "Success", value: data.stats.success, style: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+          { labelZh: "失败", labelEn: "Failed", value: data.stats.failed, style: "border-red-200 bg-red-50 text-red-700" },
+          { labelZh: "异常", labelEn: "Warnings", value: data.stats.warn, style: "border-amber-200 bg-amber-50 text-amber-700" },
+          { labelZh: "来源IP数", labelEn: "Source IPs", value: data.stats.uniqueSources, style: "border-blue-200 bg-blue-50 text-blue-700" },
+        ]
+      : [
+          { labelZh: "总事件", labelEn: "Total", value: data.stats.total, style: "border-slate-200 bg-slate-50 text-slate-700" },
+          { labelZh: "错误", labelEn: "Errors", value: data.stats.failed, style: "border-red-200 bg-red-50 text-red-700" },
+          { labelZh: "告警", labelEn: "Warnings", value: data.stats.warn, style: "border-amber-200 bg-amber-50 text-amber-700" },
+          { labelZh: "信息", labelEn: "Info", value: data.stats.info, style: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+          { labelZh: "来源IP数", labelEn: "Source IPs", value: data.stats.uniqueSources, style: "border-blue-200 bg-blue-50 text-blue-700" },
+        ];
+
+  const statusStyle: Record<SecurityLogStatus, string> = {
+    success: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    failed: "bg-red-50 text-red-700 border-red-200",
+    warn: "bg-amber-50 text-amber-700 border-amber-200",
+    info: "bg-slate-100 text-slate-700 border-slate-200",
+  };
+
+  const statusLabel = (status: SecurityLogStatus) => {
+    if (language === "zh") {
+      if (status === "success") return "成功";
+      if (status === "failed") return "失败";
+      if (status === "warn") return "异常";
+      return "信息";
+    }
+    if (status === "success") return "Success";
+    if (status === "failed") return "Failed";
+    if (status === "warn") return "Warning";
+    return "Info";
+  };
+
+  return (
+    <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50">
+      <div className="px-3 py-2 border-b border-slate-200 bg-white flex items-center justify-between">
+        <span className="text-xs text-slate-500">
+          {language === "zh" ? data.title : "Security Audit Summary"}
+        </span>
+        <button
+          onClick={() => setWrapMode((v) => !v)}
+          className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-xs ${
+            wrapMode
+              ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+              : "bg-white text-slate-600 border-slate-200"
+          }`}
+        >
+          <WrapText size={12} />
+          {language === "zh" ? "细节换行" : "Wrap Detail"}
+        </button>
+      </div>
+      <div className="p-3 grid grid-cols-2 lg:grid-cols-5 gap-2 border-b border-slate-200 bg-white">
+        {statCards.map((card, index) => (
+          <div key={index} className={`rounded-lg border px-3 py-2 ${card.style}`}>
+            <div className="text-[10px] opacity-90">{language === "zh" ? card.labelZh : card.labelEn}</div>
+            <div className="text-base font-semibold">{card.value}</div>
+          </div>
+        ))}
+      </div>
+      <div className="max-h-80 overflow-auto custom-scrollbar p-3 space-y-2">
+        {data.rows.length === 0 && (
+          <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">
+            {language === "zh" ? "当前未发现相关日志事件" : "No matching log events found"}
+          </div>
+        )}
+        {data.rows.map((row, index) => (
+          <div key={`${row.time}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <span className="text-xs text-slate-500 font-mono">{row.time}</span>
+              <span className={`px-2 py-0.5 rounded-full border text-[10px] ${statusStyle[row.status]}`}>
+                {statusLabel(row.status)}
+              </span>
+              <span className="text-xs text-slate-700">
+                {language === "zh" ? `操作者: ${row.actor}` : `Actor: ${row.actor}`}
+              </span>
+              <span className="text-xs text-slate-700">
+                {language === "zh" ? `来源: ${row.source}` : `Source: ${row.source}`}
+              </span>
+            </div>
+            <div className="text-sm text-slate-800 font-medium mb-1">{row.action}</div>
+            <div className={`text-xs text-slate-600 font-mono ${wrapMode ? "whitespace-pre-wrap break-all" : "truncate"}`}>
+              {row.detail}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function StatusBadge({ status, language }: { status: "ok" | "error" | "loading", language: Language }) {
   const t = translations[language];
   if (status === "loading") {
@@ -411,8 +1092,12 @@ function CommandCard({
         content = (
           <RawOutputDisplay value={parsedData} language={language} />
         );
-      } else {
+      } else if (isSecurityLogData(parsedData)) {
+        content = <SecurityLogDisplay data={parsedData} language={language} />;
+      } else if (isTableData(parsedData)) {
         content = <TableDisplay data={parsedData} language={language} />;
+      } else {
+        content = <RawOutputDisplay value={data?.stdout || data?.stderr || ""} language={language} />;
       }
     } else if (data?.stderr) {
       const isNotFoundError =
@@ -502,8 +1187,12 @@ function CommandCard({
         content = (
           <RawOutputDisplay value={parsedData} language={language} />
         );
-      } else {
+      } else if (isSecurityLogData(parsedData)) {
+        content = <SecurityLogDisplay data={parsedData} language={language} />;
+      } else if (isTableData(parsedData)) {
         content = <TableDisplay data={parsedData} language={language} />;
+      } else {
+        content = <RawOutputDisplay value={data?.stdout || ""} language={language} />;
       }
     }
   }
@@ -514,7 +1203,7 @@ function CommandCard({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       whileHover={{ y: -2 }}
-      className={`bg-white/85 backdrop-blur-xl rounded-3xl shadow-[0_8px_30px_rgba(15,23,42,0.06)] border border-slate-200/70 overflow-visible relative hover:shadow-[0_12px_36px_rgba(14,165,233,0.12)] hover:border-sky-200/80 transition-all duration-300 flex flex-col group overflow-hidden ${
+      className={`bg-white/85 backdrop-blur-xl rounded-3xl shadow-[0_8px_30px_rgba(15,23,42,0.06)] border border-slate-200/70 overflow-visible relative z-0 hover:z-30 hover:shadow-[0_12px_36px_rgba(14,165,233,0.12)] hover:border-sky-200/80 transition-all duration-300 flex flex-col group ${
         className || ""
       }`}
       onMouseEnter={handleMouseEnter}
@@ -618,7 +1307,8 @@ export default function Dashboard({
   const isDatabaseAgent = activeTab === "agent-database";
   const isResponsePanel = activeTab === "response";
   const isTerminal = activeTab === "terminal";
-  const isMetrics = !isGeneralAgent && !isAgentPanel && !isContextPanel && !isDatabaseAgent && !isResponsePanel && !isTerminal;
+  const isPentest = activeTab === "pentest";
+  const isMetrics = !isGeneralAgent && !isAgentPanel && !isContextPanel && !isDatabaseAgent && !isResponsePanel && !isTerminal && !isPentest;
 
   // Filter commands
   const tabCommands = commands.filter((c) => c.category === activeTab);
@@ -725,6 +1415,10 @@ export default function Dashboard({
         <div className="flex-1 bg-black/80 backdrop-blur-md rounded-xl overflow-hidden border border-white/10 shadow-2xl relative z-10 ring-1 ring-white/5">
           <TerminalXterm onClose={() => {}} language={language} />
         </div>
+      </div>
+
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isPentest ? 'hidden' : ''}`}>
+        <PentestPanel language={language} />
       </div>
 
       {/* Main Dashboard Metrics View */}

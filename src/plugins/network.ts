@@ -48,7 +48,8 @@ export const networkCommands: PluginCommand[] = [
     description: 'All TCP/UDP connections with processes', 
     cn_description: '所有 TCP/UDP 连接及对应进程快照', 
     command: "ss -tunap 2>/dev/null", 
-    icon: Server 
+    icon: Server,
+    parserType: 'ssConnections'
   },
   { 
     id: 'route_snapshot', 
@@ -58,7 +59,8 @@ export const networkCommands: PluginCommand[] = [
     description: 'Kernel routing table snapshot', 
     cn_description: '内核路由表快照', 
     command: "ip route show table all", 
-    icon: Server 
+    icon: Server,
+    parserType: 'routeSnapshot'
   },
   { 
     id: 'neighbor_snapshot', 
@@ -68,7 +70,8 @@ export const networkCommands: PluginCommand[] = [
     description: 'ARP/NDP neighbor cache snapshot', 
     cn_description: 'ARP/NDP 邻居缓存快照', 
     command: "ip neigh show", 
-    icon: Server 
+    icon: Server,
+    parserType: 'neighborSnapshot'
   },
   { 
     id: 'firewall_rules_snapshot', 
@@ -78,18 +81,8 @@ export const networkCommands: PluginCommand[] = [
     description: 'iptables/nftables/ufw rules snapshot', 
     cn_description: 'iptables/nftables/ufw 规则快照', 
     command: "iptables -S 2>/dev/null || nft list ruleset 2>/dev/null || ufw status verbose 2>/dev/null || echo 'No firewall rules detected'", 
-    icon: Server 
-  },
-  { 
-    id: 'network_traffic', 
-    category: 'network', 
-    name: 'Network Traffic', 
-    cn_name: '实时网络流量', 
-    description: 'Real-time RX/TX network traffic', 
-    cn_description: '实时网络接收(RX)与发送(TX)流量监控', 
-    // 获取主要网卡（排除 lo）的流量统计
-    command: "grep -v 'lo' /proc/net/dev | awk 'NR>2 {print $1, $2, $10}' | head -n 1", 
-    icon: Server 
+    icon: Server,
+    parserType: 'firewallRules'
   },
   { 
     id: 'dns_config', 
@@ -99,6 +92,7 @@ export const networkCommands: PluginCommand[] = [
     description: 'DNS nameserver configuration', 
     cn_description: '系统的 DNS 域名服务器配置', 
     command: "cat /etc/resolv.conf | grep nameserver", 
-    icon: Server 
+    icon: Server,
+    parserType: 'dnsConfig'
   }
 ];

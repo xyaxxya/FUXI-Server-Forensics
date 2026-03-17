@@ -1,32 +1,218 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Globe, Bot, Settings, Sparkles, ChevronDown } from "lucide-react";
+import { X, Globe, Bot, Settings, Sparkles, ChevronDown, FolderSearch, LoaderCircle, RotateCw, BadgeCheck } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { translations, Language } from "../translations";
 import { AISettings, DEFAULT_SETTINGS } from "../lib/ai";
+import { loadPentestToolPaths, savePentestToolPaths } from "../lib/pentestSettings";
+import { APP_VERSION } from "../config/app";
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialActiveTab?: "general" | "tools" | "updates" | "ai";
   language: Language;
   onLanguageChange: (lang: Language) => void;
   aiSettings: AISettings;
   onAiSettingsChange: (settings: AISettings) => void;
   isStarryMode: boolean;
   onStarryModeChange: (enabled: boolean) => void;
+  initialUpdateInfo?: UpdateCheckResult | null;
+}
+
+interface UpdateCheckResult {
+  has_update: boolean;
+  current_version: string;
+  latest_version: string;
+  download_url: string;
+  package_sha256: string;
+  manifest_signature: string;
+  notes: string;
+  min_supported_version: string;
+  force_update: boolean;
+  channel: string;
+  message: string;
+}
+
+interface UpdateProgressPayload {
+  stage: string;
+  percentage: number;
+  downloaded: number;
+  total: number;
+  message: string;
 }
 
 export default function SettingsModal({
   isOpen,
   onClose,
+  initialActiveTab = "general",
   language,
   onLanguageChange,
   aiSettings,
   onAiSettingsChange,
   isStarryMode,
   onStarryModeChange,
+  initialUpdateInfo = null,
 }: SettingsModalProps) {
   const t = translations[language];
-  const [activeTab, setActiveTab] = useState<"general" | "ai">("general");
+  const [activeTab, setActiveTab] = useState<"general" | "tools" | "updates" | "ai">(initialActiveTab);
+  const [pentestPaths, setPentestPaths] = useState(() => loadPentestToolPaths());
+  const [updateLoading, setUpdateLoading] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState("");
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(initialUpdateInfo);
+  const [updateProgress, setUpdateProgress] = useState<UpdateProgressPayload | null>(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
+  const [showLatestDialog, setShowLatestDialog] = useState(false);
+  const [latestDialogText, setLatestDialogText] = useState("");
+
+  useEffect(() => {
+    if (initialUpdateInfo) {
+      setUpdateInfo(initialUpdateInfo);
+      if (initialUpdateInfo.has_update && initialUpdateInfo.latest_version) {
+        setUpdateMessage(initialUpdateInfo.message || `发现新版本 v${initialUpdateInfo.latest_version}`);
+      } else {
+        setUpdateMessage(`当前已是最新版本 v${APP_VERSION}`);
+      }
+    }
+  }, [initialUpdateInfo]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setActiveTab(initialActiveTab);
+  }, [isOpen, initialActiveTab]);
+
+  useEffect(() => {
+    let unlisten: UnlistenFn | null = null;
+    listen<UpdateProgressPayload>("client-update-progress", (event) => {
+      setUpdateProgress(event.payload);
+      setUpdateMessage(event.payload.message || "");
+      if (event.payload.stage === "cancelled") {
+        setIsUpdating(false);
+      }
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, []);
+
+  const updatePentestPath = (
+    key: "fscan" | "fscanExe" | "kscan" | "kscanExe",
+    value: string
+  ) => {
+    const next = { ...pentestPaths, [key]: value };
+    setPentestPaths(next);
+    savePentestToolPaths(next);
+  };
+
+  const showLatestVersionDialog = () => {
+    const text =
+      language === "zh"
+        ? `当前已是最新版本 v${APP_VERSION}`
+        : `You are already on the latest version v${APP_VERSION}`;
+    setLatestDialogText(text);
+    setShowLatestDialog(true);
+  };
+
+  const checkUpdate = async () => {
+    if (isUpdating) return;
+    setIsCheckingUpdate(true);
+    setIsRestarting(false);
+    setUpdateLoading(true);
+    setUpdateMessage("");
+    setUpdateProgress(null);
+    try {
+      const data = await invoke<UpdateCheckResult>("check_client_update", {
+        currentVersion: APP_VERSION,
+      });
+      setUpdateInfo(data);
+      if (data.has_update && data.latest_version) {
+        setUpdateMessage(`发现新版本 v${data.latest_version}，可立即更新`);
+      } else {
+        setUpdateMessage(`当前已是最新版本 v${APP_VERSION}`);
+        showLatestVersionDialog();
+      }
+    } catch (e: any) {
+      setUpdateMessage(`检查更新失败: ${e?.message || e?.toString()}`);
+    } finally {
+      setIsCheckingUpdate(false);
+      setUpdateLoading(false);
+    }
+  };
+
+  const openUpdateUrl = async () => {
+    if (isCheckingUpdate) return;
+    setIsRestarting(false);
+    setIsUpdating(true);
+    setUpdateLoading(true);
+    setUpdateProgress({
+      stage: "download",
+      percentage: 0,
+      downloaded: 0,
+      total: 0,
+      message: "准备下载更新包",
+    });
+    let shouldShowRestart = false;
+    try {
+      const checked = await invoke<UpdateCheckResult>("check_client_update", {
+        currentVersion: APP_VERSION,
+      });
+      setUpdateInfo(checked);
+      let target = checked;
+      if (!target?.download_url || !target?.latest_version || !target?.has_update) {
+        setUpdateMessage(`当前已是最新版本 v${APP_VERSION}`);
+        showLatestVersionDialog();
+        setUpdateProgress(null);
+        setIsUpdating(false);
+        return;
+      }
+      await invoke<string>("perform_client_update", {
+        downloadUrl: target.download_url,
+        version: target.latest_version,
+        packageSha256: target.package_sha256,
+      });
+      shouldShowRestart = true;
+      setIsRestarting(true);
+      setUpdateProgress({
+        stage: "restart",
+        percentage: 100,
+        downloaded: updateProgress?.downloaded || 0,
+        total: updateProgress?.total || 0,
+        message: "更新完成，正在退出并重启",
+      });
+      setUpdateMessage("更新完成，正在优雅重启，请稍候...");
+    } catch (e: any) {
+      setIsRestarting(false);
+      setUpdateMessage(`更新失败: ${e?.message || e?.toString()}`);
+    } finally {
+      setIsUpdating(false);
+      if (!shouldShowRestart) {
+        setIsRestarting(false);
+      }
+      setUpdateLoading(false);
+    }
+  };
+
+  const cancelUpdate = async () => {
+    if (!isUpdating) return;
+    try {
+      await invoke<string>("cancel_client_update");
+      setUpdateMessage("已取消更新下载");
+      setIsRestarting(false);
+      setUpdateProgress(null);
+    } catch (e: any) {
+      setUpdateMessage(`取消更新失败: ${e?.message || e?.toString()}`);
+    } finally {
+      setIsUpdating(false);
+      setUpdateLoading(false);
+    }
+  };
 
   // Local state for AI settings to avoid constant re-renders/writes during typing
   // We commit changes only when specific fields blur or when saving? 
@@ -75,6 +261,17 @@ export default function SettingsModal({
                 {t.general_settings}
               </button>
               <button
+                onClick={() => setActiveTab("tools")}
+                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium transition-all ${
+                  activeTab === "tools"
+                    ? "bg-emerald-50 text-emerald-600 shadow-sm ring-1 ring-emerald-100"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+              >
+                <FolderSearch size={20} />
+                {language === "zh" ? "渗透工具" : "Pentest Tools"}
+              </button>
+              <button
                 onClick={() => setActiveTab("ai")}
                 className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium transition-all ${
                   activeTab === "ai"
@@ -84,6 +281,17 @@ export default function SettingsModal({
               >
                 <Bot size={20} />
                 {t.ai_settings}
+              </button>
+              <button
+                onClick={() => setActiveTab("updates")}
+                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium transition-all ${
+                  activeTab === "updates"
+                    ? "bg-orange-50 text-orange-600 shadow-sm ring-1 ring-orange-100"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+              >
+                <Sparkles size={20} />
+                {language === "zh" ? "客户端更新" : "Client Updates"}
               </button>
             </div>
 
@@ -158,6 +366,237 @@ export default function SettingsModal({
                             />
                             <div className="w-14 h-8 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-purple-600"></div>
                          </label>
+                      </div>
+                    </div>
+
+                  </div>
+                )}
+
+                {activeTab === "tools" && (
+                  <div className="space-y-8 animate-fade-in">
+                    <div>
+                      <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                        <FolderSearch className="text-emerald-500" size={24} />
+                        {language === "zh" ? "渗透工具路径" : "Pentest Tool Paths"}
+                      </h3>
+                      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700 mb-2">fscan (Linux)</label>
+                          <input
+                            type="text"
+                            value={pentestPaths.fscan}
+                            onChange={(e) => updatePentestPath("fscan", e.target.value)}
+                            placeholder={language === "zh" ? "例如: D:\\tools\\fscan" : "e.g. D:\\tools\\fscan"}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all font-mono text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700 mb-2">fscan.exe (Windows)</label>
+                          <input
+                            type="text"
+                            value={pentestPaths.fscanExe}
+                            onChange={(e) => updatePentestPath("fscanExe", e.target.value)}
+                            placeholder={language === "zh" ? "例如: D:\\tools\\fscan.exe" : "e.g. D:\\tools\\fscan.exe"}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all font-mono text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700 mb-2">kscan (Linux)</label>
+                          <input
+                            type="text"
+                            value={pentestPaths.kscan}
+                            onChange={(e) => updatePentestPath("kscan", e.target.value)}
+                            placeholder={language === "zh" ? "例如: D:\\tools\\kscan" : "e.g. D:\\tools\\kscan"}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all font-mono text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700 mb-2">kscan.exe (Windows)</label>
+                          <input
+                            type="text"
+                            value={pentestPaths.kscanExe}
+                            onChange={(e) => updatePentestPath("kscanExe", e.target.value)}
+                            placeholder={language === "zh" ? "例如: D:\\tools\\kscan.exe" : "e.g. D:\\tools\\kscan.exe"}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all font-mono text-sm"
+                          />
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {language === "zh"
+                            ? "路径会自动保存到本地，上传 fscan/kscan 时会按目标系统自动选择对应文件。"
+                            : "Paths are persisted locally and auto-selected by target OS during upload."}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === "updates" && (
+                  <div className="space-y-8 animate-fade-in">
+                    <div>
+                      <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                        <Sparkles className="text-orange-500" size={24} />
+                        {language === "zh" ? "客户端更新" : "Client Updates"}
+                      </h3>
+                      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-slate-500">{language === "zh" ? "当前版本" : "Current Version"}</span>
+                          <span className="font-semibold text-slate-800">v{APP_VERSION}</span>
+                        </div>
+                        <div className="flex gap-3">
+                          <button
+                            onClick={checkUpdate}
+                            disabled={updateLoading || isUpdating || isRestarting}
+                            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium disabled:opacity-70"
+                          >
+                            {isCheckingUpdate
+                              ? language === "zh"
+                                ? "检查中"
+                                : "Checking"
+                              : language === "zh"
+                              ? "检查更新"
+                              : "Check Update"}
+                          </button>
+                          <button
+                            onClick={openUpdateUrl}
+                            disabled={updateLoading || isCheckingUpdate || isRestarting}
+                            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-70"
+                          >
+                            {language === "zh" ? "立即更新" : "Update Now"}
+                          </button>
+                          <AnimatePresence>
+                            {isUpdating && (
+                              <motion.button
+                                initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: -6, scale: 0.96 }}
+                                onClick={cancelUpdate}
+                                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium"
+                              >
+                                {language === "zh" ? "取消下载" : "Cancel Download"}
+                              </motion.button>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                        <AnimatePresence>
+                          {isCheckingUpdate && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 8 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -8 }}
+                              className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                            >
+                              <div className="flex items-center gap-3 text-sm text-slate-600">
+                                <motion.div
+                                  animate={{ rotate: 360 }}
+                                  transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
+                                >
+                                  <LoaderCircle size={18} className="text-blue-500" />
+                                </motion.div>
+                                <motion.span
+                                  animate={{ opacity: [0.55, 1, 0.55] }}
+                                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                                >
+                                  正在连接更新服务并检查新版本...
+                                </motion.span>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                        {(isUpdating || isRestarting) && updateProgress && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+                          >
+                            <div className="mb-2 flex items-center justify-between text-xs text-slate-600">
+                              <span className="flex items-center gap-2">
+                                <motion.span
+                                  animate={{ rotate: isRestarting ? [0, 0] : [0, 360] }}
+                                  transition={{ duration: 1.3, repeat: Infinity, ease: "linear" }}
+                                >
+                                  <RotateCw size={14} className={isRestarting ? "text-emerald-500" : "text-blue-500"} />
+                                </motion.span>
+                                {updateProgress?.message || "准备更新..."}
+                              </span>
+                              <span>{Math.max(0, Math.min(100, updateProgress?.percentage || 0)).toFixed(1)}%</span>
+                            </div>
+                            <div className="relative h-3 w-full overflow-hidden rounded-full bg-slate-200">
+                              <motion.div
+                                className="h-full rounded-full"
+                                style={{
+                                  width: `${Math.max(2, Math.min(100, updateProgress?.percentage || 0))}%`,
+                                  background:
+                                    "linear-gradient(90deg, rgba(59,130,246,1) 0%, rgba(99,102,241,1) 38%, rgba(168,85,247,1) 68%, rgba(236,72,153,1) 100%)",
+                                  backgroundSize: "240% 100%",
+                                }}
+                                animate={{ backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"] }}
+                                transition={{ duration: 1.4, repeat: Infinity, ease: "linear" }}
+                              />
+                              <motion.div
+                                className="absolute top-0 h-full w-14 -translate-x-16 bg-white/40 blur-[4px]"
+                                animate={{ x: ["0%", "560%"] }}
+                                transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
+                              />
+                            </div>
+                            <div className="mt-2 text-[11px] text-slate-500">
+                              {updateProgress.total > 0
+                                ? `${(updateProgress.downloaded / 1024 / 1024).toFixed(2)} MB / ${(updateProgress.total / 1024 / 1024).toFixed(2)} MB`
+                                : `${(updateProgress.downloaded / 1024 / 1024).toFixed(2)} MB`}
+                            </div>
+                          </motion.div>
+                        )}
+                        <AnimatePresence>
+                          {isRestarting && (
+                            <motion.div
+                              initial={{ opacity: 0, scale: 0.96, y: 8 }}
+                              animate={{ opacity: 1, scale: 1, y: 0 }}
+                              exit={{ opacity: 0, scale: 0.96, y: -8 }}
+                              className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"
+                            >
+                              <div className="flex items-center gap-3 text-emerald-700 text-sm">
+                                <motion.div
+                                  className="h-2.5 w-2.5 rounded-full bg-emerald-500"
+                                  animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }}
+                                  transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
+                                />
+                                <span>更新包已完成部署，客户端正在退出并平滑重启...</span>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                        {updateInfo?.latest_version && (
+                          <div className="text-sm text-slate-600">
+                            {language === "zh" ? "最新版本" : "Latest Version"}:{" "}
+                            <span className="font-semibold text-slate-800">{updateInfo.latest_version}</span>
+                          </div>
+                        )}
+                        {updateInfo && (
+                          <div className="text-xs text-slate-500 space-y-1">
+                            <div>
+                              {language === "zh" ? "渠道" : "Channel"}: {updateInfo.channel || "stable"}
+                            </div>
+                            <div>
+                              {language === "zh" ? "最小支持版本" : "Min Supported"}:{" "}
+                              {updateInfo.min_supported_version || "-"}
+                            </div>
+                            <div>
+                              {language === "zh" ? "更新策略" : "Policy"}:{" "}
+                              {updateInfo.force_update
+                                ? language === "zh"
+                                  ? "强制更新"
+                                  : "Force Update"
+                                : language === "zh"
+                                ? "可选更新"
+                                : "Optional"}
+                            </div>
+                          </div>
+                        )}
+                        {updateInfo?.notes && (
+                          <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-sm text-slate-600 whitespace-pre-wrap">
+                            {updateInfo.notes}
+                          </div>
+                        )}
+                        {updateMessage && <div className="text-sm text-slate-600">{updateMessage}</div>}
                       </div>
                     </div>
                   </div>
@@ -379,6 +818,60 @@ export default function SettingsModal({
             </div>
           </div>
         </motion.div>
+        <AnimatePresence>
+          {showLatestDialog && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/45 backdrop-blur-sm p-4"
+              onClick={() => setShowLatestDialog(false)}
+            >
+              <motion.div
+                initial={{ opacity: 0, y: 24, scale: 0.94 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 16, scale: 0.96 }}
+                transition={{ type: "spring", stiffness: 320, damping: 24 }}
+                className="relative w-full max-w-md overflow-hidden rounded-3xl border border-sky-100 bg-white shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="absolute -top-16 -right-16 h-36 w-36 rounded-full bg-sky-200/40 blur-2xl" />
+                <div className="absolute -bottom-12 -left-12 h-28 w-28 rounded-full bg-indigo-200/40 blur-2xl" />
+                <div className="relative p-6">
+                  <div className="flex items-start justify-between">
+                    <motion.div
+                      className="h-12 w-12 rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-sky-500/30"
+                      animate={{ scale: [1, 1.06, 1] }}
+                      transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+                    >
+                      <BadgeCheck size={24} />
+                    </motion.div>
+                    <button
+                      onClick={() => setShowLatestDialog(false)}
+                      className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                  <div className="mt-4 text-lg font-bold text-slate-800">
+                    {language === "zh" ? "版本已是最新" : "Already Up To Date"}
+                  </div>
+                  <div className="mt-2 text-sm text-slate-600">
+                    {latestDialogText}
+                  </div>
+                  <div className="mt-5 flex justify-end">
+                    <button
+                      onClick={() => setShowLatestDialog(false)}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white text-sm font-medium shadow-lg shadow-sky-500/30 hover:shadow-sky-500/40"
+                    >
+                      {language === "zh" ? "知道了" : "Got It"}
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </AnimatePresence>
   );

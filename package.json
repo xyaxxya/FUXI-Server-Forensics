@@ -1,13 +1,14 @@
 {
   "name": "fuxi-server-forensics",
   "private": true,
-  "version": "1.2.1",
+  "version": "2.1.8",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "version:sync": "node scripts/sync-version.mjs",
+    "dev": "npm run version:sync && vite",
+    "build": "npm run version:sync && tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "npm run version:sync && tauri"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.18",

@@ -12,9 +12,39 @@ import { Language } from "./translations";
 import { CommandProvider, useCommandStore } from "./store/CommandContext";
 import { AISettings, DEFAULT_SETTINGS } from "./lib/ai";
 import StarrySkyBackground from "./components/StarrySkyBackground";
+import LicenseGate from "./components/LicenseGate";
+import { APP_VERSION } from "./config/app";
+
+interface LicenseStatus {
+  valid: boolean;
+  message: string;
+  machine_code: string;
+  expires_at?: number | null;
+  nickname?: string | null;
+  qq?: string | null;
+  avatar?: string | null;
+  license_plan?: string | null;
+  license_label?: string | null;
+}
+
+interface UpdateCheckResult {
+  has_update: boolean;
+  current_version: string;
+  latest_version: string;
+  download_url: string;
+  package_sha256: string;
+  manifest_signature: string;
+  notes: string;
+  min_supported_version: string;
+  force_update: boolean;
+  channel: string;
+  message: string;
+}
 
 function MainApp() {
   const [showIntro, setShowIntro] = useState(true);
+  const [introMinElapsed, setIntroMinElapsed] = useState(false);
+  const [introMaxElapsed, setIntroMaxElapsed] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [activeTab, setActiveTab] = useState("system");
   const [language, setLanguage] = useState<Language>('zh');
@@ -24,6 +54,13 @@ function MainApp() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [aiSettings, setAiSettings] = useState<AISettings>(DEFAULT_SETTINGS);
   const [isAiSettingsLoaded, setIsAiSettingsLoaded] = useState(false);
+  const [isLicensed, setIsLicensed] = useState(false);
+  const [isLicenseChecked, setIsLicenseChecked] = useState(false);
+  const [licenseStatus, setLicenseStatus] = useState<LicenseStatus | null>(null);
+  const [startupUpdateInfo, setStartupUpdateInfo] = useState<UpdateCheckResult | null>(null);
+  const [isStartupUpdateChecked, setIsStartupUpdateChecked] = useState(false);
+  const [showStartupUpdatePrompt, setShowStartupUpdatePrompt] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<"general" | "tools" | "updates" | "ai">("general");
   const [isStarryMode, setIsStarryMode] = useState(() => {
     const saved = localStorage.getItem("starry_mode");
     return saved ? JSON.parse(saved) : false;
@@ -78,12 +115,73 @@ function MainApp() {
     setIsAiSettingsLoaded(true);
   }, []);
 
+  useEffect(() => {
+    if (!isLicenseChecked) {
+      setIsStartupUpdateChecked(false);
+      return;
+    }
+    if (!isLicensed) {
+      setStartupUpdateInfo(null);
+      setShowStartupUpdatePrompt(false);
+      setIsStartupUpdateChecked(true);
+      return;
+    }
+    setIsStartupUpdateChecked(false);
+    invoke<UpdateCheckResult>("check_client_update", {
+      currentVersion: APP_VERSION,
+    })
+      .then((result) => {
+        setStartupUpdateInfo(result);
+        if (result.has_update && result.download_url) {
+          setShowStartupUpdatePrompt(true);
+        } else {
+          setShowStartupUpdatePrompt(false);
+        }
+      })
+      .catch(() => {
+        setStartupUpdateInfo(null);
+        setShowStartupUpdatePrompt(false);
+      })
+      .finally(() => {
+        setIsStartupUpdateChecked(true);
+      });
+  }, [isLicenseChecked, isLicensed]);
+
+  const handleStartupUpdateNow = async () => {
+    if (!startupUpdateInfo?.has_update) return;
+    setShowStartupUpdatePrompt(false);
+    setSettingsInitialTab("updates");
+    setShowSettingsModal(true);
+  };
+
   // Save AI settings when changed
   useEffect(() => {
     if (isAiSettingsLoaded) {
       localStorage.setItem("ai_settings", JSON.stringify(aiSettings));
     }
   }, [aiSettings, isAiSettingsLoaded]);
+
+  useEffect(() => {
+    invoke<LicenseStatus>("get_license_status")
+      .then((status) => {
+        setLicenseStatus(status);
+        setIsLicensed(!!status?.valid);
+      })
+      .catch(() => {
+        setLicenseStatus(null);
+        setIsLicensed(false);
+      })
+      .finally(() => setIsLicenseChecked(true));
+  }, []);
+
+  useEffect(() => {
+    const minTimer = window.setTimeout(() => setIntroMinElapsed(true), 1800);
+    const maxTimer = window.setTimeout(() => setIntroMaxElapsed(true), 12000);
+    return () => {
+      window.clearTimeout(minTimer);
+      window.clearTimeout(maxTimer);
+    };
+  }, []);
   
   const { fetchAll, clearData, disconnectSSH } = useCommandStore();
 
@@ -126,6 +224,18 @@ function MainApp() {
     setShowTaskModal(false);
   };
 
+  const openSettings = (tab: "general" | "tools" | "updates" | "ai" = "general") => {
+    setSettingsInitialTab(tab);
+    setShowSettingsModal(true);
+  };
+
+  const bootReady = introMaxElapsed || (introMinElapsed && isLicenseChecked && isStartupUpdateChecked);
+  const bootStatusText = !isLicenseChecked
+    ? "启动中：正在校验授权状态..."
+    : !isStartupUpdateChecked
+    ? "启动中：正在检查客户端更新..."
+    : "启动中：准备完成";
+
   return (
     <div className={`relative w-full h-screen overflow-hidden text-slate-800 font-sans selection:bg-sky-100 selection:text-sky-900 ${isStarryMode ? '' : 'bg-[#F8FAFC]'}`}>
       {isStarryMode ? (
@@ -144,7 +254,12 @@ function MainApp() {
       
       <AnimatePresence mode="wait">
         {showIntro ? (
-          <Intro key="intro" onComplete={() => setShowIntro(false)} />
+          <Intro
+            key="intro"
+            onComplete={() => setShowIntro(false)}
+            bootReady={bootReady}
+            bootStatusText={bootStatusText}
+          />
         ) : (
           <motion.div 
             key="main-app"
@@ -153,8 +268,25 @@ function MainApp() {
             transition={{ duration: 0.8, ease: "circOut" }}
             className="relative w-full h-full"
           >
-            {!isConnected ? (
-              <Login onLogin={handleLoginSuccess} />
+            {!isLicenseChecked ? (
+              <div className="h-full flex items-center justify-center text-slate-500">
+                正在检查授权...
+              </div>
+            ) : !isLicensed ? (
+              <LicenseGate
+                initialLicenseStatus={licenseStatus}
+                onAuthorized={(status) => {
+                  setLicenseStatus(status);
+                  setIsLicensed(true);
+                }}
+              />
+            ) : !isConnected ? (
+              <Login
+                onLogin={handleLoginSuccess}
+                licenseStatus={licenseStatus}
+                updateInfo={startupUpdateInfo}
+                onOpenUpdates={() => openSettings("updates")}
+              />
             ) : (
               <>
                 <div className="relative z-10 flex h-full p-2 gap-2">
@@ -173,6 +305,7 @@ function MainApp() {
                         onAddSession={() => setShowLoginModal(true)}
                         onDisconnect={handleDisconnect}
                         language={language}
+                        licenseStatus={licenseStatus}
                       />
                     </div>
                   </motion.div>
@@ -184,7 +317,7 @@ function MainApp() {
                        onTabChange={setActiveTab}
                        onDisconnect={() => handleDisconnect()}
                        language={language}
-                       onOpenSettings={() => setShowSettingsModal(true)}
+                       onOpenSettings={() => openSettings("general")}
                        onAddSession={() => setShowLoginModal(true)}
                        onToggleServerSidebar={() => setShowServerSidebar(prev => !prev)}
                      />
@@ -197,7 +330,7 @@ function MainApp() {
                       language={language}
                       onAddSession={() => setShowLoginModal(true)}
                       aiSettings={aiSettings}
-                      onOpenSettings={() => setShowSettingsModal(true)}
+                      onOpenSettings={() => openSettings("general")}
                     />
                   </main>
                 </div>
@@ -209,19 +342,6 @@ function MainApp() {
                   language={language}
                 />
 
-                {showSettingsModal && (
-                  <SettingsModal
-                    isOpen={showSettingsModal}
-                    onClose={() => setShowSettingsModal(false)}
-                    language={language}
-                    onLanguageChange={setLanguage}
-                    aiSettings={aiSettings}
-                    onAiSettingsChange={setAiSettings}
-                    isStarryMode={isStarryMode}
-                    onStarryModeChange={setIsStarryMode}
-                  />
-                )}
-
                 {/* Login Modal for adding new sessions */}
                 {isConnected && showLoginModal && (
                   <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm">
@@ -231,11 +351,61 @@ function MainApp() {
                           setShowLoginModal(false);
                         }} 
                         onClose={() => setShowLoginModal(false)}
+                        licenseStatus={licenseStatus}
+                        updateInfo={startupUpdateInfo}
+                        onOpenUpdates={() => openSettings("updates")}
                       />
                     </div>
                   </div>
                 )}
+
+                {showStartupUpdatePrompt && startupUpdateInfo?.has_update && (
+                  <div className="fixed right-6 top-6 z-[120] max-w-sm rounded-2xl border border-blue-200 bg-white shadow-2xl p-4">
+                    <div className="text-sm font-semibold text-slate-800">
+                      发现新版本 v{startupUpdateInfo.latest_version}
+                    </div>
+                    {startupUpdateInfo.notes && (
+                      <div className="mt-2 text-xs text-slate-600 whitespace-pre-wrap max-h-28 overflow-auto">
+                        {startupUpdateInfo.notes}
+                      </div>
+                    )}
+                    <div className="mt-3 flex gap-2">
+                      {!startupUpdateInfo.force_update && (
+                        <button
+                          onClick={() => setShowStartupUpdatePrompt(false)}
+                          className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs"
+                        >
+                          稍后
+                        </button>
+                      )}
+                      <button
+                        onClick={handleStartupUpdateNow}
+                        className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs"
+                      >
+                        去更新
+                      </button>
+                    </div>
+                    <div className="mt-2 text-[11px] text-slate-500">
+                      渠道 {startupUpdateInfo.channel || "stable"}
+                      {startupUpdateInfo.force_update ? " · 强制更新" : ""}
+                    </div>
+                  </div>
+                )}
               </>
+            )}
+            {showSettingsModal && (
+              <SettingsModal
+                isOpen={showSettingsModal}
+                onClose={() => setShowSettingsModal(false)}
+                language={language}
+                onLanguageChange={setLanguage}
+                aiSettings={aiSettings}
+                onAiSettingsChange={setAiSettings}
+                isStarryMode={isStarryMode}
+                onStarryModeChange={setIsStarryMode}
+                initialUpdateInfo={startupUpdateInfo}
+                initialActiveTab={settingsInitialTab}
+              />
             )}
           </motion.div>
         )}

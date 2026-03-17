@@ -3,7 +3,7 @@ import {
   Cpu, Network, Database, Container, Cloud, Terminal, 
   Shield, LayoutDashboard, ChevronDown, LogOut,
   Bot, GalleryVerticalEnd, Settings,
-  FileText, Sparkles, ScanLine
+  FileText, Sparkles, ScanLine, Crosshair
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { translations, Language } from '../translations';
@@ -74,6 +74,7 @@ const menuGroups: MenuGroup[] = [
     labelKey: 'tools',
     items: [
       { id: 'terminal', icon: Terminal, labelKey: 'terminal' },
+      { id: 'pentest', icon: Crosshair, labelKey: 'pentest' },
     ]
   }
 ];

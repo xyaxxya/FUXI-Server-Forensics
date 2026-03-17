@@ -37,7 +37,8 @@ export const systemCommands: PluginCommand[] = [
     description: 'Shows how long the system has been running', 
     cn_description: '显示系统自上次启动以来的运行时间', 
     command: 'uptime -p', 
-    icon: Activity 
+    icon: Activity,
+    parserType: 'uptimeHuman'
   },
   { 
     id: 'linux_release', 
@@ -47,7 +48,8 @@ export const systemCommands: PluginCommand[] = [
     description: 'Standard Linux Standard Base (LSB) release information', 
     cn_description: '标准的 LSB 发行版信息', 
     command: 'lsb_release -a 2>/dev/null', 
-    icon: Server 
+    icon: Server,
+    parserType: 'linuxRelease'
   },
   { 
     id: 'redhat_release', 
@@ -78,7 +80,8 @@ export const systemCommands: PluginCommand[] = [
     description: 'Recent reboot and shutdown records', 
     cn_description: '最近系统重启与关机记录', 
     command: "last -x | grep -E 'reboot|shutdown' | head -n 40", 
-    icon: Activity 
+    icon: Activity,
+    parserType: 'rebootHistory'
   },
   { 
     id: 'kernel_warning_log', 
@@ -98,7 +101,8 @@ export const systemCommands: PluginCommand[] = [
     description: 'System clock and NTP synchronization status', 
     cn_description: '系统时钟与 NTP 同步状态', 
     command: "timedatectl status || chronyc tracking || ntpq -pn", 
-    icon: Activity 
+    icon: Activity,
+    parserType: 'timeSync'
   },
   { 
     id: 'disk_usage', 
@@ -189,7 +193,8 @@ export const systemCommands: PluginCommand[] = [
     description: 'Total number of processes and their states', 
     cn_description: '进程总数及其状态分布', 
     command: "ps aux | wc -l && uptime | awk '{print $4, $5, $6}' && cat /proc/loadavg | awk '{print $4}'", 
-    icon: Activity 
+    icon: Activity,
+    parserType: 'processStats'
   },
   // 新增：网络接口流量
   { 
@@ -200,7 +205,8 @@ export const systemCommands: PluginCommand[] = [
     description: 'Network interface traffic statistics', 
     cn_description: '网络接口流量统计', 
     command: "ifconfig | grep -E 'RX packets|TX packets' | head -n 4", 
-    icon: Activity 
+    icon: Activity,
+    parserType: 'netTraffic'
   },
   // 新增：开机启动项
   { 
@@ -226,7 +232,7 @@ export const systemCommands: PluginCommand[] = [
     command: "who | awk '{print $1\"|\"$2\"|\"$3\" \"$4\"|\"$5}'", 
     icon: Server,
     parserType: 'simpleList',
-    parserArgs: ['th_user', 'th_terminal', 'th_time', 'th_ip_address']
+    parserArgs: ['用户', '终端', '登录时间', '来源']
   },
   // 新增：文件系统I/O统计
   { 
@@ -251,7 +257,8 @@ export const systemCommands: PluginCommand[] = [
     cn_description: '系统温度传感器数据（如果可用）', 
     command: "sensors 2>/dev/null || cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | awk '{printf \"%.1f C\\n\", $1/1000}' | head -n 5 || echo 'Temperature sensors not available'", 
     icon: Activity, 
-    checkExists: true 
+    checkExists: true,
+    parserType: 'temperature'
   },
   // 新增：文件打开数
   { 

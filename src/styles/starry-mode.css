@@ -30,12 +30,17 @@ body.starry-mode .bg-white,
 body.starry-mode .bg-white\/90,
 body.starry-mode .bg-white\/85,
 body.starry-mode .bg-white\/80,
+body.starry-mode .bg-white\/70,
 body.starry-mode .bg-white\/50,
 body.starry-mode .bg-slate-50\/80,
 body.starry-mode .bg-slate-50\/50,
 body.starry-mode .bg-slate-50 {
   background-color: var(--starry-surface-strong) !important;
   border-color: var(--starry-border) !important;
+}
+
+body.starry-mode .border-sky-100\/60 {
+  border-color: rgba(56, 189, 248, 0.28) !important;
 }
 
 body.starry-mode .text-slate-900,

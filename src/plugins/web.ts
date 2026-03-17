@@ -28,7 +28,9 @@ export const webCommands: PluginCommand[] = [
     cn_description: '宝塔面板配置的域名列表', 
     command: "if [ -f /www/server/panel/data/domain.conf ]; then cat /www/server/panel/data/domain.conf; else echo 'Baota Domains Not Detected' >&2; exit 1; fi", 
     icon: LayoutDashboard, 
-    checkExists: true 
+    checkExists: true,
+    parserType: 'simpleList',
+    parserArgs: ['域名']
   },
   { 
     id: 'bt_auth', 
@@ -39,7 +41,8 @@ export const webCommands: PluginCommand[] = [
     cn_description: '宝塔面板的基础认证设置', 
     command: "if [ -f /www/server/panel/config/basic_auth.json ]; then cat /www/server/panel/config/basic_auth.json; else echo 'Baota Basic Auth Not Detected' >&2; exit 1; fi", 
     icon: Lock, 
-    checkExists: true 
+    checkExists: true,
+    parserType: 'btAuth'
   },
   { 
     id: 'bt_limit', 
@@ -50,7 +53,9 @@ export const webCommands: PluginCommand[] = [
     cn_description: '宝塔面板配置的访问 IP 限制', 
     command: "if [ -f /www/server/panel/data/limitip.conf ]; then cat /www/server/panel/data/limitip.conf; else echo 'Baota IP Limit Not Detected' >&2; exit 1; fi", 
     icon: Shield, 
-    checkExists: true 
+    checkExists: true,
+    parserType: 'simpleList',
+    parserArgs: ['IP限制项']
   },
   { 
     id: 'bt_user', 
@@ -61,7 +66,8 @@ export const webCommands: PluginCommand[] = [
     cn_description: '宝塔面板的用户信息', 
     command: "if [ -f /www/server/panel/data/userInfo.json ]; then cat /www/server/panel/data/userInfo.json; else echo 'Baota User Info Not Detected' >&2; exit 1; fi", 
     icon: LayoutDashboard, 
-    checkExists: true 
+    checkExists: true,
+    parserType: 'btUser'
   },
   { 
     id: 'bt_backup', 
@@ -84,7 +90,8 @@ export const webCommands: PluginCommand[] = [
     cn_description: '已安装的 Nginx 软件包信息', 
     command: "if command -v rpm >/dev/null 2>&1 && rpm -qa | grep -q nginx; then rpm -qa | grep nginx; else echo 'Nginx Package Not Detected' >&2; exit 1; fi", 
     icon: Server, 
-    checkExists: true 
+    checkExists: true,
+    parserType: 'packageList'
   },
   { 
     id: 'nginx_info', 
@@ -95,7 +102,8 @@ export const webCommands: PluginCommand[] = [
     cn_description: 'Nginx 的版本与编译参数', 
     command: "if command -v nginx >/dev/null 2>&1; then nginx -V; else echo 'Nginx Not Detected' >&2; exit 1; fi", 
     icon: Server, 
-    checkExists: true 
+    checkExists: true,
+    parserType: 'nginxInfo'
   },
   { 
     id: 'nginx_conf', 
@@ -107,7 +115,7 @@ export const webCommands: PluginCommand[] = [
     command: "if command -v nginx >/dev/null 2>&1; then nginx -T; else echo 'Nginx Config Not Detected' >&2; exit 1; fi", 
     icon: FileText, 
     checkExists: true, 
-    parserType: 'raw' 
+    parserType: 'nginxConfig' 
   },
   { 
     id: 'apache_conf', 
@@ -118,7 +126,9 @@ export const webCommands: PluginCommand[] = [
     cn_description: 'Apache httpd.conf 配置文件位置', 
     command: "if [ -d /etc/httpd/ ]; then find /etc/httpd/ -name httpd.conf; else echo 'Apache Config Not Detected' >&2; exit 1; fi", 
     icon: FileText, 
-    checkExists: true 
+    checkExists: true,
+    parserType: 'simpleList',
+    parserArgs: ['配置文件路径']
   },
   { 
     id: 'web_tls_cert', 
@@ -129,7 +139,8 @@ export const webCommands: PluginCommand[] = [
     cn_description: 'TLS 证书有效期、签发者和主题信息', 
     command: "CERT=$(find /etc/ssl /etc/nginx /www/server/panel/vhost/cert -type f \\( -name '*.pem' -o -name '*.crt' \\) 2>/dev/null | head -n 1); if [ -n \"$CERT\" ]; then openssl x509 -in \"$CERT\" -noout -dates -issuer -subject -serial && echo \"CERT_PATH:$CERT\"; else echo 'TLS Certificate Not Detected' >&2; exit 1; fi", 
     icon: Lock, 
-    checkExists: true 
+    checkExists: true,
+    parserType: 'tlsCert'
   },
   { 
     id: 'web_access_log', 
@@ -140,7 +151,7 @@ export const webCommands: PluginCommand[] = [
     cn_description: '应急追溯用近期 Web 访问日志', 
     command: "find /var/log -type f \\( -name '*nginx*access*.log*' -o -name '*httpd*access*.log*' -o -name '*apache*access*.log*' \\) 2>/dev/null | head -n 8 | xargs -r tail -n 300", 
     icon: FileText, 
-    parserType: 'raw', 
+    parserType: 'webAccessLog', 
     checkExists: true 
   }
 ];

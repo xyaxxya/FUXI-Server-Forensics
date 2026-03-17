@@ -1,16 +1,24 @@
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine as _;
 use mysql::prelude::*;
 use mysql::{OptsBuilder, Pool, PoolConstraints, PoolOpts};
 use serde::{Deserialize, Serialize};
+use socks::Socks5Stream;
 use ssh2::Session;
 use std::collections::HashMap;
+use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
 use std::thread;
+use std::time::Duration;
 use tauri::{Emitter, Manager, State};
+mod license;
+mod updater;
 
 // Database Connection Management
 struct DbConnection {
@@ -25,6 +33,16 @@ struct SshConfig {
     user: String,
     pass: Option<String>,
     private_key: Option<String>,
+}
+
+#[derive(Deserialize, Clone)]
+struct ProxyConfig {
+    #[serde(rename = "type")]
+    proxy_type: String,
+    host: String,
+    port: u16,
+    username: Option<String>,
+    password: Option<String>,
 }
 
 // PTY Session Management
@@ -67,6 +85,7 @@ struct BatchCommandRequest {
 
 #[derive(Serialize, Clone)]
 struct StreamOutput {
+    command_id: String,
     session_id: String,
     output_type: String, // "stdout" or "stderr"
     content: String,
@@ -74,6 +93,7 @@ struct StreamOutput {
 
 #[derive(Serialize, Clone)]
 struct CommandComplete {
+    command_id: String,
     session_id: String,
     exit_code: i32,
     cwd: String,
@@ -105,6 +125,327 @@ struct FileEntry {
     is_dir: bool,
     size: u64,
     mtime: u64,
+}
+
+fn ensure_license_valid() -> Result<(), String> {
+    license::verify_local_license().map(|_| ())
+}
+
+#[tauri::command]
+fn get_machine_code() -> Result<String, String> {
+    license::get_machine_code()
+}
+
+#[tauri::command]
+fn activate_license(license_content: String) -> Result<license::LicenseInfo, String> {
+    license::activate_license(&license_content)
+}
+
+#[tauri::command]
+fn get_license_status() -> Result<license::LicenseStatus, String> {
+    license::get_license_status()
+}
+
+#[tauri::command]
+async fn check_client_update(
+    current_version: String,
+) -> Result<updater::ClientUpdateCheckResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        ensure_license_valid()?;
+        updater::check_client_update(&current_version)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn perform_client_update(
+    app: tauri::AppHandle,
+    download_url: String,
+    version: String,
+    package_sha256: String,
+) -> Result<String, String> {
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        ensure_license_valid()?;
+        let emit_handle = app_handle.clone();
+        let mut last_emit_at = std::time::Instant::now() - Duration::from_millis(300);
+        let mut last_percentage = -1.0_f64;
+        updater::perform_client_update(
+            &download_url,
+            &version,
+            &package_sha256,
+            move |progress| {
+                let now = std::time::Instant::now();
+                let important_stage = matches!(
+                    progress.stage.as_str(),
+                    "verify" | "replace" | "restart" | "cancelled" | "retry"
+                );
+                let should_emit = important_stage
+                    || (progress.percentage - last_percentage).abs() >= 1.0
+                    || now.duration_since(last_emit_at) >= Duration::from_millis(120);
+                if should_emit {
+                    last_emit_at = now;
+                    last_percentage = progress.percentage;
+                    let _ = emit_handle.emit("client-update-progress", progress);
+                }
+            },
+        )?;
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    app.exit(0);
+    Ok("更新程序已启动".to_string())
+}
+
+#[tauri::command]
+fn cancel_client_update() -> Result<String, String> {
+    updater::cancel_client_update();
+    Ok("已请求取消更新下载".to_string())
+}
+
+fn connect_via_http_proxy(ip: &str, port: u16, proxy: &ProxyConfig) -> Result<TcpStream, String> {
+    let mut stream =
+        TcpStream::connect(format!("{}:{}", proxy.host, proxy.port)).map_err(|e| e.to_string())?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .map_err(|e| e.to_string())?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(10)))
+        .map_err(|e| e.to_string())?;
+
+    let target = format!("{}:{}", ip, port);
+    let mut request = format!(
+        "CONNECT {} HTTP/1.1\r\nHost: {}\r\nProxy-Connection: Keep-Alive\r\n",
+        target, target
+    );
+
+    if let Some(username) = proxy.username.as_ref() {
+        let password = proxy.password.as_deref().unwrap_or("");
+        let credentials = BASE64_STANDARD.encode(format!("{}:{}", username, password));
+        request.push_str(&format!("Proxy-Authorization: Basic {}\r\n", credentials));
+    }
+
+    request.push_str("\r\n");
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|e| e.to_string())?;
+    stream.flush().map_err(|e| e.to_string())?;
+
+    let mut response = Vec::new();
+    let mut buffer = [0u8; 1024];
+    loop {
+        let read = stream.read(&mut buffer).map_err(|e| e.to_string())?;
+        if read == 0 {
+            break;
+        }
+        response.extend_from_slice(&buffer[..read]);
+        if response.windows(4).any(|w| w == b"\r\n\r\n") || response.len() > 16 * 1024 {
+            break;
+        }
+    }
+
+    let response_text = String::from_utf8_lossy(&response);
+    let first_line = response_text.lines().next().unwrap_or_default();
+    if !(first_line.starts_with("HTTP/1.1 200") || first_line.starts_with("HTTP/1.0 200")) {
+        return Err(format!("HTTP代理连接失败: {}", first_line));
+    }
+
+    Ok(stream)
+}
+
+fn connect_tcp_stream(
+    ip: &str,
+    port: u16,
+    proxy: &Option<ProxyConfig>,
+) -> Result<TcpStream, String> {
+    let Some(proxy_cfg) = proxy.as_ref() else {
+        return TcpStream::connect(format!("{}:{}", ip, port)).map_err(|e| e.to_string());
+    };
+
+    let mode = proxy_cfg.proxy_type.to_lowercase();
+    if mode == "socks5" {
+        let stream = match proxy_cfg.username.as_ref() {
+            Some(username) => Socks5Stream::connect_with_password(
+                format!("{}:{}", proxy_cfg.host, proxy_cfg.port),
+                (ip, port),
+                username,
+                proxy_cfg.password.as_deref().unwrap_or(""),
+            )
+            .map_err(|e| e.to_string())?,
+            None => {
+                Socks5Stream::connect(format!("{}:{}", proxy_cfg.host, proxy_cfg.port), (ip, port))
+                    .map_err(|e| e.to_string())?
+            }
+        };
+        return Ok(stream.into_inner());
+    }
+
+    if mode == "http" || mode == "http_connect" {
+        return connect_via_http_proxy(ip, port, proxy_cfg);
+    }
+
+    if mode == "direct" {
+        return TcpStream::connect(format!("{}:{}", ip, port)).map_err(|e| e.to_string());
+    }
+
+    Err(format!("Unsupported proxy type: {}", proxy_cfg.proxy_type))
+}
+
+fn collect_pentest_tool_dirs() -> Vec<PathBuf> {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let mut dirs: Vec<PathBuf> = vec![
+        cwd.join("src-tauri")
+            .join("resources")
+            .join("pentest-tools"),
+        cwd.join("resources").join("pentest-tools"),
+        cwd.join("pentest-tools"),
+    ];
+
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            dirs.push(exe_dir.join("resources").join("pentest-tools"));
+            dirs.push(exe_dir.join("pentest-tools"));
+            if let Some(parent) = exe_dir.parent() {
+                dirs.push(parent.join("resources").join("pentest-tools"));
+                dirs.push(parent.join("pentest-tools"));
+            }
+        }
+    }
+
+    if let Some(parent) = cwd.parent() {
+        dirs.push(
+            parent
+                .join("src-tauri")
+                .join("resources")
+                .join("pentest-tools"),
+        );
+        dirs.push(parent.join("resources").join("pentest-tools"));
+        dirs.push(parent.join("pentest-tools"));
+    }
+    let mut unique = Vec::new();
+    for dir in dirs {
+        if !unique.iter().any(|x: &PathBuf| x == &dir) {
+            unique.push(dir);
+        }
+    }
+    unique
+}
+
+fn get_or_create_pentest_tool_dir() -> Result<PathBuf, String> {
+    let mut dirs = collect_pentest_tool_dirs();
+    if let Some(existing) = dirs.iter().find(|d| d.exists()) {
+        return Ok(existing.clone());
+    }
+    let target = dirs
+        .drain(..)
+        .next()
+        .ok_or("无法确定工具目录".to_string())?;
+    fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+    Ok(target)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RemoteOs {
+    Windows,
+    Unix,
+    Unknown,
+}
+
+fn detect_remote_os(session: &Session) -> RemoteOs {
+    let probe = |command: &str| -> Option<String> {
+        let mut channel = session.channel_session().ok()?;
+        channel.exec(command).ok()?;
+        let mut stdout = String::new();
+        let mut stderr = String::new();
+        let _ = channel.read_to_string(&mut stdout);
+        let _ = channel.stderr().read_to_string(&mut stderr);
+        let _ = channel.send_eof();
+        let _ = channel.wait_eof();
+        let _ = channel.wait_close();
+        let joined = format!("{} {}", stdout, stderr).to_lowercase();
+        if joined.trim().is_empty() {
+            None
+        } else {
+            Some(joined)
+        }
+    };
+
+    if let Some(result) = probe("uname -s") {
+        if result.contains("linux")
+            || result.contains("darwin")
+            || result.contains("freebsd")
+            || result.contains("unix")
+        {
+            return RemoteOs::Unix;
+        }
+        if result.contains("windows")
+            || result.contains("mingw")
+            || result.contains("msys")
+            || result.contains("cygwin")
+        {
+            return RemoteOs::Windows;
+        }
+    }
+
+    if let Some(result) = probe("cmd /C ver") {
+        if result.contains("windows") {
+            return RemoteOs::Windows;
+        }
+    }
+
+    if let Some(result) = probe(r#"powershell -NoProfile -Command "$PSVersionTable.OS""#) {
+        if result.contains("windows") {
+            return RemoteOs::Windows;
+        }
+    }
+
+    RemoteOs::Unknown
+}
+
+fn tool_candidates_by_remote_os(tool_name: &str, remote_os: RemoteOs) -> Vec<String> {
+    let base = tool_name.to_string();
+    let exe = format!("{}.exe", tool_name);
+    if tool_name.to_lowercase().ends_with(".exe") {
+        return vec![tool_name.to_string()];
+    }
+    match remote_os {
+        RemoteOs::Windows => vec![exe, base],
+        RemoteOs::Unix => vec![base, exe],
+        RemoteOs::Unknown => vec![base, exe],
+    }
+}
+
+fn find_pentest_tool_file(tool_name: &str, remote_os: RemoteOs) -> Option<PathBuf> {
+    if tool_name.contains('/') || tool_name.contains('\\') {
+        return None;
+    }
+    let candidates = tool_candidates_by_remote_os(tool_name, remote_os);
+    for dir in collect_pentest_tool_dirs() {
+        for file_name in &candidates {
+            let path = dir.join(file_name);
+            if path.exists() && path.is_file() {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
+fn preferred_remote_file_name(tool_name: &str, remote_os: RemoteOs) -> String {
+    if tool_name.to_lowercase().ends_with(".exe") {
+        return tool_name.to_string();
+    }
+    match remote_os {
+        RemoteOs::Windows => format!("{}.exe", tool_name),
+        RemoteOs::Unix => tool_name.to_string(),
+        RemoteOs::Unknown => tool_name.to_string(),
+    }
+}
+
+fn escape_single_quotes(input: &str) -> String {
+    input.replace('\'', "'\\''")
 }
 
 #[tauri::command]
@@ -297,8 +638,10 @@ fn connect_ssh(
     user: String,
     pass: Option<String>,
     private_key: Option<String>,
+    proxy: Option<ProxyConfig>,
 ) -> Result<String, String> {
-    let tcp = TcpStream::connect(format!("{}:{}", ip, port)).map_err(|e| e.to_string())?;
+    ensure_license_valid()?;
+    let tcp = connect_tcp_stream(&ip, port, &proxy)?;
     let mut sess = Session::new().unwrap();
     sess.set_tcp_stream(tcp);
     sess.handshake().map_err(|e| e.to_string())?;
@@ -352,6 +695,112 @@ fn connect_ssh(
 }
 
 #[tauri::command]
+fn get_pentest_tool_dir() -> Result<String, String> {
+    let path = get_or_create_pentest_tool_dir()?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn get_remote_os(state: State<'_, AppState>, session_id: String) -> Result<String, String> {
+    let session_arc = {
+        let sessions = state.sessions.lock().unwrap();
+        sessions
+            .get(&session_id)
+            .cloned()
+            .ok_or(format!("Session {} not found", session_id))?
+    };
+    let session_info = session_arc.lock().unwrap();
+    let os = match detect_remote_os(&session_info.session) {
+        RemoteOs::Windows => "windows",
+        RemoteOs::Unix => "linux",
+        RemoteOs::Unknown => "unknown",
+    };
+    Ok(os.to_string())
+}
+
+#[tauri::command]
+async fn upload_pentest_tool(
+    state: State<'_, AppState>,
+    session_id: String,
+    tool_name: String,
+    remote_dir: String,
+    remote_file_name: Option<String>,
+    local_path: Option<String>,
+) -> Result<String, String> {
+    let session_arc = {
+        let sessions = state.sessions.lock().unwrap();
+        sessions
+            .get(&session_id)
+            .cloned()
+            .ok_or(format!("Session {} not found", session_id))?
+    };
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let session_info = session_arc.lock().unwrap();
+        let remote_os = detect_remote_os(&session_info.session);
+        let local_file = if let Some(path) = local_path {
+            let p = PathBuf::from(path);
+            if p.exists() && p.is_file() {
+                p
+            } else {
+                return Err(format!("本地工具路径无效: {}", p.to_string_lossy()));
+            }
+        } else {
+            find_pentest_tool_file(&tool_name, remote_os).ok_or_else(|| {
+                let dir = get_or_create_pentest_tool_dir()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| "pentest-tools".to_string());
+                format!("未找到工具文件 {}，请将文件放入目录：{}", tool_name, dir)
+            })?
+        };
+
+        let bytes = fs::read(&local_file).map_err(|e| e.to_string())?;
+        let upload_name = remote_file_name
+            .unwrap_or_else(|| preferred_remote_file_name(&tool_name, remote_os))
+            .replace('\\', "/");
+        let remote_base = if remote_dir.trim().is_empty() {
+            "/tmp".to_string()
+        } else {
+            remote_dir.trim().trim_end_matches('/').to_string()
+        };
+        let remote_path = format!("{}/{}", remote_base, upload_name);
+
+        let sftp = session_info.session.sftp().map_err(|e| e.to_string())?;
+        let mut file = sftp
+            .create(Path::new(&remote_path))
+            .map_err(|e| e.to_string())?;
+        file.write_all(&bytes).map_err(|e| e.to_string())?;
+
+        if remote_os != RemoteOs::Windows {
+            let mut channel = session_info
+                .session
+                .channel_session()
+                .map_err(|e| e.to_string())?;
+            let escaped = escape_single_quotes(&remote_path);
+            channel
+                .exec(&format!("chmod +x '{}'", escaped))
+                .map_err(|e| e.to_string())?;
+            let mut stdout = Vec::new();
+            let mut stderr = Vec::new();
+            let _ = channel.read_to_end(&mut stdout);
+            let _ = channel.stderr().read_to_end(&mut stderr);
+            let _ = channel.send_eof();
+            let _ = channel.wait_eof();
+            channel.wait_close().map_err(|e| e.to_string())?;
+        }
+
+        Ok(format!(
+            "上传成功: {} -> {} ({} bytes)",
+            local_file.to_string_lossy(),
+            remote_path,
+            bytes.len()
+        ))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 fn disconnect_ssh(
     state: State<'_, AppState>,
     session_id: Option<String>,
@@ -367,14 +816,14 @@ fn disconnect_ssh(
         {
             let mut sessions = state.sessions.lock().unwrap();
             let mut order = state.session_order.lock().unwrap();
-            
+
             if sessions.remove(&id).is_some() {
                 removed = true;
                 // Remove from order
                 if let Some(pos) = order.iter().position(|x| x == &id) {
                     order.remove(pos);
                 }
-                
+
                 if order.is_empty() {
                     next_current = None;
                 } else {
@@ -404,6 +853,7 @@ async fn exec_command_stream(
     cmd: String,
     session_id: Option<String>,
 ) -> Result<String, String> {
+    ensure_license_valid()?;
     // Get session to use
     let id_to_use = session_id.or_else(|| state.current_session_id.lock().unwrap().clone());
 
@@ -422,7 +872,7 @@ async fn exec_command_stream(
         // Spawn blocking task to avoid holding up the async runtime
         let app_clone = app.clone();
         let session_id_clone = id.clone();
-        let _command_id_clone = command_id.clone();
+        let command_id_clone = command_id.clone();
 
         std::thread::spawn(move || {
             let mut session_info = session_arc.lock().unwrap();
@@ -465,6 +915,7 @@ async fn exec_command_stream(
 
                         // Send stdout chunk
                         let output = StreamOutput {
+                            command_id: command_id_clone.clone(),
                             session_id: session_id_clone.clone(),
                             output_type: "stdout".to_string(),
                             content: chunk.to_string(),
@@ -489,6 +940,7 @@ async fn exec_command_stream(
 
                 // Send stderr chunk
                 let output = StreamOutput {
+                    command_id: command_id_clone.clone(),
                     session_id: session_id_clone.clone(),
                     output_type: "stderr".to_string(),
                     content: chunk.to_string(),
@@ -509,6 +961,7 @@ async fn exec_command_stream(
 
             // Send command complete event (frontend will handle CWD update)
             let complete = CommandComplete {
+                command_id: command_id_clone,
                 session_id: session_id_clone.clone(),
                 exit_code,
                 cwd: new_cwd,
@@ -622,6 +1075,7 @@ async fn exec_command(
     session_id: Option<String>,
     timeout: Option<u32>,
 ) -> Result<CommandResult, String> {
+    ensure_license_valid()?;
     let id_to_use = session_id.or_else(|| state.current_session_id.lock().unwrap().clone());
 
     if let Some(id) = id_to_use {
@@ -654,6 +1108,7 @@ async fn batch_exec_command(
     session_id: Option<String>,
     timeout: Option<u32>,
 ) -> Result<HashMap<String, CommandResult>, String> {
+    ensure_license_valid()?;
     let id_to_use = session_id.or_else(|| state.current_session_id.lock().unwrap().clone());
 
     if let Some(id) = id_to_use {
@@ -730,14 +1185,14 @@ fn list_sessions(state: State<'_, AppState>) -> Result<Vec<SessionSummary>, Stri
 #[tauri::command]
 fn reorder_sessions(state: State<'_, AppState>, new_order: Vec<String>) -> Result<(), String> {
     let mut order = state.session_order.lock().unwrap();
-    // Validate that new_order contains valid session IDs? 
-    // Or just trust frontend? 
+    // Validate that new_order contains valid session IDs?
+    // Or just trust frontend?
     // Better to ensure we don't lose sessions that might have been added concurrently (race condition),
     // but for this single-user local app, replacing is usually fine.
     // However, robust implementation:
     // 1. Ensure all IDs in new_order exist in `sessions` (optional, but good)
     // 2. Ensure all IDs in `sessions` are in `new_order` (to prevent hiding sessions)
-    
+
     // Simple implementation: Just replace.
     *order = new_order;
     Ok(())
@@ -780,6 +1235,7 @@ fn start_pty_session(
     cols: u32,
     rows: u32,
 ) -> Result<String, String> {
+    ensure_license_valid()?;
     // Retrieve session info
     let session_arc = {
         let sessions = state.sessions.lock().unwrap();
@@ -930,6 +1386,7 @@ async fn connect_db(
     database: String,
     ssh_config: Option<SshConfig>,
 ) -> Result<String, String> {
+    ensure_license_valid()?;
     println!(
         "[Connect DB] ID: {}, Host: {}, Port: {}, User: {}, DB: {}",
         id, host, port, user, database
@@ -1221,6 +1678,7 @@ async fn exec_sql(
 
 #[tauri::command]
 async fn exec_local_command(cmd: String) -> Result<String, String> {
+    ensure_license_valid()?;
     tauri::async_runtime::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
         let output = std::process::Command::new("powershell")
@@ -1267,7 +1725,16 @@ pub fn run() {
         })
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler!(
+            get_machine_code,
+            activate_license,
+            get_license_status,
+            check_client_update,
+            perform_client_update,
+            cancel_client_update,
             connect_ssh,
+            get_pentest_tool_dir,
+            get_remote_os,
+            upload_pentest_tool,
             disconnect_ssh,
             exec_command,
             batch_exec_command,

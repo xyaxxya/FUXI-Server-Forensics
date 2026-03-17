@@ -1,6 +1,6 @@
 [package]
 name = "fuxi-server-forensics"
-version = "1.2.1"
+version = "2.1.8"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -26,4 +26,8 @@ sysinfo = "0.37.2"
 ssh2 = "0.9"
 uuid = { version = "1", features = ["v4"] }
 mysql = "27.0.0"
-
+socks = "0.3"
+base64 = "0.22"
+rsa = { version = "0.9", features = ["sha2"] }
+chrono = { version = "0.4", features = ["clock"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }

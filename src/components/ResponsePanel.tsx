@@ -23,6 +23,26 @@ interface RemoteIpAggregate {
   tag: "whitelist" | "blacklist" | "private" | "public";
 }
 
+interface SuspiciousProcessRecord {
+  pid: string;
+  process: string;
+  cpu: number;
+  mem: number;
+  keywordHits: string[];
+  score: number;
+  severity: "critical" | "high" | "medium";
+}
+
+interface SuspiciousNetworkRecord {
+  ip: string;
+  tag: RemoteIpAggregate["tag"];
+  count: number;
+  ports: string[];
+  processes: string[];
+  score: number;
+  severity: "critical" | "high" | "medium";
+}
+
 type AlertTarget =
   | "threshold_cpu"
   | "threshold_mem"
@@ -80,6 +100,12 @@ function metricFromOutput(output: string, pattern: RegExp): number {
   const match = output.match(pattern);
   if (!match) return 0;
   return Number.parseFloat(match[1] || "0") || 0;
+}
+
+function parseMetricCell(value: string): number {
+  const cleaned = String(value || "").replace(/[^\d.]/g, "");
+  if (!cleaned) return 0;
+  return Number.parseFloat(cleaned) || 0;
 }
 
 function isPrivateIp(ip: string): boolean {
@@ -324,6 +350,69 @@ export default function ResponsePanel({ language, active }: ResponsePanelProps) 
     ].join(" ").toLowerCase();
     return suspiciousKeywords.filter((k) => allProcessTexts.includes(k)).length;
   }, [topCpu.rows, topMem.rows, topFlows.rows, suspiciousKeywords]);
+
+  const suspiciousProcesses = useMemo<SuspiciousProcessRecord[]>(() => {
+    const map = new Map<string, SuspiciousProcessRecord>();
+    const upsert = (pid: string, process: string, cpuValue: number, memValue: number) => {
+      const normalizedProcess = process || "-";
+      const key = `${pid || "-"}|${normalizedProcess}`;
+      const hits = suspiciousKeywords.filter((keyword) => normalizedProcess.toLowerCase().includes(keyword));
+      const current = map.get(key) || {
+        pid: pid || "-",
+        process: normalizedProcess,
+        cpu: 0,
+        mem: 0,
+        keywordHits: [],
+        score: 0,
+        severity: "medium" as const,
+      };
+      current.cpu = Math.max(current.cpu, cpuValue);
+      current.mem = Math.max(current.mem, memValue);
+      current.keywordHits = Array.from(new Set([...current.keywordHits, ...hits]));
+      map.set(key, current);
+    };
+
+    topCpu.rows.forEach((row) => upsert(row[0] || "-", row[1] || "-", parseMetricCell(row[2] || "0"), parseMetricCell(row[3] || "0")));
+    topMem.rows.forEach((row) => upsert(row[0] || "-", row[1] || "-", parseMetricCell(row[2] || "0"), parseMetricCell(row[3] || "0")));
+
+    const result = Array.from(map.values())
+      .map((item) => {
+        const keywordScore = item.keywordHits.length * 3;
+        const cpuScore = item.cpu >= cpuThreshold ? 2 : item.cpu >= cpuThreshold * 0.8 ? 1 : 0;
+        const memScore = item.mem >= memThreshold ? 2 : item.mem >= memThreshold * 0.8 ? 1 : 0;
+        const score = keywordScore + cpuScore + memScore;
+        const severity: SuspiciousProcessRecord["severity"] = score >= 6 ? "critical" : score >= 4 ? "high" : "medium";
+        return { ...item, score, severity };
+      })
+      .filter((item) => item.keywordHits.length > 0 || item.cpu >= cpuThreshold || item.mem >= memThreshold)
+      .sort((a, b) => b.score - a.score || b.cpu - a.cpu || b.mem - a.mem);
+
+    return result.slice(0, 8);
+  }, [topCpu.rows, topMem.rows, suspiciousKeywords, cpuThreshold, memThreshold]);
+
+  const suspiciousRemoteIps = useMemo<SuspiciousNetworkRecord[]>(() => {
+    return remoteIpAggregates
+      .map((item) => {
+        const baseScore = item.tag === "blacklist" ? 5 : item.tag === "public" ? 2 : 1;
+        const countScore = item.count >= 6 ? 3 : item.count >= 3 ? 2 : 1;
+        const score = baseScore + countScore;
+        const severity: SuspiciousNetworkRecord["severity"] = score >= 8 ? "critical" : score >= 6 ? "high" : "medium";
+        return { ...item, score, severity };
+      })
+      .filter((item) => item.tag === "blacklist" || item.count >= 3)
+      .sort((a, b) => b.score - a.score || b.count - a.count)
+      .slice(0, 8);
+  }, [remoteIpAggregates]);
+
+  const criticalAlertCount = suspiciousProcesses.filter((item) => item.severity === "critical").length +
+    suspiciousRemoteIps.filter((item) => item.severity === "critical").length;
+  const highAlertCount = suspiciousProcesses.filter((item) => item.severity === "high").length +
+    suspiciousRemoteIps.filter((item) => item.severity === "high").length;
+  const severityLabels = {
+    critical: t.response_severity_critical,
+    high: t.response_severity_high,
+    medium: t.response_alert_badge,
+  };
 
   const blacklistCount = remoteIpAggregates.filter((item) => item.tag === "blacklist").length;
   const isCpuAlert = cpu >= cpuThreshold;
@@ -617,27 +706,99 @@ ${topRemoteRows}
           {collapsedSections.alerts ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
         </button>
       {!collapsedSections.alerts && (
-      <div className={`rounded-2xl border p-4 shadow-sm ${warnings.length > 0 ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"}`}>
-        <div className={`flex items-center gap-2 font-semibold text-sm ${warnings.length > 0 ? "text-red-700" : "text-emerald-700"}`}>
-          {warnings.length > 0 ? <ShieldAlert size={16} /> : <ShieldCheck size={16} />}
-          {t.response_warning_title}
+      <div className="space-y-4">
+        <div className={`rounded-2xl border p-4 shadow-sm ${warnings.length > 0 ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"}`}>
+          <div className={`flex items-center gap-2 font-semibold text-sm ${warnings.length > 0 ? "text-red-700" : "text-emerald-700"}`}>
+            {warnings.length > 0 ? <ShieldAlert size={16} /> : <ShieldCheck size={16} />}
+            {t.response_warning_title}
+          </div>
+          <div className="mt-3 grid grid-cols-1 xl:grid-cols-3 gap-3">
+            <div className="rounded-xl border border-red-200/80 bg-white/80 p-3">
+              <div className="text-[11px] text-slate-500">{t.response_severity_critical}</div>
+              <div className="mt-1 text-2xl font-black text-red-600">{criticalAlertCount}</div>
+            </div>
+            <div className="rounded-xl border border-amber-200/80 bg-white/80 p-3">
+              <div className="text-[11px] text-slate-500">{t.response_severity_high}</div>
+              <div className="mt-1 text-2xl font-black text-amber-600">{highAlertCount}</div>
+            </div>
+            <div className="rounded-xl border border-slate-200/80 bg-white/80 p-3">
+              <div className="text-[11px] text-slate-500">{t.response_severity_total}</div>
+              <div className="mt-1 text-2xl font-black text-slate-700">{warnings.length}</div>
+            </div>
+          </div>
+          <div className="mt-3 space-y-1">
+            {warnings.length > 0 ? (
+              warnings.map((item, idx) => (
+                <button key={idx} onClick={() => jumpToTarget(item.target)} className="w-full text-left text-xs text-red-700 flex items-start gap-1 hover:bg-red-100/60 rounded px-1.5 py-1.5 transition-colors">
+                  <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                  <span>
+                    <span className="font-semibold">{item.parameter}</span>
+                    <span className="ml-2 text-red-600">{item.currentValue}</span>
+                    {item.thresholdValue && <span className="ml-2 text-red-500">/ {item.thresholdValue}</span>}
+                    <span className="ml-2">{item.message}</span>
+                  </span>
+                </button>
+              ))
+            ) : (
+              <div className="text-xs text-emerald-700">{t.response_no_warning}</div>
+            )}
+          </div>
         </div>
-        <div className="mt-2 space-y-1">
-          {warnings.length > 0 ? (
-            warnings.map((item, idx) => (
-              <button key={idx} onClick={() => jumpToTarget(item.target)} className="w-full text-left text-xs text-red-700 flex items-start gap-1 hover:bg-red-100/60 rounded px-1 py-1 transition-colors">
-                <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-                <span>
-                  <span className="font-semibold">{item.parameter}</span>
-                  <span className="ml-2 text-red-600">{item.currentValue}</span>
-                  {item.thresholdValue && <span className="ml-2 text-red-500">/ {item.thresholdValue}</span>}
-                  <span className="ml-2">{item.message}</span>
-                </span>
+
+        <div className="grid grid-cols-1 gap-4">
+          <div className="rounded-2xl border border-red-200 bg-red-50/70 p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm font-semibold text-red-700">{t.response_proc_signal}</div>
+              <button onClick={() => jumpToTarget("cpu_table")} className="text-xs px-2 py-1 rounded-lg bg-white border border-red-200 text-red-700 hover:bg-red-100/70">
+                {t.response_cpu_table}
               </button>
-            ))
-          ) : (
-            <div className="text-xs text-emerald-700">{t.response_no_warning}</div>
-          )}
+            </div>
+            <div className="mt-3 space-y-2">
+              {suspiciousProcesses.length > 0 ? suspiciousProcesses.slice(0, 4).map((item, idx) => (
+                <div key={`${item.pid}-${item.process}-${idx}`} className="rounded-xl border border-red-200/80 bg-white/90 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-semibold text-slate-800 truncate">{item.process}</div>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                      item.severity === "critical" ? "bg-red-100 text-red-700" : item.severity === "high" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-700"
+                    }`}>
+                      {severityLabels[item.severity]}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-600">PID {item.pid} · CPU {item.cpu.toFixed(1)}% · MEM {item.mem.toFixed(1)}%</div>
+                  <div className="mt-1 text-[11px] text-red-700">{item.keywordHits.length > 0 ? item.keywordHits.join(", ") : t.response_alert_badge}</div>
+                </div>
+              )) : (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-xs text-emerald-700">{t.response_no_warning}</div>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm font-semibold text-amber-700">{t.response_ip_agg_table}</div>
+              <button onClick={() => jumpToTarget("ip_aggregate")} className="text-xs px-2 py-1 rounded-lg bg-white border border-amber-200 text-amber-700 hover:bg-amber-100/70">
+                {t.response_flow_table}
+              </button>
+            </div>
+            <div className="mt-3 space-y-2">
+              {suspiciousRemoteIps.length > 0 ? suspiciousRemoteIps.slice(0, 4).map((item, idx) => (
+                <div key={`${item.ip}-${idx}`} className="rounded-xl border border-amber-200/80 bg-white/90 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-semibold text-slate-800">{item.ip}</div>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                      item.severity === "critical" ? "bg-red-100 text-red-700" : item.severity === "high" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-700"
+                    }`}>
+                      {item.tag === "blacklist" ? `${item.tag} · ${severityLabels[item.severity]}` : item.tag}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-600">{t.response_hits} {item.count} · {t.response_port} {item.ports.slice(0, 3).join(", ") || "-"}</div>
+                  <div className="mt-1 text-[11px] text-slate-600 truncate">{item.processes.slice(0, 2).join(", ") || "-"}</div>
+                </div>
+              )) : (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-xs text-emerald-700">{t.response_no_warning}</div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
       )}
@@ -652,8 +813,8 @@ ${topRemoteRows}
           {collapsedSections.rules ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
         </button>
       {!collapsedSections.rules && (
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="bg-white/90 border border-slate-200/80 rounded-2xl p-4 shadow-sm">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div className="bg-white/90 border border-slate-200/80 rounded-2xl p-4 shadow-sm xl:col-span-2">
           <div className="text-xs font-semibold text-slate-600 mb-2">{t.response_rule_blacklist}</div>
           <input
             value={blacklistInput}
@@ -727,7 +888,7 @@ ${topRemoteRows}
           {collapsedSections.trends ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
         </button>
       {!collapsedSections.trends && (
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6">
         <div className="bg-white/90 border border-slate-200/80 rounded-3xl p-4 shadow-sm">
           <SectionTitle icon={<Network size={15} />} title={t.response_rate_chart} />
           <ChartDisplay data={networkChart} title={t.response_rate_chart} yAxisLabel="KB/s" unit="KB/s" />
@@ -757,7 +918,7 @@ ${topRemoteRows}
           {collapsedSections.flows ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
         </button>
       {!collapsedSections.flows && (
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6">
         <div id="resp-ip_aggregate" className={`bg-white/90 border rounded-3xl p-4 shadow-sm ${focusedTarget === "ip_aggregate" ? "border-red-400 ring-2 ring-red-200" : "border-slate-200/80"}`}>
           <SectionTitle icon={<ShieldAlert size={15} />} title={t.response_ip_agg_table} />
           <div className="overflow-auto max-h-72 border border-slate-100 rounded-xl">

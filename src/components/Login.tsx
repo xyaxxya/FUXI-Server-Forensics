@@ -9,6 +9,7 @@ import {
   Trash2,
   History,
   X,
+  SlidersHorizontal,
 } from "lucide-react";
 import tauriLogo from "../assets/tauri.png";
 import { useCommandStore } from "../store/CommandContext";
@@ -17,6 +18,9 @@ import { APP_VERSION } from "../config/app";
 interface LoginProps {
   onLogin: () => void;
   onClose?: () => void;
+  licenseStatus?: LicenseStatus | null;
+  updateInfo?: UpdateCheckResult | null;
+  onOpenUpdates?: () => void;
 }
 
 interface LoginHistoryItem {
@@ -27,11 +31,42 @@ interface LoginHistoryItem {
   lastUsed: number;
 }
 
-export default function Login({ onLogin, onClose }: LoginProps) {
+interface LicenseStatus {
+  valid: boolean;
+  message: string;
+  machine_code: string;
+  expires_at?: number | null;
+  nickname?: string | null;
+  qq?: string | null;
+  avatar?: string | null;
+  license_plan?: string | null;
+  license_label?: string | null;
+}
+
+interface UpdateCheckResult {
+  has_update: boolean;
+  latest_version: string;
+  notes: string;
+  force_update: boolean;
+}
+
+export default function Login({
+  onLogin,
+  onClose,
+  licenseStatus = null,
+  updateInfo = null,
+  onOpenUpdates,
+}: LoginProps) {
   const [ip, setIp] = useState("");
   const [port, setPort] = useState("22");
   const [user, setUser] = useState("root");
   const [pass, setPass] = useState("");
+  const [proxyType, setProxyType] = useState<"direct" | "socks5" | "http">("direct");
+  const [proxyHost, setProxyHost] = useState("");
+  const [proxyPort, setProxyPort] = useState("1080");
+  const [proxyUser, setProxyUser] = useState("");
+  const [proxyPass, setProxyPass] = useState("");
+  const [showProxySettings, setShowProxySettings] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const { connectSSH } = useCommandStore();
@@ -64,6 +99,76 @@ export default function Login({ onLogin, onClose }: LoginProps) {
       }
     }
   }, []);
+
+  const avatarSrc =
+    licenseStatus?.avatar && licenseStatus.avatar.trim().length > 0
+      ? licenseStatus.avatar.startsWith("data:")
+        ? licenseStatus.avatar
+        : `data:image/png;base64,${licenseStatus.avatar}`
+      : "";
+
+  const expiresText =
+    licenseStatus?.expires_at && (licenseStatus.license_plan || "").toLowerCase() !== "permanent"
+      ? new Date(licenseStatus.expires_at * 1000).toLocaleDateString("zh-CN")
+      : "";
+  const normalizePlan = (rawPlan?: string | null) => {
+    const plan = String(rawPlan || "").trim().toLowerCase();
+    if (
+      plan === "one_year" ||
+      plan === "one-year" ||
+      plan === "oneyear" ||
+      plan === "1year" ||
+      plan === "一年" ||
+      plan === "一年套餐"
+    ) {
+      return "one_year";
+    }
+    if (
+      plan === "half_year" ||
+      plan === "half-year" ||
+      plan === "halfyear" ||
+      plan === "半年" ||
+      plan === "半年套餐" ||
+      plan === "6m"
+    ) {
+      return "half_year";
+    }
+    if (
+      plan === "permanent" ||
+      plan === "forever" ||
+      plan === "lifetime" ||
+      plan === "永久" ||
+      plan === "永久套餐"
+    ) {
+      return "permanent";
+    }
+    return "thirty_days";
+  };
+  const normalizedPlan = normalizePlan(licenseStatus?.license_plan);
+  const fallbackLabel =
+    normalizedPlan === "permanent"
+      ? "永久会员"
+      : normalizedPlan === "one_year"
+      ? "一年会员"
+      : normalizedPlan === "half_year"
+      ? "半年会员"
+      : "30天会员";
+  const planBadgeClass =
+    normalizedPlan === "permanent"
+      ? "bg-amber-100 text-amber-700 border border-amber-200"
+      : normalizedPlan === "one_year"
+      ? "bg-violet-100 text-violet-700 border border-violet-200"
+      : normalizedPlan === "half_year"
+      ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+      : "bg-sky-100 text-sky-700 border border-sky-200";
+  const planCardClass =
+    normalizedPlan === "permanent"
+      ? "border-amber-100 bg-gradient-to-r from-amber-50 to-orange-50"
+      : normalizedPlan === "one_year"
+      ? "border-violet-100 bg-gradient-to-r from-violet-50 to-fuchsia-50"
+      : normalizedPlan === "half_year"
+      ? "border-emerald-100 bg-gradient-to-r from-emerald-50 to-teal-50"
+      : "border-sky-100 bg-gradient-to-r from-sky-50 to-indigo-50";
 
   const saveToHistory = () => {
     const newItem: LoginHistoryItem = {
@@ -110,7 +215,20 @@ export default function Login({ onLogin, onClose }: LoginProps) {
     setError("");
 
     try {
-      await connectSSH(ip, parseInt(port), user, pass);
+      if (proxyType !== "direct" && (!proxyHost.trim() || !proxyPort.trim())) {
+        throw new Error("请填写代理主机与端口");
+      }
+      const proxy =
+        proxyType === "direct"
+          ? undefined
+          : {
+              type: proxyType,
+              host: proxyHost,
+              port: parseInt(proxyPort, 10),
+              username: proxyUser || undefined,
+              password: proxyPass || undefined,
+            };
+      await connectSSH(ip, parseInt(port), user, pass, proxy);
       saveToHistory();
       onLogin();
     } catch (e: any) {
@@ -133,6 +251,14 @@ export default function Login({ onLogin, onClose }: LoginProps) {
         className="w-full max-w-md relative z-10"
       >
         <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-white/50 relative">
+          <button
+            onClick={() => setShowProxySettings((v) => !v)}
+            className={`absolute top-4 left-4 px-3 py-1.5 rounded-lg border text-xs font-medium inline-flex items-center gap-1.5 transition-all ${proxyType === "direct" ? "bg-white/80 border-slate-200 text-slate-500 hover:text-slate-700" : "bg-blue-50 border-blue-200 text-blue-600 hover:text-blue-700"}`}
+          >
+            <SlidersHorizontal size={14} />
+            <span>{proxyType === "direct" ? "代理设置" : `代理: ${proxyType.toUpperCase()}`}</span>
+          </button>
+
           {/* Close Button - Only shown if onClose prop is provided */}
           {onClose && (
             <button
@@ -142,6 +268,71 @@ export default function Login({ onLogin, onClose }: LoginProps) {
               <X size={20} />
             </button>
           )}
+
+          <AnimatePresence>
+            {showProxySettings && (
+              <motion.div
+                initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                className="absolute top-14 left-4 right-4 rounded-2xl border border-blue-100 bg-white/95 backdrop-blur p-4 shadow-xl z-30"
+              >
+                <div className="grid grid-cols-3 gap-3">
+                  <select
+                    value={proxyType}
+                    onChange={(e) => setProxyType(e.target.value as "direct" | "socks5" | "http")}
+                    className="col-span-1 px-3 py-2.5 bg-slate-50/60 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all"
+                  >
+                    <option value="direct">直连</option>
+                    <option value="socks5">SOCKS5</option>
+                    <option value="http">HTTP代理</option>
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="代理主机"
+                    value={proxyHost}
+                    onChange={(e) => setProxyHost(e.target.value)}
+                    disabled={proxyType === "direct"}
+                    className="col-span-1 px-3 py-2.5 bg-slate-50/60 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all placeholder:text-slate-400 disabled:opacity-50"
+                  />
+                  <input
+                    type="text"
+                    placeholder="代理端口"
+                    value={proxyPort}
+                    onChange={(e) => setProxyPort(e.target.value)}
+                    disabled={proxyType === "direct"}
+                    className="col-span-1 px-3 py-2.5 bg-slate-50/60 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all placeholder:text-slate-400 disabled:opacity-50 text-center"
+                  />
+                </div>
+                {proxyType !== "direct" && (
+                  <div className="grid grid-cols-2 gap-3 mt-3">
+                    <input
+                      type="text"
+                      placeholder="代理用户名(可选)"
+                      value={proxyUser}
+                      onChange={(e) => setProxyUser(e.target.value)}
+                      className="px-3 py-2.5 bg-slate-50/60 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all placeholder:text-slate-400"
+                    />
+                    <input
+                      type="password"
+                      placeholder="代理密码(可选)"
+                      value={proxyPass}
+                      onChange={(e) => setProxyPass(e.target.value)}
+                      className="px-3 py-2.5 bg-slate-50/60 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all placeholder:text-slate-400"
+                    />
+                  </div>
+                )}
+                <div className="flex justify-end mt-3">
+                  <button
+                    onClick={() => setShowProxySettings(false)}
+                    className="px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+                  >
+                    收起
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <div className="text-center mb-8">
             <div className="flex justify-center mb-6">
@@ -164,6 +355,62 @@ export default function Login({ onLogin, onClose }: LoginProps) {
               建立初始SSH连接
             </p>
           </div>
+
+          {updateInfo?.has_update && (
+            <div className="mb-5 p-3 rounded-2xl border border-blue-200 bg-blue-50/70">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-blue-800">
+                    发现新版本 v{updateInfo.latest_version}
+                  </div>
+                  <div className="text-xs text-blue-700 mt-1">
+                    {updateInfo.force_update ? "该版本为强制更新，请尽快完成升级" : "建议先更新后再进行连接操作"}
+                  </div>
+                </div>
+                <button
+                  onClick={() => onOpenUpdates?.()}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium"
+                >
+                  去更新
+                </button>
+              </div>
+              {updateInfo.notes && (
+                <div className="mt-2 text-xs text-blue-700/90 max-h-16 overflow-auto whitespace-pre-wrap">
+                  {updateInfo.notes}
+                </div>
+              )}
+            </div>
+          )}
+
+          {licenseStatus?.valid && (
+            <div className={`mb-5 p-3 rounded-2xl border ${planCardClass}`}>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl overflow-hidden border border-sky-200 bg-white shrink-0">
+                  {avatarSrc ? (
+                    <img src={avatarSrc} alt="avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-xs text-sky-600 font-bold">
+                      USER
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-slate-800 truncate">
+                    {licenseStatus.nickname || "授权用户"}
+                  </div>
+                  <div className="text-xs text-slate-500 truncate">QQ: {licenseStatus.qq || "-"}</div>
+                </div>
+                <div
+                  className={`px-2.5 py-1 rounded-full text-xs font-semibold ${planBadgeClass}`}
+                >
+                  {licenseStatus.license_label || fallbackLabel}
+                </div>
+              </div>
+              {expiresText && (
+                <div className="mt-2 text-xs text-slate-500">到期时间：{expiresText}</div>
+              )}
+            </div>
+          )}
 
           <div className="space-y-4">
             <div className="grid grid-cols-4 gap-4">
@@ -299,6 +546,12 @@ export default function Login({ onLogin, onClose }: LoginProps) {
                 记住密码
               </span>
             </div>
+
+            {proxyType !== "direct" && (
+              <div className="px-3 py-2 rounded-xl bg-blue-50/70 border border-blue-100 text-xs text-blue-700">
+                当前代理: {proxyType.toUpperCase()} {proxyHost}:{proxyPort}
+              </div>
+            )}
 
             {error && (
               <div className="p-3 bg-red-50 text-red-500 text-sm rounded-lg border border-red-100 flex items-center gap-2">

@@ -42,7 +42,8 @@ export const databaseCommands: PluginCommand[] = [
     cn_description: '已安装的 MySQL/MariaDB 软件包', 
     command: "if command -v rpm >/dev/null 2>&1 && rpm -qa | grep -qi mysql; then rpm -qa | grep -i mysql; elif command -v dpkg >/dev/null 2>&1 && dpkg -l | grep -qiE 'mysql|mariadb'; then dpkg -l | grep -iE 'mysql|mariadb'; else echo 'MySQL Package Not Detected' >&2; exit 1; fi", 
     icon: Database, 
-    checkExists: true
+    checkExists: true,
+    parserType: 'packageList'
   },
   { 
     id: 'mysql_svc', 
@@ -53,7 +54,8 @@ export const databaseCommands: PluginCommand[] = [
     cn_description: 'MySQL 系统服务的当前状态', 
     command: "if command -v mysql >/dev/null 2>&1 || rpm -qa | grep -q mysql; then chkconfig --list mysqld 2>/dev/null || systemctl list-unit-files | grep mysql; else echo 'MySQL Service Not Detected' >&2; exit 1; fi", 
     icon: Database, 
-    checkExists: true
+    checkExists: true,
+    parserType: 'serviceStatus'
   },
   { 
     id: 'redis_ver', 
@@ -64,7 +66,8 @@ export const databaseCommands: PluginCommand[] = [
     cn_description: '已安装的 Redis 服务器版本', 
     command: "if command -v redis-cli >/dev/null 2>&1; then redis-cli -v; else echo 'Redis Not Detected' >&2; exit 1; fi", 
     icon: Database, 
-    checkExists: true
+    checkExists: true,
+    parserType: 'uptimeHuman'
   },
   { 
     id: 'mongo_ver', 
@@ -75,7 +78,8 @@ export const databaseCommands: PluginCommand[] = [
     cn_description: '已安装的 MongoDB 服务器版本', 
     command: "if command -v mongod >/dev/null 2>&1; then mongod --version; else echo 'MongoDB Not Detected' >&2; exit 1; fi", 
     icon: Database, 
-    checkExists: true
+    checkExists: true,
+    parserType: 'uptimeHuman'
   },
   { 
     id: 'mysql_conf', 
@@ -84,8 +88,9 @@ export const databaseCommands: PluginCommand[] = [
     cn_name: 'MySQL 配置', 
     description: 'MySQL configuration file preview', 
     cn_description: 'MySQL 配置文件预览', 
-    command: "if command -v mysql >/dev/null 2>&1 || command -v mariadb >/dev/null 2>&1; then CFG=$(find /etc /usr/local/etc -name 'my.cnf' 2>/dev/null | head -n 1); if [ -n \"$CFG\" ]; then cat \"$CFG\"; else echo 'MySQL Config Not Detected' >&2; exit 1; fi; else echo 'MySQL Config Not Detected' >&2; exit 1; fi", 
-    icon: FileText
+    command: "if command -v mysql >/dev/null 2>&1 || command -v mariadb >/dev/null 2>&1; then CFG=$(find /etc /usr/local/etc -name 'my.cnf' 2>/dev/null | head -n 1); if [ -n \"$CFG\" ]; then cat \"$CFG\" | grep -v '^#' | grep -v '^$'; else echo 'MySQL Config Not Detected' >&2; exit 1; fi; else echo 'MySQL Config Not Detected' >&2; exit 1; fi", 
+    icon: FileText,
+    parserType: 'linuxRelease'
   },
   { 
     id: 'redis_conf', 
@@ -96,7 +101,8 @@ export const databaseCommands: PluginCommand[] = [
     cn_description: 'Redis 配置文件预览', 
     command: "if command -v redis-cli >/dev/null 2>&1; then cat /etc/redis.conf | grep -v '^#' | grep -v '^$'; else echo 'Redis Config Not Detected' >&2; exit 1; fi", 
     icon: FileText, 
-    checkExists: true
+    checkExists: true,
+    parserType: 'linuxRelease'
   },
   { 
     id: 'db_slow_log', 
@@ -107,7 +113,8 @@ export const databaseCommands: PluginCommand[] = [
     cn_description: '近期慢查询与数据库错误日志', 
     command: "find /var/log /var/lib/mysql /var/lib/postgresql -type f \\( -name '*slow*.log*' -o -name '*mysql*error*.log*' -o -name '*postgresql*.log*' -o -name '*mongodb*.log*' \\) 2>/dev/null | head -n 12 | xargs -r tail -n 120", 
     icon: FileText, 
-    checkExists: true
+    checkExists: true,
+    parserType: 'dbSlowLog'
   },
   { 
     id: 'db_permission_matrix', 
@@ -118,6 +125,7 @@ export const databaseCommands: PluginCommand[] = [
     cn_description: 'MySQL/PostgreSQL/Redis 用户与认证矩阵', 
     command: "echo '[MySQL]'; mysql -N -e \"select user,host,plugin from mysql.user\" 2>/dev/null || echo 'MySQL not available'; echo '[PostgreSQL]'; psql -Atqc \"select usename,usesuper,usecreatedb from pg_user\" 2>/dev/null || echo 'PostgreSQL not available'; echo '[Redis]'; redis-cli CONFIG GET requirepass 2>/dev/null || echo 'Redis not available'", 
     icon: Database, 
-    checkExists: true
+    checkExists: true,
+    parserType: 'dbPermissionMatrix'
   }
 ];

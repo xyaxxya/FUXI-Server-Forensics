@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useCommandStore } from '../store/CommandContext';
-import { Server, Plus, CheckSquare, Square, LogOut, Trash2, Activity, Terminal, Edit2, Check, X } from 'lucide-react';
+import { Server, Plus, CheckSquare, Square, LogOut, Trash2, Activity, Terminal, Edit2, Check, X, Crown, CalendarClock } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { translations, Language } from '../translations';
@@ -10,6 +10,15 @@ interface ServerSidebarProps {
   onAddSession: () => void;
   onDisconnect: (sessionId: string) => void;
   language?: Language;
+  licenseStatus?: {
+    valid: boolean;
+    nickname?: string | null;
+    qq?: string | null;
+    avatar?: string | null;
+    license_plan?: string | null;
+    license_label?: string | null;
+    expires_at?: number | null;
+  } | null;
 }
 
 // ------------------------------------------------------------------
@@ -188,7 +197,7 @@ const ServerCard = ({
 // ------------------------------------------------------------------
 // Main Component
 // ------------------------------------------------------------------
-export default function ServerSidebar({ onAddSession, onDisconnect, language = 'en' }: ServerSidebarProps) {
+export default function ServerSidebar({ onAddSession, onDisconnect, language = 'en', licenseStatus = null }: ServerSidebarProps) {
   const { 
     sessions, 
     switchSession, 
@@ -206,6 +215,116 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
   
   const sessionToDeleteObj = sessions.find(s => s.id === sessionToDelete);
   const t = translations[language];
+  const normalizePlan = (rawPlan?: string | null) => {
+    const plan = String(rawPlan || "").trim().toLowerCase();
+    if (
+      plan === "one_year" ||
+      plan === "one-year" ||
+      plan === "oneyear" ||
+      plan === "1year" ||
+      plan === "一年" ||
+      plan === "一年套餐"
+    ) {
+      return "one_year";
+    }
+    if (
+      plan === "half_year" ||
+      plan === "half-year" ||
+      plan === "halfyear" ||
+      plan === "半年" ||
+      plan === "半年套餐" ||
+      plan === "6m"
+    ) {
+      return "half_year";
+    }
+    if (
+      plan === "permanent" ||
+      plan === "forever" ||
+      plan === "lifetime" ||
+      plan === "永久" ||
+      plan === "永久套餐"
+    ) {
+      return "permanent";
+    }
+    return "thirty_days";
+  };
+  const plan = normalizePlan(licenseStatus?.license_plan);
+  const avatarSrc =
+    licenseStatus?.avatar && licenseStatus.avatar.trim().length > 0
+      ? licenseStatus.avatar.startsWith("data:")
+        ? licenseStatus.avatar
+        : `data:image/png;base64,${licenseStatus.avatar}`
+      : "";
+  const expiresText =
+    licenseStatus?.expires_at && plan !== "permanent"
+      ? new Date(licenseStatus.expires_at * 1000).toLocaleDateString("zh-CN")
+      : "";
+  const remainingDays =
+    licenseStatus?.expires_at && plan !== "permanent"
+      ? Math.max(0, Math.ceil((licenseStatus.expires_at * 1000 - Date.now()) / (1000 * 60 * 60 * 24)))
+      : null;
+  const fallbackLabel =
+    plan === "permanent"
+      ? "永久会员"
+      : plan === "one_year"
+      ? "一年会员"
+      : plan === "half_year"
+      ? "半年会员"
+      : "30天会员";
+  const planCardStyle =
+    plan === "permanent"
+      ? {
+          borderColor: "rgba(245,158,11,0.35)",
+          background:
+            "linear-gradient(140deg, rgba(255,251,235,0.95), rgba(255,237,213,0.92), rgba(255,255,255,0.96))",
+        }
+      : plan === "one_year"
+      ? {
+          borderColor: "rgba(139,92,246,0.35)",
+          background:
+            "linear-gradient(140deg, rgba(245,243,255,0.95), rgba(237,233,254,0.92), rgba(255,255,255,0.96))",
+        }
+      : plan === "half_year"
+      ? {
+          borderColor: "rgba(16,185,129,0.35)",
+          background:
+            "linear-gradient(140deg, rgba(236,253,245,0.95), rgba(209,250,229,0.92), rgba(255,255,255,0.96))",
+        }
+      : {
+          borderColor: "rgba(14,165,233,0.32)",
+          background:
+            "linear-gradient(140deg, rgba(239,246,255,0.95), rgba(224,242,254,0.9), rgba(255,255,255,0.96))",
+        };
+  const planGlowClass =
+    plan === "permanent"
+      ? "bg-amber-300/40"
+      : plan === "one_year"
+      ? "bg-violet-300/40"
+      : plan === "half_year"
+      ? "bg-emerald-300/40"
+      : "bg-sky-300/40";
+  const planBadgeClass =
+    plan === "permanent"
+      ? "bg-amber-100/90 text-amber-700 border-amber-200"
+      : plan === "one_year"
+      ? "bg-violet-100/90 text-violet-700 border-violet-200"
+      : plan === "half_year"
+      ? "bg-emerald-100/90 text-emerald-700 border-emerald-200"
+      : "bg-sky-100/90 text-sky-700 border-sky-200";
+  const planRemainClass =
+    plan === "one_year"
+      ? "text-violet-600"
+      : plan === "half_year"
+      ? "text-emerald-600"
+      : "text-sky-600";
+  const planStatusText =
+    plan === "permanent"
+      ? "尊享身份已激活"
+      : plan === "one_year"
+      ? "一年会员运行中"
+      : plan === "half_year"
+      ? "半年会员运行中"
+      : "30天会员运行中";
 
   // Handle switching with visual feedback
   const handleSessionClick = async (sessionId: string) => {
@@ -338,11 +457,68 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
         </div>
 
         {/* Footer Info */}
-        <div className="p-3 border-t border-white/20 bg-white/10">
-           <div className="flex items-center justify-between text-[10px] font-medium text-slate-400">
-             <span>FUXI FORENSICS</span>
-             <span className="bg-slate-200/50 px-1.5 py-0.5 rounded text-slate-500">v{APP_VERSION}</span>
-           </div>
+        <div className="p-3 border-t border-white/20 bg-white/10 space-y-3">
+          {licenseStatus?.valid && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35 }}
+              className="relative rounded-2xl border overflow-hidden p-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]"
+              style={planCardStyle}
+            >
+              <motion.div
+                animate={{ opacity: [0.15, 0.35, 0.15] }}
+                transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
+                className={`absolute -top-10 -right-10 w-28 h-28 rounded-full blur-2xl ${planGlowClass}`}
+              />
+              <div className="relative flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl overflow-hidden border border-white/90 bg-white shadow-sm shrink-0">
+                  {avatarSrc ? (
+                    <img src={avatarSrc} alt="avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-[10px] text-slate-600 font-bold">
+                      USER
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-semibold text-slate-800 truncate tracking-wide">
+                    {licenseStatus.nickname || "授权用户"}
+                  </div>
+                  <div className="text-[10px] text-slate-500 truncate mt-0.5">QQ: {licenseStatus.qq || "-"}</div>
+                </div>
+                <motion.div
+                  animate={plan === "permanent" ? { scale: [1, 1.08, 1] } : undefined}
+                  transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold border backdrop-blur-sm ${planBadgeClass}`}
+                >
+                  <Crown size={10} />
+                  {licenseStatus.license_label || fallbackLabel}
+                </motion.div>
+              </div>
+
+              <div className="relative mt-2.5 flex items-center justify-between gap-2">
+                <div className="text-[10px] text-slate-500 font-medium">
+                  {planStatusText}
+                </div>
+                {expiresText ? (
+                  <div className="inline-flex items-center gap-1.5 text-[10px] text-slate-600 bg-white/70 border border-white rounded-full px-2 py-1">
+                    <CalendarClock size={10} />
+                    {expiresText}
+                    {remainingDays !== null && <span className={`${planRemainClass} font-semibold`}>剩余{remainingDays}天</span>}
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-amber-700 font-semibold bg-amber-50/80 border border-amber-200 rounded-full px-2 py-1">
+                    永久授权
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+          <div className="flex items-center justify-between text-[10px] font-medium text-slate-400">
+            <span>FUXI FORENSICS</span>
+            <span className="bg-slate-200/50 px-1.5 py-0.5 rounded text-slate-500">v{APP_VERSION}</span>
+          </div>
         </div>
 
         {/* Delete Confirmation Modal */}
