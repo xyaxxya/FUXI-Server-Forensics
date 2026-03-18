@@ -41,7 +41,7 @@ interface Tab {
   page: number; // For pagination
 }
 
-export default function MySQLManager({ onClose, language = 'en', aiSettings }: MySQLManagerProps) {
+export default function MySQLManager({ onClose, language = 'en', aiSettings, onAiSettingsChange }: MySQLManagerProps & { onAiSettingsChange?: (settings: AISettings) => void }) {
   const t = translations[language];
   // State
   const [showAIModal, setShowAIModal] = useState(false);
@@ -530,6 +530,18 @@ Constraints:
             [{ role: 'user', content: prompt }],
             aiSettings
         );
+
+        if (response.usage && onAiSettingsChange) {
+            const currentUsage = aiSettings.tokenUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+            onAiSettingsChange({
+                ...aiSettings,
+                tokenUsage: {
+                    prompt_tokens: currentUsage.prompt_tokens + response.usage.prompt_tokens,
+                    completion_tokens: currentUsage.completion_tokens + response.usage.completion_tokens,
+                    total_tokens: currentUsage.total_tokens + response.usage.total_tokens,
+                }
+            });
+        }
 
         let sql = response.content.trim();
         // Strip markdown if present

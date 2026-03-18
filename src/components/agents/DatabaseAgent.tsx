@@ -48,13 +48,14 @@ interface DatabaseAgentProps {
   language: Language;
   aiSettings: AISettings;
   onOpenSettings?: () => void;
+  onAiSettingsChange?: (settings: AISettings) => void;
 }
 
 type DisplayItem = 
   | { type: 'message', message: AIMessage }
   | { type: 'thinking', steps: ThinkingStep[], isFinished: boolean };
 
-export default function DatabaseAgent({ language, aiSettings }: DatabaseAgentProps) {
+export default function DatabaseAgent({ language, aiSettings, onAiSettingsChange }: DatabaseAgentProps) {
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -358,6 +359,18 @@ export default function DatabaseAgent({ language, aiSettings }: DatabaseAgentPro
       const response = await sendToAI(contextHistory, aiSettings, tools);
       const newHistory = [...history, response];
       setMessages(newHistory);
+
+      if (response.usage && onAiSettingsChange) {
+          const currentUsage = aiSettings.tokenUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+          onAiSettingsChange({
+              ...aiSettings,
+              tokenUsage: {
+                  prompt_tokens: currentUsage.prompt_tokens + response.usage.prompt_tokens,
+                  completion_tokens: currentUsage.completion_tokens + response.usage.completion_tokens,
+                  total_tokens: currentUsage.total_tokens + response.usage.total_tokens,
+              }
+          });
+      }
 
       if (response.tool_calls && response.tool_calls.length > 0) {
         setStatus(t.executing_command);

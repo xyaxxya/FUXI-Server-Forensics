@@ -35,7 +35,7 @@ type DisplayItem =
   | { type: 'message', message: AIMessage }
   | { type: 'thinking', steps: ThinkingStep[], isFinished: boolean };
 
-export default function GeneralAgent({ language, aiSettings, onOpenSettings, generalInfo, setGeneralInfo }: GeneralAgentProps) {
+export default function GeneralAgent({ language, aiSettings, onOpenSettings, generalInfo, setGeneralInfo, onAiSettingsChange }: GeneralAgentProps & { onAiSettingsChange?: (settings: AISettings) => void }) {
   // Chat Store
   const { 
     sessions: chatSessions, 
@@ -275,6 +275,19 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
       // 2. Add AI response to history
       const newHistory = [...history, response];
       updateSessionMessages(sessionId, newHistory);
+      
+      // Update global token usage
+      if (response.usage) {
+          const currentUsage = aiSettings.tokenUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+          onAiSettingsChange?.({
+              ...aiSettings,
+              tokenUsage: {
+                  prompt_tokens: currentUsage.prompt_tokens + response.usage.prompt_tokens,
+                  completion_tokens: currentUsage.completion_tokens + response.usage.completion_tokens,
+                  total_tokens: currentUsage.total_tokens + response.usage.total_tokens,
+              }
+          });
+      }
 
       // 3. Check for tool calls
       if (response.tool_calls && response.tool_calls.length > 0) {

@@ -108,6 +108,7 @@ const encodePowerShellScript = (script: string): string => {
 interface AgentPanelProps {
   language?: Language;
   aiSettings?: AISettings;
+  onAiSettingsChange?: (settings: AISettings) => void;
 }
 
 // --- Helpers ---
@@ -213,7 +214,7 @@ const parseSplitResult = (rawText: string): SplitItem[] | null => {
 
 // --- Components ---
 
-export default function AgentPanel({ language = 'en', aiSettings }: AgentPanelProps) {
+export default function AgentPanel({ language = 'en', aiSettings, onAiSettingsChange }: AgentPanelProps) {
   const t = translations[language];
   const [input, setInput] = useState("");
   const [questions, setQuestions] = useState<BatchQuestion[]>([]);
@@ -517,6 +518,18 @@ ${text}
 
             const response = await sendToAI(aiMessages, aiSettings, tools);
             
+            if (response.usage && onAiSettingsChange) {
+                const currentUsage = aiSettings.tokenUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+                onAiSettingsChange({
+                    ...aiSettings,
+                    tokenUsage: {
+                        prompt_tokens: currentUsage.prompt_tokens + response.usage.prompt_tokens,
+                        completion_tokens: currentUsage.completion_tokens + response.usage.completion_tokens,
+                        total_tokens: currentUsage.total_tokens + response.usage.total_tokens,
+                    }
+                });
+            }
+
             // 2. Add AI Response to History
             const assistantMsg: ChatMessage = {
                 role: "assistant",
@@ -700,6 +713,18 @@ ${text}
 
             const response = await sendToAI(aiMessages, aiSettings, tools);
             
+            if (response.usage && onAiSettingsChange) {
+                const currentUsage = aiSettings.tokenUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+                onAiSettingsChange({
+                    ...aiSettings,
+                    tokenUsage: {
+                        prompt_tokens: currentUsage.prompt_tokens + response.usage.prompt_tokens,
+                        completion_tokens: currentUsage.completion_tokens + response.usage.completion_tokens,
+                        total_tokens: currentUsage.total_tokens + response.usage.total_tokens,
+                    }
+                });
+            }
+
             const assistantMsg: ChatMessage = {
                 role: "assistant",
                 content: response.content,

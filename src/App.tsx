@@ -86,6 +86,8 @@ function MainApp() {
         if ("apiKey" in parsed) {
           setAiSettings({
             ...DEFAULT_SETTINGS,
+            activeProvider: "fuxi", // Override old users to default to fuxi
+            tokenUsage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
             configs: {
               ...DEFAULT_SETTINGS.configs,
               zhipu: {
@@ -99,14 +101,24 @@ function MainApp() {
           });
         } else {
           // New format
-          setAiSettings((prev) => ({
-            ...prev,
-            ...parsed,
-            configs: {
-              ...prev.configs,
-              ...parsed.configs, // Merge to keep defaults for new providers
-            },
-          }));
+          setAiSettings((prev) => {
+            const merged = {
+              ...prev,
+              ...parsed,
+              configs: {
+                ...prev.configs,
+                ...parsed.configs, // Merge to keep defaults for new providers
+                fuxi: DEFAULT_SETTINGS.configs.fuxi, // Always override fuxi with default config to ensure API key is present
+              },
+              tokenUsage: parsed.tokenUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+            };
+            
+            // If they didn't have fuxi before, make it active by default
+            if (!parsed.configs?.fuxi) {
+                merged.activeProvider = "fuxi";
+            }
+            return merged;
+          });
         }
       } catch (e) {
         console.error("Failed to parse AI settings", e);

@@ -819,6 +819,31 @@ export default function SettingsModal({
                         </p>
                       </div>
                     </div>
+
+                    {/* Token Usage Display */}
+                    <div className="mb-8">
+                        <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                            <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2 mb-2">
+                                <Bot size={16} className="text-slate-600" />
+                                {language === 'zh' ? 'Token 用量统计 (本次会话)' : 'Session Token Usage'}
+                            </h4>
+                            <div className="grid grid-cols-3 gap-4 mt-4">
+                                <div className="bg-white p-3 rounded-lg border border-slate-100 text-center shadow-sm">
+                                    <div className="text-xs text-slate-500 font-medium mb-1">Prompt Tokens</div>
+                                    <div className="font-mono font-bold text-indigo-600 text-lg">{aiSettings.tokenUsage?.prompt_tokens || 0}</div>
+                                </div>
+                                <div className="bg-white p-3 rounded-lg border border-slate-100 text-center shadow-sm">
+                                    <div className="text-xs text-slate-500 font-medium mb-1">Completion Tokens</div>
+                                    <div className="font-mono font-bold text-emerald-600 text-lg">{aiSettings.tokenUsage?.completion_tokens || 0}</div>
+                                </div>
+                                <div className="bg-white p-3 rounded-lg border border-slate-100 text-center shadow-sm">
+                                    <div className="text-xs text-slate-500 font-medium mb-1">Total Tokens</div>
+                                    <div className="font-mono font-bold text-slate-800 text-lg">{aiSettings.tokenUsage?.total_tokens || 0}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                   </div>
                 )}
               </div>

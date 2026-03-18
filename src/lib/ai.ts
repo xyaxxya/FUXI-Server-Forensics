@@ -3,6 +3,11 @@ export interface AIMessage {
   content: string;
   tool_call_id?: string; // For tool responses
   tool_calls?: ToolCall[]; // For assistant requests
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
 }
 
 export interface ToolCall {
@@ -30,6 +35,11 @@ export interface AISettings {
   maxLoops?: number; // New setting for maximum interaction loops
   maxConcurrentTasks?: number; // New setting for maximum concurrent tasks in batch
   configs: Record<AIProviderId, AIProviderConfig>;
+  tokenUsage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
 }
 
 export const DEFAULT_SETTINGS: AISettings = {
@@ -37,6 +47,11 @@ export const DEFAULT_SETTINGS: AISettings = {
   enablePlanning: false,
   maxLoops: 25, // Default to 25
   maxConcurrentTasks: 3, // Default to 3
+  tokenUsage: {
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0
+  },
   configs: {
     fuxi: {
       id: "fuxi",
@@ -332,6 +347,11 @@ export async function sendToAI(
         role: "assistant",
         content: textContent,
         tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
+        usage: {
+          prompt_tokens: data.usage?.input_tokens || 0,
+          completion_tokens: data.usage?.output_tokens || 0,
+          total_tokens: (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0)
+        }
       };
     } catch (error) {
       console.error("Claude Request Failed:", error);
@@ -376,6 +396,11 @@ export async function sendToAI(
       role: message.role,
       content: message.content || "",
       tool_calls: message.tool_calls,
+      usage: data.usage ? {
+        prompt_tokens: data.usage.prompt_tokens || 0,
+        completion_tokens: data.usage.completion_tokens || 0,
+        total_tokens: data.usage.total_tokens || 0,
+      } : undefined
     };
   } catch (error: any) {
     console.error("AI Request Failed:", error);

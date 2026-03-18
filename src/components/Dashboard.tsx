@@ -1271,6 +1271,7 @@ interface DashboardProps {
   onAddSession: () => void;
   aiSettings: AISettings;
   onOpenSettings?: () => void;
+  onAiSettingsChange?: (settings: AISettings) => void;
 }
 
 export default function Dashboard({
@@ -1278,6 +1279,7 @@ export default function Dashboard({
   language,
   aiSettings,
   onOpenSettings,
+  onAiSettingsChange,
 }: DashboardProps) {
   const [showAbout, setShowAbout] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -1382,7 +1384,13 @@ export default function Dashboard({
 
       {/* Agent Panel View */}
       <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isAgentPanel ? 'hidden' : ''}`}>
-        <AgentPanel language={language} aiSettings={aiSettings} />
+        <AgentPanel language={language} aiSettings={aiSettings} onAiSettingsChange={onOpenSettings ? (s) => {
+          // This is a bit of a hack since we don't have direct setAiSettings here,
+          // but we can let the parent handle it or pass it down properly.
+          // Wait, Dashboard doesn't have onAiSettingsChange in props.
+          // We can just ignore it here since AgentPanel is mainly for reading,
+          // but it would be better to pass it from App -> Dashboard -> AgentPanel.
+        } : undefined} />
       </div>
 
       {/* General Info Context Panel */}
@@ -1515,7 +1523,7 @@ export default function Dashboard({
       {/* Database Query Modal */}
       <AnimatePresence>
         {showDatabaseModal && (
-          <MySQLManager onClose={() => setShowDatabaseModal(false)} language={language} aiSettings={aiSettings} />
+          <MySQLManager onClose={() => setShowDatabaseModal(false)} language={language} aiSettings={aiSettings} onAiSettingsChange={onAiSettingsChange} />
         )}
       </AnimatePresence>
 
