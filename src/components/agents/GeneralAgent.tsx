@@ -12,7 +12,8 @@ import {
   Plus,
   Menu,
   X,
-  Square
+  Square,
+  Wrench
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import ReactMarkdown from "react-markdown";
@@ -29,13 +30,19 @@ interface GeneralAgentProps {
   onOpenSettings?: () => void;
   generalInfo: string;
   setGeneralInfo: (info: string | ((prev: string) => string)) => void;
+  chatUserProfile?: {
+    qq?: string | null;
+    avatar?: string | null;
+  };
 }
 
 type DisplayItem = 
   | { type: 'message', message: AIMessage }
   | { type: 'thinking', steps: ThinkingStep[], isFinished: boolean };
 
-export default function GeneralAgent({ language, aiSettings, onOpenSettings, generalInfo, setGeneralInfo, onAiSettingsChange }: GeneralAgentProps & { onAiSettingsChange?: (settings: AISettings) => void }) {
+type AgentMode = "general_agent" | "server_refactor_agent";
+
+export default function GeneralAgent({ language, aiSettings, onOpenSettings, generalInfo, setGeneralInfo, onAiSettingsChange, chatUserProfile }: GeneralAgentProps & { onAiSettingsChange?: (settings: AISettings) => void }) {
   // Chat Store
   const { 
     sessions: chatSessions, 
@@ -51,13 +58,29 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string>("");
+  const [autoSkillStatus, setAutoSkillStatus] = useState<string>("");
+  const [agentMode, setAgentMode] = useState<AgentMode>("general_agent");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [userAvatarFailed, setUserAvatarFailed] = useState(false);
   
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const { currentSession, sessions, selectedSessionIds } = useCommandStore();
   const t = translations[language];
+  const normalizedAvatar = chatUserProfile?.avatar?.trim() || "";
+  const qq = (chatUserProfile?.qq || "").trim();
+  const qqAvatarSrc = qq ? `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(qq)}&s=100` : "";
+  const avatarFromLicense = normalizedAvatar
+    ? normalizedAvatar.startsWith("data:")
+      ? normalizedAvatar
+      : `data:image/png;base64,${normalizedAvatar}`
+    : "";
+  const userAvatarSrc = qqAvatarSrc || avatarFromLicense;
+
+  useEffect(() => {
+    setUserAvatarFailed(false);
+  }, [userAvatarSrc]);
 
   // Derived State
   const activeSession = Array.isArray(chatSessions) ? chatSessions.find(s => s.id === activeSessionId) : undefined;
@@ -262,14 +285,19 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
     try {
       // Prepare enhanced context with server list
       let enhancedInfo = generalInfo;
+      const modeContext =
+        agentMode === "server_refactor_agent"
+          ? "【当前模式：服务器重构智能体】面向网站重构与交付，先只读探测框架，再分批改造与验证回滚。"
+          : "【当前模式：通用智能体】面向通用取证分析与答疑。";
       const serverListInfo = sessions
           .map(s => `- ${s.user}@${s.ip} (ID: ${s.id}) ${s.note ? `[Note: ${s.note}]` : ''} ${selectedSessionIds.includes(s.id) ? '(Selected)' : ''}`)
           .join('\n');
       
-      enhancedInfo = `**Current Server List**:\n${serverListInfo}\n\n${enhancedInfo}`;
+      enhancedInfo = `${modeContext}\n\n**Current Server List**:\n${serverListInfo}\n\n${enhancedInfo}`;
 
       // 1. Get response from AI
       const response = await sendToAI(history, aiSettings, undefined, enhancedInfo, signal);
+      setAutoSkillStatus(response.routing_info?.status_text || "");
       if (signal.aborted) return;
 
       // 2. Add AI response to history
@@ -460,10 +488,51 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
                                     <span className="text-amber-500">{t.not_connected}</span>
                                 )}
                             </p>
+                            <p className="text-[11px] text-sky-600 mt-0.5 truncate">{autoSkillStatus || t.skill_auto_detect_waiting}</p>
                         </div>
                     </div>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-2">
+                    <div
+                        className="relative p-1 rounded-2xl border border-slate-200/90 bg-gradient-to-r from-slate-100 to-slate-50 grid grid-cols-2 w-[300px] shadow-inner"
+                        title={t.agent_mode}
+                    >
+                        <motion.div
+                            className={`absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-xl border transition-colors ${
+                                agentMode === "server_refactor_agent"
+                                    ? "bg-gradient-to-r from-indigo-500 to-blue-500 border-indigo-400/50"
+                                    : "bg-gradient-to-r from-blue-500 to-cyan-500 border-blue-400/50"
+                            }`}
+                            animate={{ x: agentMode === "server_refactor_agent" ? "100%" : "0%" }}
+                            transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                        />
+                        <motion.button
+                            onClick={() => setAgentMode("general_agent")}
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            className={`relative z-10 px-3 py-2 text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 ${
+                                agentMode === "general_agent"
+                                    ? "text-white"
+                                    : "text-slate-600 hover:text-slate-900"
+                            }`}
+                        >
+                            <Bot size={13} />
+                            {t.agent_mode_sole_coder}
+                        </motion.button>
+                        <motion.button
+                            onClick={() => setAgentMode("server_refactor_agent")}
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            className={`relative z-10 px-3 py-2 text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 ${
+                                agentMode === "server_refactor_agent"
+                                    ? "text-white"
+                                    : "text-slate-600 hover:text-slate-900"
+                            }`}
+                        >
+                            <Wrench size={13} />
+                            {t.agent_mode_solo_builder}
+                        </motion.button>
+                    </div>
                     {messages.length > 0 && (
                         <button
                             onClick={handleClearChat}
@@ -531,7 +600,18 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
                                 ? "bg-gradient-to-br from-indigo-500 to-blue-600 text-white" 
                                 : "bg-white text-indigo-600 border border-indigo-50"
                             }`}>
-                                {msg.role === "user" ? <div className="text-xs font-bold">U</div> : <Sparkles size={16} />}
+                                {msg.role === "user" ? (
+                                  userAvatarSrc && !userAvatarFailed ? (
+                                    <img
+                                      src={userAvatarSrc}
+                                      alt="user avatar"
+                                      className="w-full h-full rounded-xl object-cover"
+                                      onError={() => setUserAvatarFailed(true)}
+                                    />
+                                  ) : (
+                                    <div className="text-xs font-bold">U</div>
+                                  )
+                                ) : <Sparkles size={16} />}
                             </div>
                             <div className={`max-w-[85%] rounded-2xl px-6 py-4 text-sm shadow-sm transition-all duration-200 hover:shadow-md ${
                                 msg.role === "user" 

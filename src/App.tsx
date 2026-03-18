@@ -343,6 +343,10 @@ function MainApp() {
                       onAddSession={() => setShowLoginModal(true)}
                       aiSettings={aiSettings}
                       onOpenSettings={() => openSettings("general")}
+                      chatUserProfile={{
+                        qq: licenseStatus?.qq || null,
+                        avatar: licenseStatus?.avatar || null,
+                      }}
                     />
                   </main>
                 </div>

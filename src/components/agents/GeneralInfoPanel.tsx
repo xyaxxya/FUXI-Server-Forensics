@@ -34,6 +34,7 @@ export default function GeneralInfoPanel({
   const [loading, setLoading] = useState(false);
   const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([]);
   const [isThinkingFinished, setIsThinkingFinished] = useState(true);
+  const [autoSkillStatus, setAutoSkillStatus] = useState("");
   
   const { currentSession, sessions, selectedSessionIds } = useCommandStore();
   
@@ -201,6 +202,7 @@ export default function GeneralInfoPanel({
       // 1. Get response from AI
       // Pass current generalInfo to give context even for these tasks
       const response = await sendToAI(history, aiSettings, undefined, generalInfo);
+      setAutoSkillStatus(response.routing_info?.status_text || "");
 
       // Update thinking steps based on response content (reasoning)
       if (response.content) {
@@ -363,6 +365,7 @@ export default function GeneralInfoPanel({
                     {t.general_info_presets}
                 </label>
             </div>
+            <div className="mb-2 text-[11px] text-sky-600">{autoSkillStatus || t.skill_auto_detect_waiting}</div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {presets.map((preset) => (
                     <button

@@ -14,7 +14,6 @@ import {
   X,
   Settings,
   Send,
-  User,
   ArrowLeft,
   Copy,
   Check,
@@ -109,6 +108,11 @@ interface AgentPanelProps {
   language?: Language;
   aiSettings?: AISettings;
   onAiSettingsChange?: (settings: AISettings) => void;
+  generalInfo?: string;
+  chatUserProfile?: {
+    qq?: string | null;
+    avatar?: string | null;
+  };
 }
 
 // --- Helpers ---
@@ -214,11 +218,12 @@ const parseSplitResult = (rawText: string): SplitItem[] | null => {
 
 // --- Components ---
 
-export default function AgentPanel({ language = 'en', aiSettings, onAiSettingsChange }: AgentPanelProps) {
+export default function AgentPanel({ language = 'en', aiSettings, onAiSettingsChange, generalInfo = "", chatUserProfile }: AgentPanelProps) {
   const t = translations[language];
   const [input, setInput] = useState("");
   const [questions, setQuestions] = useState<BatchQuestion[]>([]);
   const [autoIdentify, setAutoIdentify] = useState(true);
+  const [autoSkillStatus, setAutoSkillStatus] = useState<string>("");
   
   // Selected question for full-screen detail view
   const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null);
@@ -228,7 +233,21 @@ export default function AgentPanel({ language = 'en', aiSettings, onAiSettingsCh
   
   // Chat input in detail view
   const [chatInput, setChatInput] = useState("");
+  const [userAvatarFailed, setUserAvatarFailed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const normalizedAvatar = chatUserProfile?.avatar?.trim() || "";
+  const qq = (chatUserProfile?.qq || "").trim();
+  const qqAvatarSrc = qq ? `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(qq)}&s=100` : "";
+  const avatarFromLicense = normalizedAvatar
+    ? normalizedAvatar.startsWith("data:")
+      ? normalizedAvatar
+      : `data:image/png;base64,${normalizedAvatar}`
+    : "";
+  const userAvatarSrc = qqAvatarSrc || avatarFromLicense;
+
+  useEffect(() => {
+    setUserAvatarFailed(false);
+  }, [userAvatarSrc]);
   
   // Helper to process messages into display items (groups thoughts and tools)
   const getDisplayItems = (messages: ChatMessage[], status: QuestionStatus): DisplayItem[] => {
@@ -397,6 +416,7 @@ ${text}
         const res = await sendToAI([
             { role: "user", content: prompt }
         ], settings, []); 
+        setAutoSkillStatus(res.routing_info?.status_text || "");
 
         const items = parseSplitResult(res.content);
         if (!items) {
@@ -447,10 +467,7 @@ ${text}
     
     // Initial History
     // We add a system prompt to guide the output format
-    let history: ChatMessage[] = [
-        { 
-            role: "system", 
-            content: `你是一名全球顶尖的电子数据取证专家。
+    const systemPrompt = `你是一名全球顶尖的电子数据取证专家。
 你的任务是进行自动化批量取证分析，目标是精准、高效、安全。
 
 **核心原则**：
@@ -463,7 +480,12 @@ ${text}
 - 不要包含 Markdown 格式、长篇解释或思考过程的文本输出，除非用户明确要求详细报告。
 - 所有的“分析-执行-反馈”过程应体现在你的**工具调用**逻辑中，而不是最终的文本回复中。
 - 如果用户询问端口，只返回数字。如果询问路径，只返回路径。
-- 遇到错误或无法获取时，简要说明原因。`
+- 遇到错误或无法获取时，简要说明原因。`;
+
+    let history: ChatMessage[] = [
+        { 
+            role: "system", 
+            content: systemPrompt
         },
         { role: "user", content: q.content }
     ];
@@ -516,7 +538,8 @@ ${text}
                 tool_calls: (m as any).rawToolCalls
             })) as AIMessage[];
 
-            const response = await sendToAI(aiMessages, aiSettings, tools);
+            const response = await sendToAI(aiMessages, aiSettings, tools, generalInfo);
+            setAutoSkillStatus(response.routing_info?.status_text || "");
             
             if (response.usage && onAiSettingsChange) {
                 const currentUsage = aiSettings.tokenUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
@@ -639,7 +662,6 @@ ${text}
         alert("Please configure AI settings first.");
         return;
     }
-    
     setIsProcessing(true);
     
     const pendingQuestions = questions.filter(q => q.status === "pending");
@@ -676,6 +698,12 @@ ${text}
     // We reuse logic similar to processQuestion but with existing history
     try {
         let history = [...newMessages];
+        if (!history.some((m) => m.role === "system")) {
+            history = [{
+                role: "system",
+                content: `你是一名全球顶尖的电子数据取证专家。请遵循非交互式命令原则并优先使用只读分析。`
+            }, ...history];
+        }
         let targetSessions = sessions.filter((s) => selectedSessionIds.includes(s.id));
         if (targetSessions.length === 0 && currentSession) {
             targetSessions = [currentSession];
@@ -711,7 +739,8 @@ ${text}
                 tool_calls: (m as any).rawToolCalls
             })) as AIMessage[];
 
-            const response = await sendToAI(aiMessages, aiSettings, tools);
+            const response = await sendToAI(aiMessages, aiSettings, tools, generalInfo);
+            setAutoSkillStatus(response.routing_info?.status_text || "");
             
             if (response.usage && onAiSettingsChange) {
                 const currentUsage = aiSettings.tokenUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
@@ -843,6 +872,7 @@ ${text}
                     {t[`type_${selectedQuestion.type.toLowerCase().replace("dataanalysis", "data_analysis")}` as keyof typeof t] || selectedQuestion.type}
                 </span>
               </h2>
+              <div className="text-[11px] text-sky-600 mt-1">{autoSkillStatus || t.skill_auto_detect_waiting}</div>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -870,7 +900,16 @@ ${text}
                        return (
                         <div key={`msg-${idx}`} className="flex flex-row-reverse gap-4 mb-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                             <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm bg-gradient-to-br from-blue-500 to-indigo-600 text-white transition-transform hover:scale-110 duration-200">
-                                <User size={20} />
+                                {userAvatarSrc && !userAvatarFailed ? (
+                                  <img
+                                    src={userAvatarSrc}
+                                    alt="user avatar"
+                                    className="w-full h-full rounded-xl object-cover"
+                                    onError={() => setUserAvatarFailed(true)}
+                                  />
+                                ) : (
+                                  <div className="text-sm font-bold">U</div>
+                                )}
                             </div>
                             <div className="flex flex-col max-w-[80%] items-end">
                                 <div className="px-6 py-4 rounded-2xl shadow-sm text-sm leading-relaxed bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-tr-sm [&_*]:text-white/95 transition-all duration-200 hover:shadow-md">
@@ -1030,6 +1069,9 @@ ${text}
                 placeholder={t.add_questions_placeholder}
                 className="w-full h-24 p-3 bg-transparent border-none focus:ring-0 outline-none focus:outline-none resize-none text-slate-600 text-sm font-mono custom-scrollbar"
               />
+            </div>
+            <div className="mt-3 text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              {autoSkillStatus || t.skill_auto_detect_waiting}
             </div>
             <div className="flex justify-end mt-3">
               <button 

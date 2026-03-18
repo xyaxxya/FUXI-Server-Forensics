@@ -49,17 +49,22 @@ interface DatabaseAgentProps {
   aiSettings: AISettings;
   onOpenSettings?: () => void;
   onAiSettingsChange?: (settings: AISettings) => void;
+  chatUserProfile?: {
+    qq?: string | null;
+    avatar?: string | null;
+  };
 }
 
 type DisplayItem = 
   | { type: 'message', message: AIMessage }
   | { type: 'thinking', steps: ThinkingStep[], isFinished: boolean };
 
-export default function DatabaseAgent({ language, aiSettings, onAiSettingsChange }: DatabaseAgentProps) {
+export default function DatabaseAgent({ language, aiSettings, onAiSettingsChange, chatUserProfile }: DatabaseAgentProps) {
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string>("");
+  const [autoSkillStatus, setAutoSkillStatus] = useState<string>("");
   
   // Connection State
   const [connections, setConnections] = useState<DBConfig[]>([]);
@@ -68,9 +73,23 @@ export default function DatabaseAgent({ language, aiSettings, onAiSettingsChange
   const [selectedDb, setSelectedDb] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSummaryMode, setIsSummaryMode] = useState(true);
+  const [userAvatarFailed, setUserAvatarFailed] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const t = translations[language];
+  const normalizedAvatar = chatUserProfile?.avatar?.trim() || "";
+  const qq = (chatUserProfile?.qq || "").trim();
+  const qqAvatarSrc = qq ? `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(qq)}&s=100` : "";
+  const avatarFromLicense = normalizedAvatar
+    ? normalizedAvatar.startsWith("data:")
+      ? normalizedAvatar
+      : `data:image/png;base64,${normalizedAvatar}`
+    : "";
+  const userAvatarSrc = qqAvatarSrc || avatarFromLicense;
+
+  useEffect(() => {
+    setUserAvatarFailed(false);
+  }, [userAvatarSrc]);
 
   // Load connections from localStorage
   useEffect(() => {
@@ -357,6 +376,7 @@ export default function DatabaseAgent({ language, aiSettings, onAiSettingsChange
 
     try {
       const response = await sendToAI(contextHistory, aiSettings, tools);
+      setAutoSkillStatus(response.routing_info?.status_text || "");
       const newHistory = [...history, response];
       setMessages(newHistory);
 
@@ -524,6 +544,7 @@ export default function DatabaseAgent({ language, aiSettings, onAiSettingsChange
                                 <span className="text-slate-400">{t.not_connected}</span>
                             )}
                         </div>
+                        <div className="text-[11px] text-sky-600 truncate mt-0.5">{autoSkillStatus || t.skill_auto_detect_waiting}</div>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -582,7 +603,18 @@ export default function DatabaseAgent({ language, aiSettings, onAiSettingsChange
                                 ? "bg-gradient-to-br from-indigo-500 to-blue-600 text-white" 
                                 : "bg-white border border-indigo-50 text-indigo-600"
                             }`}>
-                                {msg.role === "user" ? <div className="text-xs font-bold">U</div> : <Sparkles size={16} />}
+                                {msg.role === "user" ? (
+                                  userAvatarSrc && !userAvatarFailed ? (
+                                    <img
+                                      src={userAvatarSrc}
+                                      alt="user avatar"
+                                      className="w-full h-full rounded-xl object-cover"
+                                      onError={() => setUserAvatarFailed(true)}
+                                    />
+                                  ) : (
+                                    <div className="text-xs font-bold">U</div>
+                                  )
+                                ) : <Sparkles size={16} />}
                             </div>
                             <div className={`max-w-[85%] min-w-0 rounded-2xl px-6 py-4 text-sm shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md ${
                                 msg.role === "user" 

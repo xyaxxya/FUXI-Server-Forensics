@@ -1,3 +1,5 @@
+import { buildSkillPackPrompt, detectAutoSkillRouting } from "../skills/forensicsSkillPacks";
+
 export interface AIMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
@@ -7,6 +9,12 @@ export interface AIMessage {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
+  };
+  routing_info?: {
+    frameworks: string[];
+    skill_ids: string[];
+    status_text: string;
+    phase: "probe" | "execute";
   };
 }
 
@@ -204,8 +212,51 @@ export async function sendToAI(
 
   const tools = customTools !== undefined ? customTools : defaultTools;
 
-  // Inject Planning Mode Instruction if enabled
   let effectiveMessages = [...messages];
+  const autoRouting = detectAutoSkillRouting(messages, generalInfo);
+  const autoSkillPrompt = buildSkillPackPrompt(autoRouting.selectedSkillIds, "zh");
+  const lastUserContent = [...messages].reverse().find((m) => m.role === "user")?.content || "";
+  const isSkillQuestion = /skills?|skill|调用.*skills|会调用什么|哪些skills|有什么skills|调用了哪些|可调用能力/.test(lastUserContent.toLowerCase());
+
+  if (isSkillQuestion) {
+      const frameworkText = autoRouting.frameworks.length ? autoRouting.frameworks.join(" / ") : "未识别特定框架";
+      const skillText = autoRouting.selectedSkillNames.length ? autoRouting.selectedSkillNames.join("、") : "默认取证策略";
+      return {
+        role: "assistant",
+        content: `当前自动路由结果：${autoRouting.statusText}\n识别框架：${frameworkText}\n将调用 skills：${skillText}\n当前阶段：${autoRouting.phase === "probe" ? "阶段1 只读探测" : "阶段2 技能执行"}`,
+        routing_info: {
+          frameworks: autoRouting.frameworks,
+          skill_ids: autoRouting.selectedSkillIds,
+          status_text: autoRouting.statusText,
+          phase: autoRouting.phase,
+        },
+        usage: {
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          total_tokens: 0,
+        }
+      };
+  }
+
+  if (autoSkillPrompt) {
+      const phaseInstruction = autoRouting.phase === "probe"
+        ? `\n\n**两阶段策略-当前阶段**：阶段1（只读探测）。你必须仅执行只读命令收集框架证据，并在证据不足时优先探测，不执行破坏性写操作。`
+        : `\n\n**两阶段策略-当前阶段**：阶段2（技能执行）。已识别框架，按已路由skills执行分析/重构步骤。`;
+      const skillQaInstruction = `\n\n**技能问答约束**：当用户询问“你会调用什么skills/调用了哪些skills”时，你必须基于当前自动路由结果作答，明确列出：${autoRouting.selectedSkillNames.join("、")}；不要回答泛化能力清单。`;
+      const routeInfoMsg = `\n\n**自动技能路由**：${autoRouting.statusText}${autoSkillPrompt}${phaseInstruction}${skillQaInstruction}`;
+      const systemIndex = effectiveMessages.findIndex(m => m.role === 'system');
+      if (systemIndex !== -1) {
+          effectiveMessages[systemIndex] = {
+              ...effectiveMessages[systemIndex],
+              content: effectiveMessages[systemIndex].content + routeInfoMsg
+          };
+      } else {
+          effectiveMessages.unshift({
+              role: 'system',
+              content: SYSTEM_PROMPT + routeInfoMsg
+          });
+      }
+  }
 
   // Inject General Info if provided
   if (generalInfo) {
@@ -351,6 +402,12 @@ export async function sendToAI(
           prompt_tokens: data.usage?.input_tokens || 0,
           completion_tokens: data.usage?.output_tokens || 0,
           total_tokens: (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0)
+        },
+        routing_info: {
+          frameworks: autoRouting.frameworks,
+          skill_ids: autoRouting.selectedSkillIds,
+          status_text: autoRouting.statusText,
+          phase: autoRouting.phase,
         }
       };
     } catch (error) {
@@ -400,7 +457,13 @@ export async function sendToAI(
         prompt_tokens: data.usage.prompt_tokens || 0,
         completion_tokens: data.usage.completion_tokens || 0,
         total_tokens: data.usage.total_tokens || 0,
-      } : undefined
+      } : undefined,
+      routing_info: {
+        frameworks: autoRouting.frameworks,
+        skill_ids: autoRouting.selectedSkillIds,
+        status_text: autoRouting.statusText,
+        phase: autoRouting.phase,
+      }
     };
   } catch (error: any) {
     console.error("AI Request Failed:", error);

@@ -1272,6 +1272,10 @@ interface DashboardProps {
   aiSettings: AISettings;
   onOpenSettings?: () => void;
   onAiSettingsChange?: (settings: AISettings) => void;
+  chatUserProfile?: {
+    qq?: string | null;
+    avatar?: string | null;
+  };
 }
 
 export default function Dashboard({
@@ -1280,6 +1284,7 @@ export default function Dashboard({
   aiSettings,
   onOpenSettings,
   onAiSettingsChange,
+  chatUserProfile,
 }: DashboardProps) {
   const [showAbout, setShowAbout] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -1379,18 +1384,19 @@ export default function Dashboard({
           onOpenSettings={onOpenSettings}
           generalInfo={generalInfo}
           setGeneralInfo={setGeneralInfo}
+          chatUserProfile={chatUserProfile}
         />
       </div>
 
       {/* Agent Panel View */}
       <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isAgentPanel ? 'hidden' : ''}`}>
-        <AgentPanel language={language} aiSettings={aiSettings} onAiSettingsChange={onOpenSettings ? (s) => {
-          // This is a bit of a hack since we don't have direct setAiSettings here,
-          // but we can let the parent handle it or pass it down properly.
-          // Wait, Dashboard doesn't have onAiSettingsChange in props.
-          // We can just ignore it here since AgentPanel is mainly for reading,
-          // but it would be better to pass it from App -> Dashboard -> AgentPanel.
-        } : undefined} />
+        <AgentPanel
+          language={language}
+          aiSettings={aiSettings}
+          onAiSettingsChange={onAiSettingsChange}
+          generalInfo={generalInfo}
+          chatUserProfile={chatUserProfile}
+        />
       </div>
 
       {/* General Info Context Panel */}
@@ -1411,6 +1417,7 @@ export default function Dashboard({
           language={language} 
           aiSettings={aiSettings} 
           onOpenSettings={onOpenSettings}
+          chatUserProfile={chatUserProfile}
         />
       </div>
 

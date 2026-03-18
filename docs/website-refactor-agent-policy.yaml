@@ -1,0 +1,84 @@
+agent:
+  name: website-refactor-agent
+  mode: autonomous
+  requires_snapshot_before_write: true
+  refuse_write_if_snapshot_missing: true
+
+snapshot:
+  required_fields:
+    - snapshot_id
+    - snapshot_time
+    - target_env
+    - operator
+  confirm_token_pattern: "SNAPSHOT_CONFIRMED:*"
+
+command_policy:
+  risk_levels:
+    L0_readonly:
+      allow:
+        - cat
+        - grep
+        - awk
+        - sed
+        - head
+        - tail
+        - find
+        - ls
+        - ps
+        - ss
+        - netstat
+        - journalctl
+    L1_low_write:
+      allow:
+        - cp
+        - mv
+        - mkdir
+        - chmod
+        - chown
+      require_backup: true
+    L2_high_write:
+      allow:
+        - rm
+        - systemctl
+        - service
+        - nginx
+        - apachectl
+        - docker
+      require_user_confirm: true
+      require_rollback_plan: true
+  deny_patterns:
+    - "vi "
+    - "nano "
+    - "top "
+    - "htop "
+    - "rm -rf /"
+    - "mkfs"
+
+workflow:
+  phases:
+    - detect_stack
+    - collect_baseline
+    - generate_plan
+    - dry_run
+    - execute_batch
+    - validate
+    - deliver_report
+  batch_execution:
+    max_changes_per_batch: 5
+    fail_fast: true
+
+validation:
+  required_checks:
+    - service_alive
+    - http_healthcheck
+    - error_log_regression
+    - key_route_smoke_test
+  rollback_on_failure: true
+
+report:
+  include:
+    - before_after_diff
+    - commands_executed
+    - validation_results
+    - risk_items
+    - rollback_card
