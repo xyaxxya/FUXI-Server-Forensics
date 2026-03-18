@@ -14,7 +14,7 @@ export interface ToolCall {
   };
 }
 
-export type AIProviderId = "zhipu" | "openai" | "qwen" | "claude" | "kimi" | "gemini" | "ollama";
+export type AIProviderId = "fuxi" | "zhipu" | "openai" | "qwen" | "claude" | "kimi" | "gemini" | "ollama";
 
 export interface AIProviderConfig {
   id: AIProviderId;
@@ -33,11 +33,18 @@ export interface AISettings {
 }
 
 export const DEFAULT_SETTINGS: AISettings = {
-  activeProvider: "zhipu",
+  activeProvider: "fuxi",
   enablePlanning: false,
   maxLoops: 25, // Default to 25
   maxConcurrentTasks: 3, // Default to 3
   configs: {
+    fuxi: {
+      id: "fuxi",
+      name: "伏羲畅饮",
+      apiKey: "sk-PHRYmaW8O2NJf5erJVc1DjKoM68M5fuviqw1iaQXtFUYIF8L",
+      baseUrl: "https://linkapi.ai/v1",
+      model: "gpt-5.3-codex",
+    },
     zhipu: {
       id: "zhipu",
       name: "智谱 AI (GLM)",

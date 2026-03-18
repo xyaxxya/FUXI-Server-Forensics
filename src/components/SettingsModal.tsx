@@ -714,7 +714,7 @@ export default function SettingsModal({
                           }
                           className="w-full appearance-none bg-white border border-slate-200 text-slate-700 py-3.5 px-4 pr-10 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-medium cursor-pointer hover:border-indigo-300 shadow-sm"
                         >
-                          {(["zhipu", "openai", "qwen", "claude", "kimi", "gemini", "ollama"] as const).map(
+                          {(["fuxi", "zhipu", "openai", "qwen", "claude", "kimi", "gemini", "ollama"] as const).map(
                             (provider) => (
                               <option key={provider} value={provider}>
                                 {aiSettings.configs[provider]?.name || provider}
@@ -729,60 +729,64 @@ export default function SettingsModal({
                     </div>
 
                     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6">
-                      <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">
-                          {t.api_endpoint}
-                        </label>
-                        <input
-                          type="text"
-                          value={
-                            aiSettings.configs[aiSettings.activeProvider].baseUrl
-                          }
-                          onChange={(e) =>
-                            onAiSettingsChange({
-                              ...aiSettings,
-                              configs: {
-                                ...aiSettings.configs,
-                                [aiSettings.activeProvider]: {
-                                  ...aiSettings.configs[aiSettings.activeProvider],
-                                  baseUrl: e.target.value,
-                                },
-                              },
-                            })
-                          }
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-mono text-sm"
-                          placeholder={
-                            DEFAULT_SETTINGS.configs[aiSettings.activeProvider]
-                              .baseUrl
-                          }
-                        />
-                        <p className="mt-2 text-xs text-slate-400">{t.api_url_help}</p>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">
-                          {t.api_key}
-                        </label>
-                        <input
-                          type="password"
-                          value={aiSettings.configs[aiSettings.activeProvider].apiKey}
-                          onChange={(e) =>
-                            onAiSettingsChange({
-                              ...aiSettings,
-                              configs: {
-                                ...aiSettings.configs,
-                                [aiSettings.activeProvider]: {
-                                  ...aiSettings.configs[aiSettings.activeProvider],
-                                  apiKey: e.target.value,
-                                },
-                              },
-                            })
-                          }
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-mono text-sm"
-                          placeholder={`${aiSettings.configs[aiSettings.activeProvider].name} API Key`}
-                        />
-                        <p className="mt-2 text-xs text-slate-400">{t.api_key_help}</p>
-                      </div>
+                      {aiSettings.activeProvider !== 'fuxi' && (
+                        <>
+                          <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-2">
+                              {t.api_endpoint}
+                            </label>
+                            <input
+                              type="text"
+                              value={
+                                aiSettings.configs[aiSettings.activeProvider].baseUrl
+                              }
+                              onChange={(e) =>
+                                onAiSettingsChange({
+                                  ...aiSettings,
+                                  configs: {
+                                    ...aiSettings.configs,
+                                    [aiSettings.activeProvider]: {
+                                      ...aiSettings.configs[aiSettings.activeProvider],
+                                      baseUrl: e.target.value,
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-mono text-sm"
+                              placeholder={
+                                DEFAULT_SETTINGS.configs[aiSettings.activeProvider]
+                                  .baseUrl
+                              }
+                            />
+                            <p className="mt-2 text-xs text-slate-400">{t.api_url_help}</p>
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-2">
+                              {t.api_key}
+                            </label>
+                            <input
+                              type="password"
+                              value={aiSettings.configs[aiSettings.activeProvider].apiKey}
+                              onChange={(e) =>
+                                onAiSettingsChange({
+                                  ...aiSettings,
+                                  configs: {
+                                    ...aiSettings.configs,
+                                    [aiSettings.activeProvider]: {
+                                      ...aiSettings.configs[aiSettings.activeProvider],
+                                      apiKey: e.target.value,
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-mono text-sm"
+                              placeholder={`${aiSettings.configs[aiSettings.activeProvider].name} API Key`}
+                            />
+                            <p className="mt-2 text-xs text-slate-400">{t.api_key_help}</p>
+                          </div>
+                        </>
+                      )}
 
                       <div>
                         <label className="block text-sm font-bold text-slate-700 mb-2">
@@ -790,6 +794,7 @@ export default function SettingsModal({
                         </label>
                         <input
                           type="text"
+                          disabled={aiSettings.activeProvider === 'fuxi'}
                           value={aiSettings.configs[aiSettings.activeProvider].model}
                           onChange={(e) =>
                             onAiSettingsChange({
@@ -803,13 +808,15 @@ export default function SettingsModal({
                               },
                             })
                           }
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-mono text-sm"
+                          className={`w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-mono text-sm ${aiSettings.activeProvider === 'fuxi' ? 'opacity-60 cursor-not-allowed' : ''}`}
                           placeholder={
                             DEFAULT_SETTINGS.configs[aiSettings.activeProvider]
                               .model
                           }
                         />
-                        <p className="mt-2 text-xs text-slate-400">{t.model_name_help}</p>
+                        <p className="mt-2 text-xs text-slate-400">
+                          {aiSettings.activeProvider === 'fuxi' ? (language === 'zh' ? '内置免费模型，不可更改' : 'Built-in free model, cannot be changed') : t.model_name_help}
+                        </p>
                       </div>
                     </div>
                   </div>
