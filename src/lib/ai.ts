@@ -356,7 +356,7 @@ export async function sendToAI(
 
     const payload = {
       model: config.model,
-      max_tokens: 4096,
+      max_tokens: 32768,
       system: systemMsg?.content || SYSTEM_PROMPT,
       messages: userMsgs,
       tools: claudeTools,
@@ -426,6 +426,7 @@ export async function sendToAI(
   const payload = {
     model: config.model,
     messages: finalMessages,
+    max_tokens: 32768,
     ...(tools.length > 0 ? { tools, tool_choice: "auto" } : {}),
   };
 
