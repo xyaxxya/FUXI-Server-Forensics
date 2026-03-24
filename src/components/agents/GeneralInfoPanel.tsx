@@ -20,13 +20,15 @@ interface GeneralInfoPanelProps {
   generalInfo: string;
   setGeneralInfo: (info: string | ((prev: string) => string)) => void;
   aiSettings: AISettings;
+  onAiSettingsChange?: (settings: AISettings) => void;
 }
 
 export default function GeneralInfoPanel({
   language,
   generalInfo,
   setGeneralInfo,
-  aiSettings
+  aiSettings,
+  onAiSettingsChange
 }: GeneralInfoPanelProps) {
   const t = translations[language];
   
@@ -203,6 +205,19 @@ export default function GeneralInfoPanel({
       // Pass current generalInfo to give context even for these tasks
       const response = await sendToAI(history, aiSettings, undefined, generalInfo);
       setAutoSkillStatus(response.routing_info?.status_text || "");
+
+      // Update token usage
+      if (response.usage && onAiSettingsChange) {
+          const currentUsage = aiSettings.tokenUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+          onAiSettingsChange({
+              ...aiSettings,
+              tokenUsage: {
+                  prompt_tokens: currentUsage.prompt_tokens + response.usage.prompt_tokens,
+                  completion_tokens: currentUsage.completion_tokens + response.usage.completion_tokens,
+                  total_tokens: currentUsage.total_tokens + response.usage.total_tokens,
+              }
+          });
+      }
 
       // Update thinking steps based on response content (reasoning)
       if (response.content) {

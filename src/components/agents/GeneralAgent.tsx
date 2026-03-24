@@ -30,6 +30,7 @@ interface GeneralAgentProps {
   onOpenSettings?: () => void;
   generalInfo: string;
   setGeneralInfo: (info: string | ((prev: string) => string)) => void;
+  onAiSettingsChange?: (settings: AISettings) => void;
   chatUserProfile?: {
     qq?: string | null;
     avatar?: string | null;
@@ -42,7 +43,7 @@ type DisplayItem =
 
 type AgentMode = "general_agent" | "server_refactor_agent";
 
-export default function GeneralAgent({ language, aiSettings, onOpenSettings, generalInfo, setGeneralInfo, onAiSettingsChange, chatUserProfile }: GeneralAgentProps & { onAiSettingsChange?: (settings: AISettings) => void }) {
+export default function GeneralAgent({ language, aiSettings, onOpenSettings, generalInfo, setGeneralInfo, onAiSettingsChange, chatUserProfile }: GeneralAgentProps) {
   // Chat Store
   const { 
     sessions: chatSessions, 

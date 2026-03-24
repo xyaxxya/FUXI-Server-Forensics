@@ -1381,6 +1381,7 @@ export default function Dashboard({
         <GeneralAgent 
           language={language} 
           aiSettings={aiSettings} 
+          onAiSettingsChange={onAiSettingsChange}
           onOpenSettings={onOpenSettings}
           generalInfo={generalInfo}
           setGeneralInfo={setGeneralInfo}
@@ -1407,6 +1408,7 @@ export default function Dashboard({
                 generalInfo={generalInfo}
                 setGeneralInfo={setGeneralInfo}
                 aiSettings={aiSettings}
+                onAiSettingsChange={onAiSettingsChange}
              />
           </div>
       </div>
@@ -1416,6 +1418,7 @@ export default function Dashboard({
         <DatabaseAgent 
           language={language} 
           aiSettings={aiSettings} 
+          onAiSettingsChange={onAiSettingsChange}
           onOpenSettings={onOpenSettings}
           chatUserProfile={chatUserProfile}
         />

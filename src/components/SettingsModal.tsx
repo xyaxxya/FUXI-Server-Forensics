@@ -649,7 +649,7 @@ export default function SettingsModal({
                                 <input 
                                     type="range" 
                                     min="5" 
-                                    max="50" 
+                                    max="500" 
                                     step="1"
                                     value={aiSettings.maxLoops || 25}
                                     onChange={(e) => onAiSettingsChange({
@@ -664,6 +664,36 @@ export default function SettingsModal({
                             </div>
                             <p className="text-xs text-indigo-700/70 mt-2">
                                 {t.max_loops_desc}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Max Tokens Slider */}
+                    <div className="mb-8">
+                        <div className="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100">
+                            <h4 className="font-bold text-indigo-900 text-sm flex items-center gap-2 mb-2">
+                              <Settings size={16} className="text-indigo-600" />
+                              {t.max_tokens}
+                            </h4>
+                            <div className="flex items-center gap-4">
+                                <input 
+                                    type="range" 
+                                    min="1000" 
+                                    max="128000" 
+                                    step="1000"
+                                    value={aiSettings.maxTokens || 32768}
+                                    onChange={(e) => onAiSettingsChange({
+                                        ...aiSettings,
+                                        maxTokens: parseInt(e.target.value)
+                                    })}
+                                    className="w-full h-2 bg-indigo-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                                />
+                                <span className="font-mono font-bold text-indigo-700 bg-white px-2 py-1 rounded border border-indigo-100 min-w-[4rem] text-center">
+                                    {aiSettings.maxTokens || 32768}
+                                </span>
+                            </div>
+                            <p className="text-xs text-indigo-700/70 mt-2">
+                                {t.max_tokens_desc}
                             </p>
                         </div>
                     </div>

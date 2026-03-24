@@ -42,6 +42,7 @@ export interface AISettings {
   enablePlanning?: boolean;
   maxLoops?: number; // New setting for maximum interaction loops
   maxConcurrentTasks?: number; // New setting for maximum concurrent tasks in batch
+  maxTokens?: number; // New setting for maximum tokens per request
   configs: Record<AIProviderId, AIProviderConfig>;
   tokenUsage?: {
     prompt_tokens: number;
@@ -55,6 +56,7 @@ export const DEFAULT_SETTINGS: AISettings = {
   enablePlanning: false,
   maxLoops: 25, // Default to 25
   maxConcurrentTasks: 3, // Default to 3
+  maxTokens: 32768, // Default max tokens
   tokenUsage: {
     prompt_tokens: 0,
     completion_tokens: 0,
@@ -356,7 +358,7 @@ export async function sendToAI(
 
     const payload = {
       model: config.model,
-      max_tokens: 32768,
+      max_tokens: settings.maxTokens || 32768,
       system: systemMsg?.content || SYSTEM_PROMPT,
       messages: userMsgs,
       tools: claudeTools,
@@ -426,7 +428,7 @@ export async function sendToAI(
   const payload = {
     model: config.model,
     messages: finalMessages,
-    max_tokens: 32768,
+    max_tokens: settings.maxTokens || 32768,
     ...(tools.length > 0 ? { tools, tool_choice: "auto" } : {}),
   };
 

