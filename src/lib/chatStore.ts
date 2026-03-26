@@ -13,6 +13,7 @@ export interface ChatSession {
 interface ChatState {
   sessions: ChatSession[];
   activeSessionId: string | null;
+  searchQuery: string;
   
   // Actions
   createSession: (title?: string) => string;
@@ -21,13 +22,16 @@ interface ChatState {
   updateSessionMessages: (id: string, messages: AIMessage[]) => void;
   updateSessionTitle: (id: string, title: string) => void;
   clearSessionMessages: (id: string) => void;
+  setSearchQuery: (query: string) => void;
+  getFilteredSessions: () => ChatSession[];
 }
 
 export const useChatStore = create<ChatState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       sessions: [],
       activeSessionId: null,
+      searchQuery: '',
 
       createSession: (title) => {
         const id = crypto.randomUUID();
@@ -101,6 +105,26 @@ export const useChatStore = create<ChatState>()(
             s.id === id ? { ...s, messages: [], updatedAt: Date.now() } : s
           ),
         }));
+      },
+
+      setSearchQuery: (query) => {
+        set({ searchQuery: query });
+      },
+
+      getFilteredSessions: () => {
+        const { sessions, searchQuery } = get();
+        if (!searchQuery.trim()) return sessions;
+        
+        const query = searchQuery.toLowerCase();
+        return sessions.filter(session => {
+          // Search in title
+          if (session.title.toLowerCase().includes(query)) return true;
+          
+          // Search in messages
+          return session.messages.some(msg => 
+            msg.content.toLowerCase().includes(query)
+          );
+        });
       },
     }),
     {

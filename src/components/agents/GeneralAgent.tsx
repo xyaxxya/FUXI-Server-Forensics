@@ -23,6 +23,8 @@ import { AIMessage, AISettings, sendToAI } from "../../lib/ai";
 import { translations, Language } from "../../translations";
 import ThinkingProcess, { ThinkingStep } from "./ThinkingProcess";
 import { useChatStore } from "../../lib/chatStore";
+import { useToast } from "../Toast";
+import { getFriendlyError } from "../../lib/errorHandler";
 
 interface GeneralAgentProps {
   language: Language;
@@ -44,6 +46,7 @@ type DisplayItem =
 type AgentMode = "general_agent" | "server_refactor_agent";
 
 export default function GeneralAgent({ language, aiSettings, onOpenSettings, generalInfo, setGeneralInfo, onAiSettingsChange, chatUserProfile }: GeneralAgentProps) {
+  const { showToast } = useToast();
   // Chat Store
   const { 
     sessions: chatSessions, 
@@ -52,6 +55,7 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
     deleteSession, 
     setActiveSession, 
     updateSessionMessages,
+    updateSessionTitle,
     clearSessionMessages
   } = useChatStore();
 
@@ -63,6 +67,9 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
   const [agentMode, setAgentMode] = useState<AgentMode>("general_agent");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [userAvatarFailed, setUserAvatarFailed] = useState(false);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [sessionSearchQuery, setSessionSearchQuery] = useState("");
   
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -86,6 +93,15 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
   // Derived State
   const activeSession = Array.isArray(chatSessions) ? chatSessions.find(s => s.id === activeSessionId) : undefined;
   const messages = activeSession ? activeSession.messages : [];
+
+  // Filter sessions based on search
+  const filteredSessions = sessionSearchQuery.trim() 
+    ? chatSessions.filter(session => {
+        const query = sessionSearchQuery.toLowerCase();
+        return session.title.toLowerCase().includes(query) ||
+               session.messages.some(msg => msg.content.toLowerCase().includes(query));
+      })
+    : chatSessions;
 
   // Ensure there's always at least one session if none exist
   useEffect(() => {
@@ -261,8 +277,13 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
       await processConversation(sessionId, newHistory, 0, controller.signal);
     } catch (error: any) {
       if (error.name !== 'AbortError') {
-          const errHistory = [...newHistory, { role: "assistant", content: format(t.error_prefix, error.message) } as AIMessage];
+          const friendlyError = getFriendlyError(error, language);
+          const errHistory = [...newHistory, { 
+            role: "assistant", 
+            content: `❌ ${friendlyError.title}\n\n${friendlyError.message}${friendlyError.suggestion ? '\n\n💡 ' + friendlyError.suggestion : ''}` 
+          } as AIMessage];
           updateSessionMessages(sessionId, errHistory);
+          showToast('error', friendlyError.title, 3000);
       }
     } finally {
       if (abortControllerRef.current === controller) {
@@ -410,17 +431,24 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
     <div className="flex h-full bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
         {/* Sidebar */}
         <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} bg-slate-50 border-r border-slate-200 flex flex-col transition-all duration-300 overflow-hidden`}>
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+            <div className="p-4 border-b border-slate-200 space-y-2">
                 <button 
                     onClick={() => createSession()}
-                    className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+                    className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
                 >
                     <Plus size={16} />
                     <span className="text-sm font-medium">{language === 'zh' ? '新对话' : 'New Chat'}</span>
                 </button>
+                <input
+                    type="text"
+                    placeholder={language === 'zh' ? '搜索对话...' : 'Search chats...'}
+                    value={sessionSearchQuery}
+                    onChange={(e) => setSessionSearchQuery(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
-                {chatSessions.map(session => (
+                {filteredSessions.map(session => (
                     <div 
                         key={session.id}
                         className={`group p-3 rounded-lg border cursor-pointer transition-all ${
@@ -431,11 +459,46 @@ export default function GeneralAgent({ language, aiSettings, onOpenSettings, gen
                         onClick={() => setActiveSession(session.id)}
                     >
                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2 overflow-hidden">
+                            <div className="flex items-center gap-2 overflow-hidden flex-1">
                                 <MessageSquare size={16} className={activeSessionId === session.id ? 'text-indigo-500' : 'text-slate-400'} />
-                                <span className={`text-sm truncate ${activeSessionId === session.id ? 'text-slate-700 font-medium' : 'text-slate-600'}`}>
-                                    {session.title}
-                                </span>
+                                {editingSessionId === session.id ? (
+                                    <input
+                                        type="text"
+                                        value={editingTitle}
+                                        onChange={(e) => setEditingTitle(e.target.value)}
+                                        onBlur={() => {
+                                            if (editingTitle.trim()) {
+                                                updateSessionTitle(session.id, editingTitle.trim());
+                                            }
+                                            setEditingSessionId(null);
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                if (editingTitle.trim()) {
+                                                    updateSessionTitle(session.id, editingTitle.trim());
+                                                }
+                                                setEditingSessionId(null);
+                                            } else if (e.key === 'Escape') {
+                                                setEditingSessionId(null);
+                                            }
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                        autoFocus
+                                        className="flex-1 text-sm px-2 py-1 border border-indigo-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                ) : (
+                                    <span 
+                                        className={`text-sm truncate ${activeSessionId === session.id ? 'text-slate-700 font-medium' : 'text-slate-600'}`}
+                                        onDoubleClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingSessionId(session.id);
+                                            setEditingTitle(session.title);
+                                        }}
+                                        title={language === 'zh' ? '双击重命名' : 'Double-click to rename'}
+                                    >
+                                        {session.title}
+                                    </span>
+                                )}
                             </div>
                             <button 
                                 onClick={(e) => {

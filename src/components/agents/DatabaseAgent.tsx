@@ -15,6 +15,8 @@ import remarkGfm from "remark-gfm";
 import { AIMessage, AISettings, sendToAI, Tool } from "../../lib/ai";
 import { translations, Language } from "../../translations";
 import ThinkingProcess, { ThinkingStep } from "./ThinkingProcess";
+import { useToast } from "../Toast";
+import { getFriendlyError } from "../../lib/errorHandler";
 
 // --- Types (Mirrored from MySQLManager) ---
 interface SshConfig {
@@ -65,6 +67,7 @@ export default function DatabaseAgent({ language, aiSettings, onAiSettingsChange
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string>("");
   const [autoSkillStatus, setAutoSkillStatus] = useState<string>("");
+  const { showToast } = useToast();
   
   // Connection State
   const [connections, setConnections] = useState<DBConfig[]>([]);
@@ -119,7 +122,6 @@ export default function DatabaseAgent({ language, aiSettings, onAiSettingsChange
     if (!config) return;
 
     setIsConnecting(true);
-    // setConnectionError(null);
     try {
       const sshConfig = config.useSsh ? config.ssh : undefined;
       await invoke('connect_db', {
@@ -148,8 +150,10 @@ export default function DatabaseAgent({ language, aiSettings, onAiSettingsChange
         setSelectedDb(dbs[0] === 'information_schema' && dbs.length > 1 ? dbs[1] : dbs[0]);
       }
       
+      showToast('success', language === 'zh' ? `已连接到 ${config.name}` : `Connected to ${config.name}`, 2000);
     } catch (e: any) {
-      // setConnectionError(e.toString());
+      const friendlyError = getFriendlyError(e, language);
+      showToast('error', friendlyError.message, 4000);
     } finally {
       setIsConnecting(false);
     }
@@ -250,13 +254,17 @@ export default function DatabaseAgent({ language, aiSettings, onAiSettingsChange
   const handleSendMessage = async () => {
     if (!input.trim() || loading) return;
     if (!activeConnectionId || !selectedDb) {
-        alert(language === 'zh' ? "请先连接数据库" : "Please connect to a database first");
+        const friendlyError = getFriendlyError(
+          new Error('NO_DB_CONNECTION'), 
+          language
+        );
+        showToast('warning', friendlyError.message, 3000);
         return;
     }
 
     const config = aiSettings.configs[aiSettings.activeProvider];
     if (!config.apiKey) {
-      setMessages(prev => [...prev, { role: "assistant", content: `${format(t.configure_api_key, config.name)}` }]);
+      showToast('warning', format(t.configure_api_key, config.name), 3000);
       return;
     }
 
@@ -269,7 +277,12 @@ export default function DatabaseAgent({ language, aiSettings, onAiSettingsChange
     try {
       await processConversation([...messages, msgToStore]);
     } catch (error: any) {
-      setMessages(prev => [...prev, { role: "assistant", content: format(t.error_prefix, error.message) }]);
+      const friendlyError = getFriendlyError(error, language);
+      setMessages(prev => [...prev, { 
+        role: "assistant", 
+        content: `❌ ${friendlyError.title}\n\n${friendlyError.message}${friendlyError.suggestion ? '\n\n💡 ' + friendlyError.suggestion : ''}` 
+      }]);
+      showToast('error', friendlyError.title, 3000);
     } finally {
       setLoading(false);
       setStatus("");

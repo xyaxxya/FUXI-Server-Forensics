@@ -215,15 +215,45 @@ export default function ResponsePanel({ language, active }: ResponsePanelProps) 
     flows: false,
     actions: false,
   });
+  const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now());
+  const [refreshInterval, setRefreshInterval] = useState<number>(() => {
+    const saved = localStorage.getItem('response_refresh_interval');
+    return saved ? parseInt(saved) : 2000;
+  });
 
   useEffect(() => {
     if (!active) {
       stopMonitoring();
       return;
     }
-    startMonitoring(MONITOR_COMMANDS, 2000);
-    return () => stopMonitoring();
-  }, [active]);
+    startMonitoring(MONITOR_COMMANDS, refreshInterval);
+    
+    // Update last update time when monitoring starts
+    const interval = setInterval(() => {
+      setLastUpdateTime(Date.now());
+    }, refreshInterval);
+    
+    return () => {
+      stopMonitoring();
+      clearInterval(interval);
+    };
+  }, [active, refreshInterval]);
+
+  // Save refresh interval to localStorage
+  useEffect(() => {
+    localStorage.setItem('response_refresh_interval', String(refreshInterval));
+  }, [refreshInterval]);
+
+  // Helper to format time ago
+  const getTimeAgo = (timestamp: number) => {
+    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    if (seconds < 5) return language === 'zh' ? '刚刚' : 'Just now';
+    if (seconds < 60) return language === 'zh' ? `${seconds}秒前` : `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return language === 'zh' ? `${minutes}分钟前` : `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    return language === 'zh' ? `${hours}小时前` : `${hours}h ago`;
+  };
 
   useEffect(() => {
     const stored = localStorage.getItem("response_rule_config");
@@ -596,8 +626,31 @@ ${topRemoteRows}
           <p className="text-sm text-slate-500 mt-1">{t.response_subtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Refresh Interval Control */}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 shadow-sm">
+            <span className="text-xs text-slate-600">{language === 'zh' ? '刷新间隔' : 'Interval'}:</span>
+            <select
+              value={refreshInterval}
+              onChange={(e) => setRefreshInterval(Number(e.target.value))}
+              className="text-xs border-0 bg-transparent focus:outline-none text-slate-700 font-medium cursor-pointer"
+            >
+              <option value={1000}>1s</option>
+              <option value={2000}>2s</option>
+              <option value={5000}>5s</option>
+              <option value={10000}>10s</option>
+            </select>
+          </div>
+          
+          {/* Last Update Time */}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200">
+            <div className={`w-2 h-2 rounded-full ${isMonitoring ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`} />
+            <span className="text-xs text-slate-600">
+              {language === 'zh' ? '更新于' : 'Updated'}: {getTimeAgo(lastUpdateTime)}
+            </span>
+          </div>
+          
           <button
-            onClick={() => (isMonitoring ? stopMonitoring() : startMonitoring(MONITOR_COMMANDS, 2000))}
+            onClick={() => (isMonitoring ? stopMonitoring() : startMonitoring(MONITOR_COMMANDS, refreshInterval))}
             className={`px-4 py-2 rounded-xl text-sm font-semibold text-white flex items-center gap-2 shadow-sm ${
               isMonitoring ? "bg-red-500 hover:bg-red-600" : "bg-emerald-500 hover:bg-emerald-600"
             }`}

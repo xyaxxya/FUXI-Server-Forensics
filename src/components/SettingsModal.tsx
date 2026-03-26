@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Globe, Bot, Settings, Sparkles, ChevronDown, FolderSearch, LoaderCircle, RotateCw, BadgeCheck } from "lucide-react";
+import { X, Globe, Bot, Settings, Sparkles, ChevronDown, FolderSearch, LoaderCircle, RotateCw, BadgeCheck, Zap, CheckCircle, XCircle } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { translations, Language } from "../translations";
 import { AISettings, DEFAULT_SETTINGS } from "../lib/ai";
 import { loadPentestToolPaths, savePentestToolPaths } from "../lib/pentestSettings";
 import { APP_VERSION } from "../config/app";
+import { testAIConnection, ValidationResult } from "../lib/aiValidator";
+import { useToast } from "./Toast";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -67,6 +69,9 @@ export default function SettingsModal({
   const [isRestarting, setIsRestarting] = useState(false);
   const [showLatestDialog, setShowLatestDialog] = useState(false);
   const [latestDialogText, setLatestDialogText] = useState("");
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState<ValidationResult | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     if (initialUpdateInfo) {
@@ -848,6 +853,79 @@ export default function SettingsModal({
                           {aiSettings.activeProvider === 'fuxi' ? (language === 'zh' ? '内置免费模型，不可更改' : 'Built-in free model, cannot be changed') : t.model_name_help}
                         </p>
                       </div>
+                    </div>
+
+                    {/* Test Connection Button */}
+                    <div className="mb-8">
+                      <button
+                        onClick={async () => {
+                          setIsTestingConnection(true);
+                          setTestResult(null);
+                          try {
+                            const result = await testAIConnection(
+                              aiSettings.activeProvider,
+                              aiSettings
+                            );
+                            setTestResult(result);
+                            if (result.success) {
+                              showToast('success', result.message, 3000);
+                            } else {
+                              showToast('error', result.message, 4000);
+                            }
+                          } catch (e) {
+                            const errorResult = {
+                              success: false,
+                              message: `测试失败: ${String(e)}`
+                            };
+                            setTestResult(errorResult);
+                            showToast('error', errorResult.message, 4000);
+                          } finally {
+                            setIsTestingConnection(false);
+                          }
+                        }}
+                        disabled={isTestingConnection || !aiSettings.configs[aiSettings.activeProvider].apiKey}
+                        className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl font-medium shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isTestingConnection ? (
+                          <>
+                            <LoaderCircle size={18} className="animate-spin" />
+                            <span>{language === 'zh' ? '测试中...' : 'Testing...'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Zap size={18} />
+                            <span>{language === 'zh' ? '测试 API 连接' : 'Test API Connection'}</span>
+                          </>
+                        )}
+                      </button>
+
+                      {/* Test Result Display */}
+                      <AnimatePresence>
+                        {testResult && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className={`mt-4 p-4 rounded-xl border flex items-start gap-3 ${
+                              testResult.success
+                                ? 'bg-emerald-50 border-emerald-200'
+                                : 'bg-red-50 border-red-200'
+                            }`}
+                          >
+                            <div className={testResult.success ? 'text-emerald-600' : 'text-red-600'}>
+                              {testResult.success ? <CheckCircle size={20} /> : <XCircle size={20} />}
+                            </div>
+                            <div className="flex-1">
+                              <div className={`text-sm font-semibold ${testResult.success ? 'text-emerald-900' : 'text-red-900'}`}>
+                                {testResult.success ? (language === 'zh' ? '连接成功' : 'Connection Successful') : (language === 'zh' ? '连接失败' : 'Connection Failed')}
+                              </div>
+                              <div className={`text-xs mt-1 ${testResult.success ? 'text-emerald-700' : 'text-red-700'}`}>
+                                {testResult.message}
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
 
                     {/* Token Usage Display */}

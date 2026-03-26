@@ -7,6 +7,7 @@ import Dashboard from "./components/Dashboard";
 import Intro from "./components/Intro";
 import TaskSelectionModal from "./components/TaskSelectionModal";
 import SettingsModal from "./components/SettingsModal";
+import KeyboardShortcuts from "./components/KeyboardShortcuts";
 import { motion, AnimatePresence } from "framer-motion";
 import { Language } from "./translations";
 import { CommandProvider, useCommandStore } from "./store/CommandContext";
@@ -14,6 +15,7 @@ import { AISettings, DEFAULT_SETTINGS } from "./lib/ai";
 import StarrySkyBackground from "./components/StarrySkyBackground";
 import LicenseGate from "./components/LicenseGate";
 import { APP_VERSION } from "./config/app";
+import { ToastProvider } from "./components/Toast";
 
 interface LicenseStatus {
   valid: boolean;
@@ -65,6 +67,8 @@ function MainApp() {
     const saved = localStorage.getItem("starry_mode");
     return saved ? JSON.parse(saved) : false;
   });
+  const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Effect to toggle body class and save
   useEffect(() => {
@@ -194,6 +198,52 @@ function MainApp() {
       window.clearTimeout(maxTimer);
     };
   }, []);
+  
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+/ - Show keyboard shortcuts
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault();
+        setShowKeyboardShortcuts(true);
+      }
+      
+      // Esc - Close modals
+      if (e.key === 'Escape') {
+        if (showKeyboardShortcuts) setShowKeyboardShortcuts(false);
+        if (showSettingsModal) setShowSettingsModal(false);
+        if (showTaskModal) setShowTaskModal(false);
+        if (showLoginModal) setShowLoginModal(false);
+      }
+      
+      // Ctrl+1-9 - Quick tab switching (only when connected)
+      if (isConnected && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        const tabMap: Record<string, string> = {
+          '1': 'system',
+          '2': 'network',
+          '3': 'response',
+          '4': 'docker',
+          '5': 'database',
+          '6': 'agent-general',
+          '7': 'terminal'
+        };
+        
+        if (tabMap[e.key]) {
+          e.preventDefault();
+          setActiveTab(tabMap[e.key]);
+        }
+      }
+      
+      // Ctrl+T - Open terminal
+      if (isConnected && (e.ctrlKey || e.metaKey) && e.key === 't') {
+        e.preventDefault();
+        setActiveTab('terminal');
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isConnected, showKeyboardShortcuts, showSettingsModal, showTaskModal, showLoginModal]);
   
   const { fetchAll, clearData, disconnectSSH } = useCommandStore();
 
@@ -332,6 +382,8 @@ function MainApp() {
                        onOpenSettings={() => openSettings("general")}
                        onAddSession={() => setShowLoginModal(true)}
                        onToggleServerSidebar={() => setShowServerSidebar(prev => !prev)}
+                       isCollapsed={sidebarCollapsed}
+                       onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
                      />
                   </div>
 
@@ -423,6 +475,12 @@ function MainApp() {
                 initialActiveTab={settingsInitialTab}
               />
             )}
+            
+            <KeyboardShortcuts
+              isOpen={showKeyboardShortcuts}
+              onClose={() => setShowKeyboardShortcuts(false)}
+              language={language}
+            />
           </motion.div>
         )}
       </AnimatePresence>
@@ -432,8 +490,10 @@ function MainApp() {
 
 export default function App() {
   return (
-    <CommandProvider>
-      <MainApp />
-    </CommandProvider>
+    <ToastProvider>
+      <CommandProvider>
+        <MainApp />
+      </CommandProvider>
+    </ToastProvider>
   );
 }

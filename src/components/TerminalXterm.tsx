@@ -21,6 +21,10 @@ export default function TerminalXterm({ onClose, sessionId, language }: { onClos
   const [showFileManager, setShowFileManager] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [isFocused, setIsFocused] = useState(false);
+  const [fontSize, setFontSize] = useState(() => {
+    const saved = localStorage.getItem('terminal_font_size');
+    return saved ? parseInt(saved) : 14;
+  });
   const t = translations[language];
 
   // Use passed sessionId or fallback to currentSession (for backward compatibility)
@@ -39,15 +43,15 @@ export default function TerminalXterm({ onClose, sessionId, language }: { onClos
     const term = new Terminal({
       cursorBlink: true,
       fontFamily: '"JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, "Courier New", monospace',
-      fontSize: 14, // Increased font size for better readability
-      fontWeight: 500, // Medium weight for clearer text
-      lineHeight: 1.5, // Increased line height for less eye strain
-      letterSpacing: 0.4, // Slight letter spacing
+      fontSize: fontSize,
+      fontWeight: 500,
+      lineHeight: 1.5,
+      letterSpacing: 0.4,
       allowTransparency: true,
       theme: {
         background: 'transparent',
-        foreground: '#f8fafc', // slate-50
-        cursor: '#38bdf8', // sky-400
+        foreground: '#f8fafc',
+        cursor: '#38bdf8',
         selectionBackground: 'rgba(56, 189, 248, 0.3)',
         black: '#1e293b',
         red: '#ef4444',
@@ -79,6 +83,41 @@ export default function TerminalXterm({ onClose, sessionId, language }: { onClos
     // Focus handling for visual feedback
     term.textarea?.addEventListener('focus', () => setIsFocused(true));
     term.textarea?.addEventListener('blur', () => setIsFocused(false));
+
+    // Keyboard shortcuts for font size
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === '=' || e.key === '+') {
+          e.preventDefault();
+          const newSize = Math.min(24, fontSize + 1);
+          setFontSize(newSize);
+          localStorage.setItem('terminal_font_size', String(newSize));
+          if (xtermRef.current) {
+            xtermRef.current.options.fontSize = newSize;
+            fitAddonRef.current?.fit();
+          }
+        } else if (e.key === '-' || e.key === '_') {
+          e.preventDefault();
+          const newSize = Math.max(10, fontSize - 1);
+          setFontSize(newSize);
+          localStorage.setItem('terminal_font_size', String(newSize));
+          if (xtermRef.current) {
+            xtermRef.current.options.fontSize = newSize;
+            fitAddonRef.current?.fit();
+          }
+        } else if (e.key === '0') {
+          e.preventDefault();
+          setFontSize(14);
+          localStorage.setItem('terminal_font_size', '14');
+          if (xtermRef.current) {
+            xtermRef.current.options.fontSize = 14;
+            fitAddonRef.current?.fit();
+          }
+        }
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
 
     term.writeln(`\x1b[1;34m${t.initializing_ssh}\x1b[0m`);
 
@@ -160,23 +199,20 @@ export default function TerminalXterm({ onClose, sessionId, language }: { onClos
     // 2. Window resize
     window.addEventListener('resize', handleResize);
 
-    // 3. Polling for visibility changes (Critical for when tab becomes visible)
-    // This ensures that if the terminal was hidden during init, it fits correctly when shown
-    const intervalId = setInterval(handleResize, 800);
-
-    // Initial fit
+    // 3. Initial fit with retry
     setTimeout(handleResize, 100);
+    setTimeout(handleResize, 500); // Second attempt after layout settles
 
     return () => {
-      clearInterval(intervalId);
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('keydown', handleKeyDown);
       resizeObserver.disconnect();
       if (ptyIdRef.current) {
           invoke('stop_pty_session', { id: ptyIdRef.current }).catch(console.error);
       }
       term.dispose();
     };
-  }, [targetSessionId, retryCount]);
+  }, [targetSessionId, retryCount, fontSize]);
 
   const setupPtyEvents = async (term: Terminal, ptyId: string) => {
       // Listen for incoming data
@@ -238,6 +274,43 @@ export default function TerminalXterm({ onClose, sessionId, language }: { onClos
 
         {/* Action Buttons */}
         <div className="flex items-center gap-1">
+            {/* Font Size Controls */}
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/5 border border-white/5">
+              <button
+                onClick={() => {
+                  const newSize = Math.max(10, fontSize - 1);
+                  setFontSize(newSize);
+                  localStorage.setItem('terminal_font_size', String(newSize));
+                  if (xtermRef.current) {
+                    xtermRef.current.options.fontSize = newSize;
+                    fitAddonRef.current?.fit();
+                  }
+                }}
+                className="p-1 text-slate-400 hover:text-slate-200 transition-colors text-xs font-bold"
+                title="Decrease font size (Ctrl+-)"
+              >
+                A-
+              </button>
+              <span className="text-xs text-slate-400 font-mono px-1">{fontSize}</span>
+              <button
+                onClick={() => {
+                  const newSize = Math.min(24, fontSize + 1);
+                  setFontSize(newSize);
+                  localStorage.setItem('terminal_font_size', String(newSize));
+                  if (xtermRef.current) {
+                    xtermRef.current.options.fontSize = newSize;
+                    fitAddonRef.current?.fit();
+                  }
+                }}
+                className="p-1 text-slate-400 hover:text-slate-200 transition-colors text-xs font-bold"
+                title="Increase font size (Ctrl++)"
+              >
+                A+
+              </button>
+            </div>
+
+            <div className="h-4 w-[1px] bg-white/10 mx-1" />
+            
             <motion.button 
                 whileHover={{ scale: 1.05, backgroundColor: "rgba(255,255,255,0.1)" }}
                 whileTap={{ scale: 0.95 }}

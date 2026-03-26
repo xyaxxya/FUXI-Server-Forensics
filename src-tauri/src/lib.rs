@@ -1777,9 +1777,9 @@ async fn cleanup_ssh_log_for_user(
 
     tauri::async_runtime::spawn_blocking(move || {
         let session_info = session_arc.lock().unwrap();
-        let user = &session_info.user;
-        let ip = &session_info.ip;
-        let timestamp = &session_info.connect_timestamp;
+        let user = session_info.user.clone();
+        let ip = session_info.ip.clone();
+        let timestamp = session_info.connect_timestamp.clone();
         
         // 只清理本次连接的日志记录
         // 使用时间戳 + 用户名 + IP 进行精确匹配

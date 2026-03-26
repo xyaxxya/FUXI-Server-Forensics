@@ -14,6 +14,8 @@ import {
 import tauriLogo from "../assets/tauri.png";
 import { useCommandStore } from "../store/CommandContext";
 import { APP_VERSION } from "../config/app";
+import ErrorDialog from "./ErrorDialog";
+import { getFriendlyError, FriendlyError } from "../lib/errorHandler";
 
 interface LoginProps {
   onLogin: () => void;
@@ -68,7 +70,8 @@ export default function Login({
   const [proxyPass, setProxyPass] = useState("");
   const [showProxySettings, setShowProxySettings] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<FriendlyError | null>(null);
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
   const { connectSSH } = useCommandStore();
 
   // History & Remember Password State
@@ -212,7 +215,8 @@ export default function Login({
 
   const handleLogin = async () => {
     setLoading(true);
-    setError("");
+    setError(null);
+    setShowErrorDialog(false);
 
     try {
       if (proxyType !== "direct" && (!proxyHost.trim() || !proxyPort.trim())) {
@@ -232,7 +236,9 @@ export default function Login({
       saveToHistory();
       onLogin();
     } catch (e: any) {
-      setError(e.toString());
+      const friendlyError = getFriendlyError(e, 'zh');
+      setError(friendlyError);
+      setShowErrorDialog(true);
     } finally {
       setLoading(false);
     }
@@ -553,13 +559,6 @@ export default function Login({
               </div>
             )}
 
-            {error && (
-              <div className="p-3 bg-red-50 text-red-500 text-sm rounded-lg border border-red-100 flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                {error}
-              </div>
-            )}
-
             <button
               onClick={handleLogin}
               disabled={loading}
@@ -590,6 +589,15 @@ export default function Login({
           </p>
         </div>
       </motion.div>
+
+      {/* Error Dialog */}
+      <ErrorDialog
+        isOpen={showErrorDialog}
+        error={error}
+        onClose={() => setShowErrorDialog(false)}
+        onRetry={handleLogin}
+        language="zh"
+      />
     </div>
   );
 }

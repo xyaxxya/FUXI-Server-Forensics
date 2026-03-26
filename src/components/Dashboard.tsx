@@ -709,26 +709,50 @@ function TableDisplay({ data, language }: { data: TableData; language: Language 
   const t = translations[language];
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [wrapMode, setWrapMode] = useState(false);
+  const [tableSearchQuery, setTableSearchQuery] = useState("");
 
   const selectedRowData = selectedRowIndex !== null ? data.rows[selectedRowIndex] : null;
 
+  // Filter rows based on search query
+  const filteredRows = tableSearchQuery.trim()
+    ? data.rows.filter(row => 
+        row.some(cell => 
+          String(cell).toLowerCase().includes(tableSearchQuery.toLowerCase())
+        )
+      )
+    : data.rows;
+
   return (
     <div className="relative flex flex-col h-full max-h-[600px]">
-      <div className="flex items-center justify-between mb-2 px-1">
+      <div className="flex items-center justify-between mb-2 px-1 gap-2">
         <div className="text-xs text-slate-500">
-          {language === "zh" ? `共 ${data.rows.length} 条` : `${data.rows.length} rows`}
+          {language === "zh" ? `共 ${filteredRows.length} 条` : `${filteredRows.length} rows`}
+          {tableSearchQuery && data.rows.length !== filteredRows.length && (
+            <span className="text-sky-600 ml-1">
+              ({language === 'zh' ? `已过滤 ${data.rows.length - filteredRows.length} 条` : `${data.rows.length - filteredRows.length} filtered`})
+            </span>
+          )}
         </div>
-        <button
-          onClick={() => setWrapMode(v => !v)}
-          className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-xs transition-colors ${
-            wrapMode
-              ? "bg-indigo-50 text-indigo-700 border-indigo-200"
-              : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-          }`}
-        >
-          <WrapText size={12} />
-          {language === "zh" ? "自动换行" : "Wrap"}
-        </button>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            placeholder={language === 'zh' ? '搜索表格...' : 'Search table...'}
+            value={tableSearchQuery}
+            onChange={(e) => setTableSearchQuery(e.target.value)}
+            className="px-3 py-1 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 w-40"
+          />
+          <button
+            onClick={() => setWrapMode(v => !v)}
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-xs transition-colors ${
+              wrapMode
+                ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+            }`}
+          >
+            <WrapText size={12} />
+            {language === "zh" ? "自动换行" : "Wrap"}
+          </button>
+        </div>
       </div>
       <div className="overflow-x-auto custom-scrollbar flex-1 pb-10">
         <table className="w-full text-left border-collapse">
@@ -748,39 +772,49 @@ function TableDisplay({ data, language }: { data: TableData; language: Language 
             </tr>
           </thead>
           <tbody>
-            {data.rows.map((row, i) => (
-              <tr
-                key={i}
-                onClick={() => setSelectedRowIndex(i)}
-                className={`transition-colors group border-b border-slate-100 last:border-0 cursor-pointer ${
-                  selectedRowIndex === i ? "bg-blue-100/50" : "hover:bg-blue-50/30"
-                }`}
-              >
-                <td className="p-3 text-xs text-slate-400 font-mono border-b border-slate-100 text-center align-top">
-                  {i + 1}
-                </td>
-                {row.map((cell, j) => (
-                  <td
-                    key={j}
-                    className={`p-3 text-sm font-mono align-top ${
-                      data.headers[j] === "th_credentials" 
-                        ? "max-w-none text-red-600 font-bold group-hover:text-red-700" 
-                        : `text-slate-600 group-hover:text-slate-800 max-w-[420px] ${wrapMode ? "whitespace-pre-wrap break-all" : "whitespace-nowrap truncate"}`
-                    }`}
-                    title={cell}
-                  >
-                    {data.headers[j] === "th_credentials" && cell && cell.length > 2 ? (
-                      <span className="flex items-center gap-1">
-                        <Key size={14} className="shrink-0 text-red-500" />
-                        {cell}
-                      </span>
-                    ) : (
-                      cell
-                    )}
+            {filteredRows.map((row) => {
+              const originalIndex = data.rows.indexOf(row);
+              return (
+                <tr
+                  key={originalIndex}
+                  onClick={() => setSelectedRowIndex(originalIndex)}
+                  className={`transition-colors group border-b border-slate-100 last:border-0 cursor-pointer ${
+                    selectedRowIndex === originalIndex ? "bg-blue-100/50" : "hover:bg-blue-50/30"
+                  }`}
+                >
+                  <td className="p-3 text-xs text-slate-400 font-mono border-b border-slate-100 text-center align-top">
+                    {originalIndex + 1}
                   </td>
-                ))}
-              </tr>
-            ))}
+                  {row.map((cell, j) => {
+                    // Highlight search matches
+                    const cellStr = String(cell);
+                    const shouldHighlight = tableSearchQuery.trim() && 
+                      cellStr.toLowerCase().includes(tableSearchQuery.toLowerCase());
+                    
+                    return (
+                      <td
+                        key={j}
+                        className={`p-3 text-sm font-mono align-top ${
+                          data.headers[j] === "th_credentials" 
+                            ? "max-w-none text-red-600 font-bold group-hover:text-red-700" 
+                            : `text-slate-600 group-hover:text-slate-800 max-w-[420px] ${wrapMode ? "whitespace-pre-wrap break-all" : "whitespace-nowrap truncate"} ${shouldHighlight ? 'bg-yellow-100' : ''}`
+                        }`}
+                        title={cellStr}
+                      >
+                        {data.headers[j] === "th_credentials" && cell && cellStr.length > 2 ? (
+                          <span className="flex items-center gap-1">
+                            <Key size={14} className="shrink-0 text-red-500" />
+                            {cell}
+                          </span>
+                        ) : (
+                          cell
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

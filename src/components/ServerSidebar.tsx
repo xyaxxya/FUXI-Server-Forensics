@@ -5,6 +5,7 @@ import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { translations, Language } from '../translations';
 import { APP_VERSION } from '../config/app';
+import { useToast } from './Toast';
 
 interface ServerSidebarProps {
   onAddSession: () => void;
@@ -209,9 +210,10 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
     currentSession
   } = useCommandStore();
   
+  const { showToast } = useToast();
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
   const [isSwitching, setIsSwitching] = useState(false);
-  const [switchError, setSwitchError] = useState<string | null>(null);
+  const [switchingToId, setSwitchingToId] = useState<string | null>(null);
   
   const sessionToDeleteObj = sessions.find(s => s.id === sessionToDelete);
   const t = translations[language];
@@ -328,15 +330,39 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
 
   // Handle switching with visual feedback
   const handleSessionClick = async (sessionId: string) => {
+    const targetSession = sessions.find(s => s.id === sessionId);
+    if (!targetSession) return;
+    
     try {
       setIsSwitching(true);
-      setSwitchError(null);
+      setSwitchingToId(sessionId);
+      
       await switchSession(sessionId);
+      
+      // 成功提示
+      showToast(
+        'success', 
+        language === 'zh' 
+          ? `已切换到 ${targetSession.user}@${targetSession.ip}` 
+          : `Switched to ${targetSession.user}@${targetSession.ip}`,
+        2000
+      );
     } catch (error) {
       console.error("Failed to switch session:", error);
-      setSwitchError(String(error));
+      
+      // 失败提示
+      showToast(
+        'error',
+        language === 'zh'
+          ? `切换失败：${String(error)}`
+          : `Switch failed: ${String(error)}`,
+        4000
+      );
     } finally {
-      setTimeout(() => setIsSwitching(false), 300);
+      setTimeout(() => {
+        setIsSwitching(false);
+        setSwitchingToId(null);
+      }, 300);
     }
   };
 
@@ -406,11 +432,7 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
               <span>{t.select_all_context}</span>
             </button>
           </div>
-          {switchError && (
-            <div className="mt-3 px-3 py-2 rounded-xl bg-red-50/80 border border-red-200/60 text-[11px] text-red-700 break-words">
-              {switchError}
-            </div>
-          )}
+
         </div>
 
         {/* Scrollable Server List */}
@@ -569,15 +591,21 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
       
       {/* Global Loading Overlay for Sidebar */}
       <AnimatePresence>
-        {isSwitching && (
+        {isSwitching && switchingToId && (
            <motion.div 
              initial={{ opacity: 0 }}
              animate={{ opacity: 1 }}
              exit={{ opacity: 0 }}
-             className="absolute inset-0 z-40 bg-white/30 backdrop-blur-[1px] cursor-wait flex items-center justify-center"
+             className="absolute inset-0 z-40 bg-white/30 backdrop-blur-[2px] cursor-wait flex items-center justify-center"
            >
-             <div className="bg-white/80 p-2 rounded-full shadow-lg border border-white/50">
-               <Activity className="animate-spin text-sky-500" size={18} />
+             <div className="bg-white/95 px-4 py-3 rounded-2xl shadow-xl border border-sky-200/50 flex items-center gap-3">
+               <Activity className="animate-spin text-sky-500" size={20} />
+               <div className="text-sm font-medium text-slate-700">
+                 {language === 'zh' ? '正在切换到' : 'Switching to'}{' '}
+                 <span className="font-mono text-sky-600">
+                   {sessions.find(s => s.id === switchingToId)?.ip}
+                 </span>
+               </div>
              </div>
            </motion.div>
         )}

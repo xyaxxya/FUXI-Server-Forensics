@@ -28,6 +28,7 @@ import { AIMessage, AISettings, sendToAI, Tool } from "../../lib/ai";
 import { useCommandStore } from "../../store/CommandContext";
 import ThinkingProcess, { ThinkingStep } from "./ThinkingProcess";
 import { pLimit } from "../../lib/p-limit";
+import { useToast } from "../Toast";
 
 import JarConfigArtifact from "./JarConfigArtifact";
 
@@ -229,7 +230,9 @@ export default function AgentPanel({ language = 'en', aiSettings, onAiSettingsCh
   const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null);
   
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState<{ current: number; total: number; currentQuestion: string }>({ current: 0, total: 0, currentQuestion: '' });
   const [isClassifying, setIsClassifying] = useState(false);
+  const { showToast } = useToast();
   
   // Chat input in detail view
   const [chatInput, setChatInput] = useState("");
@@ -663,16 +666,39 @@ ${text}
         return;
     }
     setIsProcessing(true);
+    setProcessingProgress({ current: 0, total: 0, currentQuestion: '' });
     
     const pendingQuestions = questions.filter(q => q.status === "pending");
+    const total = pendingQuestions.length;
+    
+    setProcessingProgress({ current: 0, total, currentQuestion: pendingQuestions[0]?.content || '' });
     
     // Concurrent processing with limit
     const limit = pLimit(aiSettings.maxConcurrentTasks || 3);
-    const tasks = pendingQuestions.map(q => limit(() => processQuestion(q)));
+    let completed = 0;
+    
+    const tasks = pendingQuestions.map(q => limit(async () => {
+      setProcessingProgress(prev => ({ ...prev, currentQuestion: q.content }));
+      await processQuestion(q);
+      completed++;
+      setProcessingProgress(prev => ({ ...prev, current: completed }));
+    }));
     
     await Promise.all(tasks);
     
     setIsProcessing(false);
+    setProcessingProgress({ current: 0, total: 0, currentQuestion: '' });
+    
+    // 显示完成提示
+    const successCount = questions.filter(q => q.status === "completed").length;
+    const failedCount = questions.filter(q => q.status === "error").length;
+    showToast(
+      'success',
+      language === 'zh' 
+        ? `批量分析完成！成功 ${successCount} 个，失败 ${failedCount} 个` 
+        : `Batch completed! ${successCount} succeeded, ${failedCount} failed`,
+      4000
+    );
   };
 
   // Handle sending a follow-up message in detail view
@@ -1048,8 +1074,30 @@ ${text}
                   : "bg-green-600 hover:bg-green-700 active:bg-green-800"}`}
             >
               {isProcessing ? <Loader2 size={18} className="animate-spin" /> : <Play size={18} />}
-              {isProcessing ? t.processing : t.start_batch}
+              {isProcessing 
+                ? `${t.processing} (${processingProgress.current}/${processingProgress.total})` 
+                : t.start_batch}
             </button>
+            
+            {/* Progress Bar */}
+            {isProcessing && processingProgress.total > 0 && (
+              <div className="flex-1 min-w-[200px]">
+                <div className="flex items-center justify-between text-xs text-slate-600 mb-1">
+                  <span className="truncate max-w-[300px]" title={processingProgress.currentQuestion}>
+                    {language === 'zh' ? '当前：' : 'Current: '}{processingProgress.currentQuestion}
+                  </span>
+                  <span className="font-mono font-semibold">
+                    {Math.round((processingProgress.current / processingProgress.total) * 100)}%
+                  </span>
+                </div>
+                <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-green-500 to-emerald-600 transition-all duration-300 ease-out"
+                    style={{ width: `${(processingProgress.current / processingProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
