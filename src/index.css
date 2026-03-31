@@ -39,6 +39,85 @@ body {
   width: 100vw;
 }
 
+:root {
+  --ds-bg-from: #f4f8ff;
+  --ds-bg-via: #eef5ff;
+  --ds-bg-to: #f7fbff;
+  --ds-accent-50: #eff6ff;
+  --ds-accent-100: #dbeafe;
+  --ds-accent-200: #bfdbfe;
+  --ds-accent-500: #3b82f6;
+  --ds-accent-600: #2563eb;
+  --ds-accent-700: #1d4ed8;
+  --ds-accent-900: #1e3a8a;
+  --ds-ink-900: #0f172a;
+  --ds-ink-700: #334155;
+  --ds-border: rgba(30, 64, 175, 0.16);
+  --ds-border-strong: rgba(30, 58, 138, 0.42);
+  --ds-shadow: 0 18px 48px -28px rgba(30, 64, 175, 0.34);
+}
+
+.ds-app-bg {
+  background-image: linear-gradient(135deg, var(--ds-bg-from), var(--ds-bg-via), var(--ds-bg-to));
+}
+
+.ds-panel {
+  background: rgba(255, 255, 255, 0.66);
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  box-shadow: var(--ds-shadow);
+  backdrop-filter: blur(22px) saturate(130%);
+  -webkit-backdrop-filter: blur(22px) saturate(130%);
+}
+
+.ds-card {
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(191, 219, 254, 0.64);
+  box-shadow: 0 10px 30px -24px rgba(30, 64, 175, 0.34);
+}
+
+.ds-card-default {
+  border-color: rgba(191, 219, 254, 0.7);
+}
+
+.ds-card-default:hover {
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 20px 44px -26px rgba(37, 99, 235, 0.38);
+}
+
+.ds-card-done {
+  background: #ffffff;
+  border: 1px solid var(--ds-border-strong);
+  box-shadow: 0 16px 38px -24px rgba(30, 58, 138, 0.45);
+}
+
+.ds-chip {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--ds-ink-700);
+}
+
+.ds-chip-active {
+  border: 1px solid var(--ds-accent-700);
+  background: linear-gradient(180deg, #2b67e9, #1d4ed8);
+  color: #ffffff;
+  box-shadow: 0 10px 24px -14px rgba(29, 78, 216, 0.75);
+}
+
+.ds-accent-text {
+  color: var(--ds-accent-700);
+}
+
+.ds-input {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.ds-input:focus {
+  border-color: var(--ds-accent-500);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.14);
+  outline: none;
+}
+
 /* Glass Utilities - The Core of the Design */
 .glass {
   background: var(--color-surface-glass);

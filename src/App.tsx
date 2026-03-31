@@ -48,7 +48,7 @@ function MainApp() {
   const [introMinElapsed, setIntroMinElapsed] = useState(false);
   const [introMaxElapsed, setIntroMaxElapsed] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [activeTab, setActiveTab] = useState("system");
+  const [activeTab, setActiveTab] = useState("dashboard");
   const [language, setLanguage] = useState<Language>('zh');
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -216,28 +216,10 @@ function MainApp() {
         if (showLoginModal) setShowLoginModal(false);
       }
       
-      // Ctrl+1-9 - Quick tab switching (only when connected)
-      if (isConnected && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
-        const tabMap: Record<string, string> = {
-          '1': 'system',
-          '2': 'network',
-          '3': 'response',
-          '4': 'docker',
-          '5': 'database',
-          '6': 'agent-general',
-          '7': 'terminal'
-        };
-        
-        if (tabMap[e.key]) {
-          e.preventDefault();
-          setActiveTab(tabMap[e.key]);
-        }
-      }
-      
-      // Ctrl+T - Open terminal
-      if (isConnected && (e.ctrlKey || e.metaKey) && e.key === 't') {
+      // Ctrl+1 - 回到监控中心
+      if (isConnected && (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === '1') {
         e.preventDefault();
-        setActiveTab('terminal');
+        setActiveTab('dashboard');
       }
     };
     
@@ -273,8 +255,8 @@ function MainApp() {
     setIsConnected(true);
     setLanguage('zh');
     setShowServerSidebar(true);
-    // Show task modal instead of auto-executing
-    setShowTaskModal(true);
+    // SSH连接成功后不再弹出任务栏
+    setShowTaskModal(false);
   };
 
   const handleExecuteTasks = (selectedIds: string[]) => {

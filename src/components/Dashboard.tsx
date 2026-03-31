@@ -1,1737 +1,1247 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity,
-  RefreshCw,
-  Play,
-  Pause,
-  Cloud,
-  Search,
-  Globe,
-  X,
-  HelpCircle,
-  Info,
   Check,
-  Database,
-  Key,
-  Cpu,
-  Server,
-  Layout,
-  WrapText,
+  CheckCheck,
+  ChevronLeft,
+  ChevronRight,
   Copy,
-  CheckCheck
+  FileDown,
+  FileSearch,
+  FileText,
+  Gauge,
+  MonitorCheck,
+  PlayCircle,
+  Regex,
+  Search,
+  SquareTerminal,
+  Text,
+  Type,
+  WrapText,
+  X,
+  ChevronDown
 } from "lucide-react";
-import { translations, Language } from "../translations";
+import { Language } from "../translations";
 import { commands, PluginCommand } from "../config/commands";
 import { useCommandStore } from "../store/CommandContext";
-import { ChartDisplay } from "./ChartDisplay";
-import TerminalXterm from "./TerminalXterm";
-import MySQLManager from "./tools/MySQLManager";
-import GeneralAgent from "./agents/GeneralAgent";
-import AgentPanel from "./agents/AgentPanel";
+import { useToast } from "./Toast";
 import GeneralInfoPanel from "./agents/GeneralInfoPanel";
+import GeneralAgent from "./agents/GeneralAgent";
 import DatabaseAgent from "./agents/DatabaseAgent";
-import ResponsePanel from "./ResponsePanel";
+import AgentPanel from "./agents/AgentPanel";
 import PentestPanel from "./PentestPanel";
+import TerminalXterm from "./TerminalXterm";
 import { AISettings } from "../lib/ai";
-import { APP_VERSION } from "../config/app";
 
-// --- Types ---
-type TableData = { headers: string[]; rows: string[][] };
-type SecurityLogStatus = "success" | "failed" | "warn" | "info";
-type SecurityLogEntry = {
-  time: string;
-  actor: string;
-  source: string;
-  action: string;
-  detail: string;
-  status: SecurityLogStatus;
-  raw: string;
-};
-type SecurityLogData = {
-  kind: "securityLog";
-  logKind: string;
-  title: string;
-  rows: SecurityLogEntry[];
-  stats: {
-    total: number;
-    success: number;
-    failed: number;
-    warn: number;
-    info: number;
-    uniqueSources: number;
-  };
-  raw: string;
+type ViewerMode = "text" | "hex" | "binary";
+type SearchMatch = { index: number; lineIndex: number; start: number; end: number };
+type MenuItem = {
+  id: string;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
 };
 
-const parseSyslogLine = (line: string) => {
-  const match = line.match(/^([A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2})\s+(\S+)\s+([^:]+):\s*(.*)$/);
-  if (!match) return null;
-  return {
-    time: match[1],
-    host: match[2],
-    process: match[3],
-    message: match[4],
-  };
+const ENCODING_OPTIONS = [
+  "utf-8",
+  "utf-16le",
+  "utf-16be",
+  "gbk",
+  "gb18030",
+  "big5",
+  "shift_jis",
+  "iso-8859-1",
+  "windows-1252"
+];
+
+const CATEGORY_ORDER = ["system", "network", "security", "web", "database"] as const;
+
+const CATEGORY_META: Record<string, { zh: string; en: string }> = {
+  system: { zh: "系统取证", en: "System" },
+  network: { zh: "网络取证", en: "Network" },
+  security: { zh: "安全审计", en: "Security" },
+  web: { zh: "Web 中间件", en: "Web" },
+  database: { zh: "数据库", en: "Database" }
 };
 
-const getIp = (text: string) => text.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/)?.[0] || "-";
-const getPort = (text: string) => text.match(/\bport\s+(\d+)\b/i)?.[1] || "";
-const getServiceName = (process: string) => process.replace(/\[\d+\]$/, "");
-const getLooseTime = (line: string) => {
-  const iso = line.match(/^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z)?)/);
-  if (iso) return iso[1];
-  const slash = line.match(/^(\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2})/);
-  if (slash) return slash[1];
-  return "-";
-};
-const buildLogData = (logKind: string, title: string, rows: SecurityLogEntry[], raw: string): SecurityLogData => {
-  return {
-    kind: "securityLog",
-    logKind,
-    title,
-    rows,
-    stats: {
-      total: rows.length,
-      success: rows.filter((r) => r.status === "success").length,
-      failed: rows.filter((r) => r.status === "failed").length,
-      warn: rows.filter((r) => r.status === "warn").length,
-      info: rows.filter((r) => r.status === "info").length,
-      uniqueSources: new Set(rows.map((r) => r.source).filter((s) => s !== "-")).size,
-    },
-    raw,
-  };
-};
-const isSecurityLogData = (data: unknown): data is SecurityLogData => {
-  return !!data && typeof data === "object" && "kind" in data && (data as SecurityLogData).kind === "securityLog";
-};
-const isTableData = (data: unknown): data is TableData => {
-  return !!data && typeof data === "object" && "headers" in data && "rows" in data;
+const SUBCATEGORY_LABELS: Record<string, { zh: string; en: string }> = {
+  general: { zh: "通用", en: "General" },
+  bt: { zh: "宝塔面板", en: "BT Panel" },
+  nginx: { zh: "Nginx", en: "Nginx" },
+  apache: { zh: "Apache", en: "Apache" },
+  mysql: { zh: "MySQL/MariaDB", en: "MySQL/MariaDB" },
+  postgres: { zh: "PostgreSQL", en: "PostgreSQL" },
+  redis: { zh: "Redis", en: "Redis" }
 };
 
-const parseSecurityLog = (output: string, args?: { logKind?: string }): SecurityLogData | string => {
-  const raw = output || "";
-  const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
-  const logKind = args?.logKind || "";
-  const titleMap: Record<string, string> = {
-    login_success: "SSH 登录成功解读",
-    login_failed: "SSH 登录失败解读",
-    sudo: "Sudo 审计解读",
-    cron: "Cron 审计解读",
-    system_error: "系统错误日志解读",
-    web_error: "Web 错误日志解读",
-    db_error: "数据库错误日志解读",
-  };
-  const title = titleMap[logKind] || "安全日志解读";
-  if (!lines.length) return buildLogData(logKind, title, [], raw);
-  const rows: SecurityLogEntry[] = [];
+const CATEGORY_WEIGHT: Record<string, number> = {
+  system: 0,
+  network: 1,
+  security: 2,
+  web: 3,
+  database: 4
+};
 
-  for (const line of lines) {
-    const parsed = parseSyslogLine(line);
-    const message = parsed?.message || line;
-    const time = parsed?.time || getLooseTime(line);
-    const process = parsed?.process || "unknown";
-
-    if (logKind === "login_success" || logKind === "login_failed") {
-      const userMatch = message.match(/for\s+(invalid user\s+)?([^\s]+)\s+from/i);
-      const user = userMatch?.[2] || "unknown";
-      const ip = getIp(message);
-      const port = getPort(message);
-      const source = ip === "-" ? "-" : `${ip}${port ? `:${port}` : ""}`;
-      const isSuccess = /Accepted\s+(password|publickey)/i.test(message);
-      const isFailed = /Failed password|authentication failure/i.test(message);
-      const status: SecurityLogStatus = isSuccess ? "success" : isFailed ? "failed" : "warn";
-      const action = isSuccess ? "SSH 登录成功" : isFailed ? "SSH 登录失败" : "SSH 登录事件";
-      const detail = `用户 ${user}${source !== "-" ? `，来源 ${source}` : ""}`;
-      rows.push({
-        time,
-        actor: user,
-        source,
-        action,
-        detail,
-        status,
-        raw: line,
-      });
-      continue;
-    }
-
-    if (logKind === "sudo") {
-      const commandMatch = message.match(/COMMAND=(.+)$/);
-      const actorMatch = message.match(/^(\S+)\s*:/);
-      const actor = actorMatch?.[1] || "unknown";
-      if (commandMatch) {
-        rows.push({
-          time,
-          actor,
-          source: "本机",
-          action: "执行 sudo 命令",
-          detail: commandMatch[1].trim(),
-          status: "info",
-          raw: line,
-        });
-      } else if (/session opened/i.test(message)) {
-        rows.push({
-          time,
-          actor,
-          source: "本机",
-          action: "sudo 会话开启",
-          detail: message,
-          status: "info",
-          raw: line,
-        });
-      } else if (/session closed/i.test(message)) {
-        rows.push({
-          time,
-          actor,
-          source: "本机",
-          action: "sudo 会话关闭",
-          detail: message,
-          status: "info",
-          raw: line,
-        });
-      }
-      continue;
-    }
-
-    if (logKind === "cron") {
-      const actorMatch = message.match(/\(([^)]+)\)\s+CMD/i);
-      const actor = actorMatch?.[1] || "root";
-      const cmdMatch = message.match(/CMD\s+\((.*)\)\s*$/i);
-      rows.push({
-        time,
-        actor,
-        source: "本机",
-        action: "执行定时任务",
-        detail: cmdMatch?.[1] || message,
-        status: "info",
-        raw: line,
-      });
-      continue;
-    }
-
-    if (logKind === "system_error") {
-      const source = getIp(message);
-      const service = getServiceName(process);
-      if (/client sent invalid protocol identifier/i.test(message)) {
-        const protocolMatch = message.match(/identifier\s+"([^"]+)"/i);
-        rows.push({
-          time,
-          actor: service,
-          source,
-          action: "疑似协议探测 SSH 端口",
-          detail: protocolMatch?.[1] ? `请求标识: ${protocolMatch[1]}` : message,
-          status: "warn",
-          raw: line,
-        });
-        continue;
-      }
-      if (/banner line contains invalid characters/i.test(message)) {
-        rows.push({
-          time,
-          actor: service,
-          source,
-          action: "SSH 握手异常字符",
-          detail: message,
-          status: "warn",
-          raw: line,
-        });
-        continue;
-      }
-      if (/kex_protocol_error/i.test(message)) {
-        rows.push({
-          time,
-          actor: service,
-          source,
-          action: "密钥交换协议异常",
-          detail: message,
-          status: "failed",
-          raw: line,
-        });
-        continue;
-      }
-      if (/Connection closed by remote host|Connection reset by peer/i.test(message)) {
-        rows.push({
-          time,
-          actor: service,
-          source,
-          action: "远端异常断开连接",
-          detail: message,
-          status: "info",
-          raw: line,
-        });
-        continue;
-      }
-      rows.push({
-        time,
-        actor: service,
-        source,
-        action: "系统错误事件",
-        detail: message,
-        status: /panic|fatal|critical/i.test(message) ? "failed" : "warn",
-        raw: line,
-      });
-      continue;
-    }
-
-    if (logKind === "web_error") {
-      const source = message.match(/client:\s*([^,\s]+)/i)?.[1] || getIp(message);
-      const request = message.match(/request:\s*"([^"]+)"/i)?.[1];
-      const level = message.match(/\[(error|warn|crit|alert)\]/i)?.[1]?.toLowerCase() || "";
-      const status: SecurityLogStatus = level === "warn" ? "warn" : level ? "failed" : /error|exception|timeout|refused/i.test(message) ? "failed" : "warn";
-      rows.push({
-        time,
-        actor: getServiceName(process) === "unknown" ? "web" : getServiceName(process),
-        source,
-        action: status === "failed" ? "Web 服务错误" : "Web 风险告警",
-        detail: request ? `请求 ${request}` : message,
-        status,
-        raw: line,
-      });
-      continue;
-    }
-
-    if (logKind === "db_error") {
-      const source = message.match(/host[=:]\s*([^\s,]+)/i)?.[1] || getIp(message);
-      const service = getServiceName(process) === "unknown" ? "database" : getServiceName(process);
-      if (/Query_time:\s*[\d.]+/i.test(message) || /slow query/i.test(message)) {
-        rows.push({
-          time,
-          actor: service,
-          source,
-          action: "慢查询事件",
-          detail: message,
-          status: "warn",
-          raw: line,
-        });
-        continue;
-      }
-      const isFailed = /error|fatal|panic|crash|deadlock/i.test(message);
-      rows.push({
-        time,
-        actor: service,
-        source,
-        action: isFailed ? "数据库错误" : "数据库告警",
-        detail: message,
-        status: isFailed ? "failed" : "warn",
-        raw: line,
-      });
-      continue;
-    }
+function getSubcategory(commandId: string, category: string): string {
+  if (category === "web") {
+    if (commandId.startsWith("bt_")) return "bt";
+    if (commandId.startsWith("nginx_")) return "nginx";
+    if (commandId.startsWith("apache_")) return "apache";
   }
+  if (category === "database") {
+    if (commandId.startsWith("mysql_")) return "mysql";
+    if (commandId.startsWith("postgres_")) return "postgres";
+    if (commandId.startsWith("redis_")) return "redis";
+  }
+  return "general";
+}
 
-  if (!rows.length && logKind) return buildLogData(logKind, title, [], raw);
-  if (!rows.length) return raw;
-  return buildLogData(logKind, title, rows, raw);
-};
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
-const splitNonEmptyLines = (output: string) => (output || "").split("\n").map((l) => l.trim()).filter(Boolean);
-const extractIpPort = (text: string) => {
-  const match = text.match(/(.*):(\d+)$/);
-  if (!match) return { ip: text, port: "-" };
-  return { ip: match[1], port: match[2] };
-};
-const toKeyValueTable = (output: string, label = "项目", value = "内容"): TableData => {
-  const lines = splitNonEmptyLines(output);
-  const rows = lines.map((line) => {
-    const pair = line.split(/[:=]\s*/, 2);
-    if (pair.length === 2) return [pair[0].trim(), pair[1].trim()];
-    return [line, "-"];
-  });
-  return { headers: [label, value], rows };
-};
+function buildSearchRegex(query: string, useRegex: boolean, caseSensitive: boolean): RegExp | null {
+  if (!query.trim()) return null;
+  const source = useRegex ? query : escapeRegExp(query);
+  const flags = caseSensitive ? "g" : "gi";
+  return new RegExp(source, flags);
+}
 
-// --- Parsers ---
-const parsers: Record<
-  string,
-  (output: string, args?: any) => TableData | string | SecurityLogData
-> = {
-  disk: (output) => {
-    const lines = output.trim().split("\n");
-    const headers = ["th_filesystem", "th_size", "th_used", "th_avail", "th_use_percent", "th_mounted"];
-    const rows = lines.map((line) => line.split("|"));
-    return { headers, rows };
-  },
-  process: (output) => {
-    const lines = output.trim().split("\n");
-    const headers = ["th_pid", "th_user", "th_cpu_percent", "th_mem_percent", "th_command"];
-    const rows = lines.map((line) => line.split("|"));
-    return { headers, rows };
-  },
-  network: (output) => {
-    const lines = output.trim().split("\n");
-    const headers = ["th_interface", "th_ip_address"];
-    const rows = lines.map((line) => line.split("|"));
-    return { headers, rows };
-  },
-  ports: (output) => {
-    const lines = output.trim().split("\n");
-    const headers = ["th_protocol", "th_local_address", "th_process"];
-    const rows = lines.map((line) => line.split("|"));
-    return { headers, rows };
-  },
-  docker: (output) => {
-    const lines = output.trim().split("\n");
-    const headers = ["ID", "th_image", "th_status", "th_ports", "th_names", "th_credentials"];
-    const rows = lines.map((line) => line.split("|"));
-    return { headers, rows };
-  },
-  simpleList: (output, args) => {
-    const lines = output.trim().split("\n");
-    const headers = args || ["th_value"];
-    const rows = lines.map((line) => line.split("|"));
-    return { headers, rows };
-  },
-  lsOutput: (output) => {
-    return output;
-  },
-  authLog: (output, args) => {
-    return parseSecurityLog(output, args);
-  },
-  k8sNodes: (output) => {
-    const lines = output.trim().split("\n");
-    const headers = ["th_name", "th_status", "th_roles", "th_version"];
-    const rows = lines.map((line) => line.split("|"));
-    return { headers, rows };
-  },
-  k8sPods: (output) => {
-    const lines = output.trim().split("\n");
-    const headers = ["th_namespace", "th_name", "th_status", "IP"];
-    const rows = lines.map((line) => line.split("|"));
-    return { headers, rows };
-  },
-  memory: (output) => {
-    const lines = output.trim().split("\n");
-    const headers = ["th_type", "th_total", "th_used", "th_free", "th_shared", "th_buff_cache", "th_avail"];
-    const rows = lines.map((line) => line.split("|"));
-    return { headers, rows };
-  },
-  boot: (output) => {
-    const lines = output.trim().split("\n");
-    const headers = ["th_unit", "th_state", "th_preset"];
-    const rows = lines.map((line) => line.split("|"));
-    return { headers, rows };
-  },
-  diskIO: (output) => {
-    const lines = output.trim().split("\n");
-    const headers = ["th_device", "th_read_sec", "th_write_sec", "th_read_kb", "th_write_kb", "th_util"];
-    const rows = lines.map((line) => line.split("|"));
-    return { headers, rows };
-  },
-  uptimeHuman: (output) => ({ headers: ["运行状态"], rows: [[output.trim() || "-"]] }),
-  linuxRelease: (output) => toKeyValueTable(output, "发行版字段", "值"),
-  rebootHistory: (output) => {
-    const lines = splitNonEmptyLines(output);
-    const rows = lines.map((line) => {
-      const parts = line.split(/\s+/);
-      return [parts[0] || "-", parts[2] || "-", parts.slice(3, 8).join(" "), parts.slice(8).join(" ") || "-"];
-    });
-    return { headers: ["事件", "终端", "时间段", "细节"], rows };
-  },
-  timeSync: (output) => {
-    const lines = splitNonEmptyLines(output);
-    const rows = lines.map((line) => {
-      if (line.includes(":")) {
-        const [k, v] = line.split(/:\s*/, 2);
-        return [k.trim(), v?.trim() || "-"];
-      }
-      return ["状态信息", line];
-    });
-    return { headers: ["同步项", "结果"], rows };
-  },
-  processStats: (output) => {
-    const lines = splitNonEmptyLines(output);
-    const total = lines[0] || "0";
-    const uptimePart = lines[1] || "-";
-    const taskPart = lines[2] || "-";
-    return {
-      headers: ["指标", "值"],
-      rows: [
-        ["进程总数", total],
-        ["运行时长片段", uptimePart],
-        ["任务分布", taskPart],
-      ],
-    };
-  },
-  netTraffic: (output) => {
-    const lines = splitNonEmptyLines(output);
-    const rows: string[][] = [];
-    for (let i = 0; i < lines.length; i += 2) {
-      const rx = lines[i] || "";
-      const tx = lines[i + 1] || "";
-      const rxPackets = rx.match(/RX packets\s+(\d+)/)?.[1] || "-";
-      const rxBytes = rx.match(/bytes\s+(\d+)/)?.[1] || "-";
-      const txPackets = tx.match(/TX packets\s+(\d+)/)?.[1] || "-";
-      const txBytes = tx.match(/bytes\s+(\d+)/)?.[1] || "-";
-      rows.push([`网卡${rows.length + 1}`, rxPackets, txPackets, rxBytes, txBytes]);
-    }
-    return { headers: ["接口", "RX包数", "TX包数", "RX字节", "TX字节"], rows };
-  },
-  temperature: (output) => {
-    const lines = splitNonEmptyLines(output);
-    const rows = lines.map((line, i) => {
-      const tempMatch = line.match(/(-?\d+(?:\.\d+)?)\s*°?\s*[CF]/i) || line.match(/(-?\d+(?:\.\d+)?)/);
-      const value = tempMatch?.[1] ? `${tempMatch[1]}°C` : "-";
-      const status = tempMatch?.[1] && Number(tempMatch[1]) >= 80 ? "偏高" : "正常";
-      return [`传感器${i + 1}`, value, status, line];
-    });
-    return { headers: ["来源", "温度", "状态", "原始片段"], rows };
-  },
-  sudoPerm: (output) => {
-    const lines = splitNonEmptyLines(output);
-    const rows = lines.map((line) => {
-      const principal = line.split(/\s+/)[0] || "-";
-      const nopasswd = /NOPASSWD/i.test(line) ? "是" : "否";
-      return [principal, nopasswd, line];
-    });
-    return { headers: ["主体", "免密执行", "规则"], rows };
-  },
-  firewallStatus: (output) => {
-    const lines = splitNonEmptyLines(output);
-    const engine = lines.some((l) => /firewalld/i.test(l)) ? "firewalld" : lines.some((l) => /ufw/i.test(l)) ? "ufw" : "unknown";
-    const active = lines.some((l) => /active|running|Status:\s*active/i.test(l)) ? "是" : "否";
-    const policy = lines.find((l) => /Default|default/i.test(l)) || "-";
-    return { headers: ["防火墙引擎", "已启用", "默认策略", "原始摘要"], rows: [[engine, active, policy, lines.slice(0, 2).join(" | ") || "-"]] };
-  },
-  cronJobs: (output) => {
-    const lines = splitNonEmptyLines(output).filter((l) => !l.startsWith("#"));
-    const rows = lines.map((line) => {
-      const parts = line.split(/\s+/);
-      if (parts.length < 6) return ["-", "-", "-", "-", "-", line];
-      const cmd = parts.slice(5).join(" ");
-      return [parts[0], parts[1], parts[2], parts[3], parts[4], cmd || "-"];
-    });
-    return { headers: ["分", "时", "日", "月", "周", "命令"], rows };
-  },
-  ssConnections: (output) => {
-    const lines = splitNonEmptyLines(output).filter((l) => !/^Netid|^State/i.test(l));
-    const rows = lines.map((line) => {
-      const parts = line.split(/\s+/);
-      const proto = parts[0] || "-";
-      const state = parts[1] || "-";
-      const local = parts[4] || "-";
-      const peer = parts[5] || "-";
-      const proc = parts.slice(6).join(" ") || "-";
-      const localParts = extractIpPort(local);
-      const peerParts = extractIpPort(peer);
-      return [proto, state, localParts.ip, localParts.port, peerParts.ip, peerParts.port, proc];
-    });
-    return { headers: ["协议", "状态", "本地IP", "本地端口", "远端IP", "远端端口", "进程"], rows };
-  },
-  routeSnapshot: (output) => {
-    const lines = splitNonEmptyLines(output);
-    const rows = lines.map((line) => {
-      const dest = line.split(" ")[0] || "-";
-      const via = line.match(/\bvia\s+([^\s]+)/)?.[1] || "-";
-      const dev = line.match(/\bdev\s+([^\s]+)/)?.[1] || "-";
-      const metric = line.match(/\bmetric\s+([^\s]+)/)?.[1] || "-";
-      return [dest, via, dev, metric, line];
-    });
-    return { headers: ["目标网段", "下一跳", "网卡", "优先级", "原始规则"], rows };
-  },
-  neighborSnapshot: (output) => {
-    const lines = splitNonEmptyLines(output);
-    const rows = lines.map((line) => {
-      const ip = line.split(/\s+/)[0] || "-";
-      const dev = line.match(/\bdev\s+([^\s]+)/)?.[1] || "-";
-      const mac = line.match(/\blladdr\s+([^\s]+)/)?.[1] || "-";
-      const state = line.split(/\s+/).slice(-1)[0] || "-";
-      return [ip, dev, mac, state];
-    });
-    return { headers: ["IP", "网卡", "MAC", "状态"], rows };
-  },
-  firewallRules: (output) => {
-    const lines = splitNonEmptyLines(output);
-    const rows = lines.map((line) => {
-      const engine = line.startsWith("-") ? "iptables" : /table|chain|hook|policy/i.test(line) ? "nftables" : /Status|ALLOW|DENY/i.test(line) ? "ufw" : "unknown";
-      const action = line.match(/\b(ACCEPT|DROP|REJECT|ALLOW|DENY)\b/i)?.[1]?.toUpperCase() || "-";
-      const src = line.match(/\bsource\s+([^\s]+)/i)?.[1] || line.match(/\bfrom\s+([^\s]+)/i)?.[1] || "-";
-      const dst = line.match(/\bdestination\s+([^\s]+)/i)?.[1] || line.match(/\bto\s+([^\s]+)/i)?.[1] || "-";
-      return [engine, action, src, dst, line];
-    });
-    return { headers: ["引擎", "动作", "来源", "目标", "规则"], rows };
-  },
-  dnsConfig: (output) => {
-    const lines = splitNonEmptyLines(output);
-    const rows = lines.map((line, i) => [String(i + 1), line.replace(/^nameserver\s+/i, "")]);
-    return { headers: ["序号", "DNS服务器"], rows };
-  },
-  btAuth: (output) => {
-    try {
-      const data = JSON.parse(output || "{}");
-      const rows = Object.entries(data).map(([k, v]) => [k, typeof v === "object" ? JSON.stringify(v) : String(v)]);
-      return { headers: ["认证字段", "值"], rows };
-    } catch {
-      return toKeyValueTable(output, "认证字段", "值");
-    }
-  },
-  btUser: (output) => {
-    try {
-      const data = JSON.parse(output || "{}");
-      const rows = Object.entries(data).map(([k, v]) => [k, typeof v === "object" ? JSON.stringify(v) : String(v)]);
-      return { headers: ["用户字段", "值"], rows };
-    } catch {
-      return toKeyValueTable(output, "用户字段", "值");
-    }
-  },
-  nginxInfo: (output) => {
-    const merged = output.replace(/\n/g, " ");
-    const version = merged.match(/nginx\/([^\s]+)/i)?.[1] || "-";
-    const openssl = merged.match(/OpenSSL\s+([^\s]+)/i)?.[1] || "-";
-    const built = merged.match(/built\s+with\s+([^)]+)\)/i)?.[1] || "-";
-    return { headers: ["Nginx版本", "OpenSSL", "构建信息"], rows: [[version, openssl, built]] };
-  },
-  nginxConfig: (output) => {
-    const lines = splitNonEmptyLines(output);
-    const includeCount = lines.filter((l) => /^\s*include\s+/i.test(l)).length;
-    const serverCount = lines.filter((l) => /\bserver\s*\{/i.test(l)).length;
-    const listenPorts = Array.from(new Set(lines.map((l) => l.match(/\blisten\s+(\d+)/)?.[1]).filter(Boolean))).join(",") || "-";
-    const serverNames = lines.filter((l) => /\bserver_name\b/i.test(l)).slice(0, 5).map((l) => l.replace(/.*server_name\s+/i, "").replace(/;$/, "")).join(" | ") || "-";
-    return { headers: ["Server块数量", "Listen端口", "Include条数", "示例域名"], rows: [[String(serverCount), listenPorts, String(includeCount), serverNames]] };
-  },
-  tlsCert: (output) => {
-    const lines = splitNonEmptyLines(output);
-    const notBefore = lines.find((l) => /notBefore=/i.test(l))?.replace(/notBefore=/i, "") || "-";
-    const notAfter = lines.find((l) => /notAfter=/i.test(l))?.replace(/notAfter=/i, "") || "-";
-    const issuer = lines.find((l) => /^issuer=/i.test(l))?.replace(/^issuer=/i, "") || "-";
-    const subject = lines.find((l) => /^subject=/i.test(l))?.replace(/^subject=/i, "") || "-";
-    const serial = lines.find((l) => /^serial=/i.test(l))?.replace(/^serial=/i, "") || "-";
-    const certPath = lines.find((l) => /^CERT_PATH:/i.test(l))?.replace(/^CERT_PATH:/i, "") || "-";
-    return { headers: ["证书路径", "主题", "签发者", "生效时间", "到期时间", "序列号"], rows: [[certPath, subject, issuer, notBefore, notAfter, serial]] };
-  },
-  webAccessLog: (output) => {
-    const lines = splitNonEmptyLines(output);
-    const rows = lines.map((line) => {
-      const ip = line.match(/^(\S+)/)?.[1] || "-";
-      const time = line.match(/\[([^\]]+)\]/)?.[1] || "-";
-      const req = line.match(/"([A-Z]+)\s+([^"\s]+)[^"]*"/);
-      const status = line.match(/"\s+(\d{3})\s+/)?.[1] || "-";
-      return [time, ip, req?.[1] || "-", req?.[2] || "-", status, line];
-    });
-    return { headers: ["时间", "来源IP", "方法", "路径", "状态码", "原始行"], rows };
-  },
-  packageList: (output) => {
-    const lines = splitNonEmptyLines(output);
-    const rows = lines.map((line) => {
-      if (/^ii\s+/.test(line)) {
-        const parts = line.split(/\s+/);
-        return [parts[1] || "-", parts[2] || "-", "dpkg", line];
-      }
-      const rpm = line.match(/^([^-]+)-([0-9][^-]*)/);
-      if (rpm) return [rpm[1], rpm[2], "rpm", line];
-      return [line, "-", "unknown", line];
-    });
-    return { headers: ["包名", "版本", "来源", "原始"], rows };
-  },
-  serviceStatus: (output) => {
-    const lines = splitNonEmptyLines(output);
-    const rows = lines.map((line) => {
-      const svc = line.split(/\s+/)[0] || "-";
-      const enabled = /\benabled\b/i.test(line) || /\bon\b/i.test(line) ? "是" : "否";
-      return [svc, enabled, line];
-    });
-    return { headers: ["服务", "开机启动", "原始"], rows };
-  },
-  dbSlowLog: (output) => {
-    const lines = splitNonEmptyLines(output);
-    const rows = lines.map((line) => {
-      const isSlow = /Query_time:\s*[\d.]+|slow/i.test(line);
-      const isErr = /error|fatal|panic|deadlock/i.test(line);
-      return [isErr ? "错误" : isSlow ? "慢查询" : "事件", line];
-    });
-    return { headers: ["类型", "详情"], rows };
-  },
-  dbPermissionMatrix: (output) => {
-    const lines = splitNonEmptyLines(output);
-    let engine = "unknown";
-    const rows: string[][] = [];
-    for (const line of lines) {
-      if (/^\[MySQL\]/i.test(line)) {
-        engine = "MySQL";
-        continue;
-      }
-      if (/^\[PostgreSQL\]/i.test(line)) {
-        engine = "PostgreSQL";
-        continue;
-      }
-      if (/^\[Redis\]/i.test(line)) {
-        engine = "Redis";
-        continue;
-      }
-      const parts = line.split(/[|\s]+/).filter(Boolean);
-      rows.push([engine, parts.slice(0, 4).join(" | ") || line]);
-    }
-    return { headers: ["引擎", "权限信息"], rows };
-  },
-  dockerInfo: (output) => {
-    const lines = splitNonEmptyLines(output);
-    const pick = (key: string) => lines.find((l) => l.toLowerCase().startsWith(`${key.toLowerCase()}:`))?.split(":").slice(1).join(":").trim() || "-";
-    return {
-      headers: ["服务器版本", "存储驱动", "日志驱动", "CPU核数", "总内存"],
-      rows: [[pick("Server Version"), pick("Storage Driver"), pick("Logging Driver"), pick("CPUs"), pick("Total Memory")]],
-    };
-  },
-  dockerPrivileged: (output) => {
-    const lines = splitNonEmptyLines(output);
-    const rows = lines.map((line) => {
-      const parts = line.split("|");
-      const name = parts[0] || "-";
-      const privileged = parts[1] === "true" ? "是" : "否";
-      const networkMode = parts[2] || "-";
-      const pidMode = parts[3] || "-";
-      const userns = parts[4] || "-";
-      const capAdd = (parts[5] || "").replace(/[\[\]]/g, "") || "-";
-      return [name, privileged, networkMode, pidMode, userns, capAdd];
-    });
-    return { headers: ["容器", "特权模式", "网络模式", "PID模式", "Userns", "附加能力"], rows };
-  },
-  k8sEvents: (output) => {
-    const lines = splitNonEmptyLines(output).filter((l) => !/^NAMESPACE\s+/i.test(l));
-    const rows = lines.map((line) => {
-      const parts = line.split(/\s+/);
-      return [parts[0] || "-", parts[1] || "-", parts[2] || "-", parts[3] || "-", parts.slice(4).join(" ") || "-"];
-    });
-    return { headers: ["命名空间", "最近时间", "类型", "对象", "信息"], rows };
-  },
-  k8sRbac: (output) => {
-    const lines = splitNonEmptyLines(output).filter((l) => !/^NAMESPACE\s+/i.test(l));
-    const rows = lines.map((line) => {
-      const parts = line.split(/\s+/);
-      return [parts[0] || "-", parts[1] || "-", parts[2] || "-", parts.slice(3).join(" ") || "-"];
-    });
-    return { headers: ["命名空间", "类型", "名称", "角色或详情"], rows };
-  },
-  raw: (output) => output,
-};
+function toHexLines(bytes: Uint8Array): string[] {
+  const rows: string[] = [];
+  for (let i = 0; i < bytes.length; i += 16) {
+    const chunk = bytes.slice(i, i + 16);
+    const offset = i.toString(16).padStart(8, "0");
+    const hex = Array.from(chunk)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join(" ");
+    const ascii = Array.from(chunk)
+      .map((b) => (b >= 32 && b <= 126 ? String.fromCharCode(b) : "."))
+      .join("");
+    rows.push(`${offset}  ${hex.padEnd(47, " ")}  ${ascii}`);
+  }
+  return rows;
+}
 
-// --- Helper Components ---
+function toBinaryLines(bytes: Uint8Array): string[] {
+  const rows: string[] = [];
+  for (let i = 0; i < bytes.length; i += 6) {
+    const chunk = bytes.slice(i, i + 6);
+    const offset = i.toString(16).padStart(8, "0");
+    const binary = Array.from(chunk)
+      .map((b) => b.toString(2).padStart(8, "0"))
+      .join(" ");
+    rows.push(`${offset}  ${binary}`);
+  }
+  return rows;
+}
 
-function TableDisplay({ data, language }: { data: TableData; language: Language }) {
-  const t = translations[language];
-  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
-  const [wrapMode, setWrapMode] = useState(false);
-  const [tableSearchQuery, setTableSearchQuery] = useState("");
+function ContextMenu({
+  x,
+  y,
+  items,
+  onClose
+}: {
+  x: number;
+  y: number;
+  items: MenuItem[];
+  onClose: () => void;
+}) {
+  const style: React.CSSProperties = {
+    left: Math.min(x, window.innerWidth - 260),
+    top: Math.min(y, window.innerHeight - 16)
+  };
 
-  const selectedRowData = selectedRowIndex !== null ? data.rows[selectedRowIndex] : null;
-
-  // Filter rows based on search query
-  const filteredRows = tableSearchQuery.trim()
-    ? data.rows.filter(row => 
-        row.some(cell => 
-          String(cell).toLowerCase().includes(tableSearchQuery.toLowerCase())
-        )
-      )
-    : data.rows;
-
-  return (
-    <div className="relative flex flex-col h-full max-h-[600px]">
-      <div className="flex items-center justify-between mb-2 px-1 gap-2">
-        <div className="text-xs text-slate-500">
-          {language === "zh" ? `共 ${filteredRows.length} 条` : `${filteredRows.length} rows`}
-          {tableSearchQuery && data.rows.length !== filteredRows.length && (
-            <span className="text-sky-600 ml-1">
-              ({language === 'zh' ? `已过滤 ${data.rows.length - filteredRows.length} 条` : `${data.rows.length - filteredRows.length} filtered`})
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            placeholder={language === 'zh' ? '搜索表格...' : 'Search table...'}
-            value={tableSearchQuery}
-            onChange={(e) => setTableSearchQuery(e.target.value)}
-            className="px-3 py-1 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 w-40"
-          />
+  return createPortal(
+    <div className="fixed inset-0 z-[10020]" onMouseDown={onClose}>
+      <motion.div
+        initial={{ opacity: 0, y: 6, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 6, scale: 0.98 }}
+        transition={{ duration: 0.14, ease: "easeOut" }}
+        style={style}
+        onMouseDown={(e) => e.stopPropagation()}
+        className="fixed w-[248px] rounded-2xl border border-blue-100 bg-white/95 backdrop-blur-xl shadow-[0_20px_50px_-24px_rgba(37,99,235,0.45)] p-1.5"
+      >
+        {items.map((item) => (
           <button
-            onClick={() => setWrapMode(v => !v)}
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-xs transition-colors ${
-              wrapMode
-                ? "bg-indigo-50 text-indigo-700 border-indigo-200"
-                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+            key={item.id}
+            onClick={() => {
+              if (item.disabled) return;
+              item.onClick();
+              onClose();
+            }}
+            disabled={item.disabled}
+            className={`w-full text-left px-3 py-2 rounded-xl text-sm font-semibold transition-all ${
+              item.disabled
+                ? "text-slate-300 cursor-not-allowed"
+                : item.danger
+                ? "text-rose-600 hover:bg-rose-50"
+                : "text-slate-700 hover:bg-blue-50 hover:text-blue-700"
             }`}
           >
-            <WrapText size={12} />
+            {item.label}
+          </button>
+        ))}
+      </motion.div>
+    </div>,
+    document.body
+  );
+}
+
+function TextViewer({
+  isOpen,
+  onClose,
+  title,
+  content,
+  language
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  content: string;
+  language: Language;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [wrapMode, setWrapMode] = useState(true);
+  const [mode, setMode] = useState<ViewerMode>("text");
+  const [encoding, setEncoding] = useState("utf-8");
+  const [encodingOpen, setEncodingOpen] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [regexMode, setRegexMode] = useState(false);
+  const [linesPerPage, setLinesPerPage] = useState(100);
+  const [page, setPage] = useState(1);
+  const [activeMatchIndex, setActiveMatchIndex] = useState(-1);
+  const [regexError, setRegexError] = useState("");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const encodingMenuRef = useRef<HTMLDivElement | null>(null);
+  const [viewerContextMenu, setViewerContextMenu] = useState<{
+    x: number;
+    y: number;
+    line?: string;
+  } | null>(null);
+
+  const rawBytes = useMemo(() => new TextEncoder().encode(content), [content]);
+
+  const decodedText = useMemo(() => {
+    try {
+      return new TextDecoder(encoding as any).decode(rawBytes);
+    } catch {
+      return content;
+    }
+  }, [content, encoding, rawBytes]);
+
+  const allLines = useMemo(() => {
+    if (mode === "text") return decodedText.split("\n");
+    if (mode === "hex") return toHexLines(rawBytes);
+    return toBinaryLines(rawBytes);
+  }, [mode, decodedText, rawBytes]);
+
+  const allMatches = useMemo(() => {
+    if (!searchInput.trim()) {
+      setRegexError("");
+      return [] as SearchMatch[];
+    }
+    try {
+      const regex = buildSearchRegex(searchInput, regexMode, caseSensitive);
+      if (!regex) return [] as SearchMatch[];
+      setRegexError("");
+      const hits: SearchMatch[] = [];
+      let currentIndex = 0;
+      allLines.forEach((line, lineIndex) => {
+        regex.lastIndex = 0;
+        let m: RegExpExecArray | null = null;
+        while ((m = regex.exec(line)) !== null) {
+          hits.push({ index: currentIndex, lineIndex, start: m.index, end: m.index + Math.max(m[0].length, 1) });
+          currentIndex += 1;
+          if (m[0].length === 0) regex.lastIndex += 1;
+        }
+      });
+      return hits;
+    } catch {
+      setRegexError(language === "zh" ? "正则表达式无效" : "Invalid regex expression");
+      return [] as SearchMatch[];
+    }
+  }, [allLines, searchInput, regexMode, caseSensitive, language]);
+
+  const matchesByLine = useMemo(() => {
+    const map = new Map<number, SearchMatch[]>();
+    allMatches.forEach((hit) => {
+      const list = map.get(hit.lineIndex) || [];
+      list.push(hit);
+      map.set(hit.lineIndex, list);
+    });
+    return map;
+  }, [allMatches]);
+
+  const totalPages = Math.max(1, Math.ceil(allLines.length / linesPerPage));
+  const safePage = Math.min(page, totalPages);
+  const startLine = (safePage - 1) * linesPerPage;
+  const pageLines = allLines.slice(startLine, startLine + linesPerPage);
+
+  useEffect(() => {
+    setPage(1);
+    setActiveMatchIndex(allMatches.length ? 0 : -1);
+  }, [mode, encoding, linesPerPage, searchInput, caseSensitive, regexMode, allMatches.length]);
+
+  useEffect(() => {
+    if (!encodingOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (!encodingMenuRef.current) return;
+      if (!encodingMenuRef.current.contains(e.target as Node)) {
+        setEncodingOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", handleOutside);
+    return () => window.removeEventListener("mousedown", handleOutside);
+  }, [encodingOpen]);
+
+  useEffect(() => {
+    if (!viewerContextMenu) return;
+    const handleClose = () => setViewerContextMenu(null);
+    window.addEventListener("scroll", handleClose, true);
+    return () => window.removeEventListener("scroll", handleClose, true);
+  }, [viewerContextMenu]);
+
+  const jumpToMatch = (index: number) => {
+    if (!allMatches.length) return;
+    const next = (index + allMatches.length) % allMatches.length;
+    const hit = allMatches[next];
+    const hitPage = Math.floor(hit.lineIndex / linesPerPage) + 1;
+    setActiveMatchIndex(next);
+    setPage(hitPage);
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && k === "f") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      } else if (k === "f3") {
+        e.preventDefault();
+        jumpToMatch(e.shiftKey ? activeMatchIndex - 1 : activeMatchIndex + 1);
+      } else if (k === "escape") {
+        if (encodingOpen) {
+          setEncodingOpen(false);
+        } else if (searchInput) {
+          setSearchInput("");
+          setActiveMatchIndex(-1);
+        } else {
+          onClose();
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isOpen, onClose, searchInput, activeMatchIndex, allMatches.length, encodingOpen]);
+
+  const renderHighlightedLine = (line: string, absoluteLineIndex: number) => {
+    const hits = matchesByLine.get(absoluteLineIndex);
+    if (!hits?.length || regexError) return line || " ";
+
+    let cursor = 0;
+    const nodes: React.ReactNode[] = [];
+    hits.forEach((hit) => {
+      if (hit.start > cursor) nodes.push(<span key={`${cursor}-txt`}>{line.slice(cursor, hit.start)}</span>);
+      nodes.push(
+        <mark
+          key={`${hit.start}-${hit.end}`}
+          className={
+            hit.index === activeMatchIndex
+              ? "bg-blue-200 text-blue-900 ring-1 ring-blue-300 rounded px-0.5"
+              : "bg-blue-100 text-blue-700 rounded px-0.5"
+          }
+        >
+          {line.slice(hit.start, hit.end) || " "}
+        </mark>
+      );
+      cursor = hit.end;
+    });
+    if (cursor < line.length) nodes.push(<span key={`${cursor}-tail`}>{line.slice(cursor)}</span>);
+    return nodes;
+  };
+
+  const handleCopy = async () => {
+    const rendered = mode === "text" ? decodedText : allLines.join("\n");
+    try {
+      await navigator.clipboard.writeText(rendered);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  };
+
+  const getSelectedText = () => {
+    const text = window.getSelection()?.toString() || "";
+    return text.trim();
+  };
+
+  const copyText = async (text: string) => {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {}
+  };
+
+  const handleDownload = () => {
+    const rendered = mode === "text" ? decodedText : allLines.join("\n");
+    const blob = new Blob([rendered], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${title.replace(/[^\w\u4e00-\u9fa5-]+/g, "_")}_${mode}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (!isOpen) return null;
+
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] bg-blue-950/12 backdrop-blur-xl p-4 md:p-6">
+      <motion.div
+        initial={{ opacity: 0, y: 16, scale: 0.985 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 16, scale: 0.985 }}
+        transition={{ type: "spring", stiffness: 260, damping: 24 }}
+        className="w-full h-[90vh] max-w-[1480px] mx-auto ds-panel rounded-3xl ring-1 ring-blue-100/80 overflow-hidden flex flex-col relative"
+      >
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute -top-24 -right-12 w-64 h-64 bg-blue-200/35 blur-3xl rounded-full" />
+          <div className="absolute -bottom-20 -left-10 w-72 h-72 bg-cyan-200/25 blur-3xl rounded-full" />
+          <div className="absolute inset-0 opacity-[0.04] bg-[radial-gradient(circle_at_1px_1px,rgba(30,41,59,0.7)_1px,transparent_0)] [background-size:10px_10px]" />
+        </div>
+        <div className="px-5 py-3.5 bg-gradient-to-r from-white/85 to-blue-50/65 border-b border-white/70 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-700 to-blue-900 text-white flex items-center justify-center shadow-lg shadow-blue-900/25">
+              <FileSearch size={22} />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-slate-800 text-base font-black truncate">{title}</h3>
+              <div className="text-[11px] text-slate-500 font-semibold">
+                {(language === "zh" ? "行数" : "Lines")}: {allLines.length} · Bytes: {rawBytes.length}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <motion.button
+              onClick={handleCopy}
+              className="px-3 py-2 rounded-xl border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 flex items-center gap-2 text-sm font-semibold"
+              whileHover={{ y: -1 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              {copied ? <CheckCheck size={16} className="text-blue-700" /> : <Copy size={16} />}
+              {language === "zh" ? "复制" : "Copy"}
+            </motion.button>
+            <motion.button
+              onClick={handleDownload}
+              className="px-3 py-2 rounded-xl border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 flex items-center gap-2 text-sm font-semibold"
+              whileHover={{ y: -1 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <FileDown size={16} />
+              {language === "zh" ? "导出" : "Export"}
+            </motion.button>
+            <motion.button
+              onClick={onClose}
+              className="w-10 h-10 rounded-xl border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50 flex items-center justify-center"
+              whileTap={{ scale: 0.96 }}
+            >
+              <X size={18} />
+            </motion.button>
+          </div>
+        </div>
+
+        <div className="px-5 py-2.5 border-b border-white/80 bg-white/55 backdrop-blur-md flex flex-wrap items-center gap-2">
+          <div className="inline-flex bg-slate-100 rounded-xl p-1">
+            {(["text", "hex", "binary"] as ViewerMode[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide ${mode === m ? "bg-white text-blue-700 shadow-sm ring-1 ring-blue-100" : "text-slate-500 hover:text-slate-700"}`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+          <div className="relative" ref={encodingMenuRef}>
+            <motion.button
+              onClick={() => setEncodingOpen((v) => !v)}
+              className="group px-4 py-2.5 rounded-2xl border border-blue-100/80 text-sm font-black text-slate-700 bg-white/90 hover:bg-white hover:border-blue-300 transition-all shadow-[0_6px_24px_-16px_rgba(37,99,235,0.45)] min-w-[170px] flex items-center justify-between gap-3"
+              whileHover={{ y: -1 }}
+              whileTap={{ scale: 0.985 }}
+            >
+              <span className="tracking-wide">{encoding.toUpperCase()}</span>
+              <ChevronDown
+                size={14}
+                className={`text-slate-400 group-hover:text-blue-500 transition-all ${encodingOpen ? "rotate-180 text-blue-500" : ""}`}
+              />
+            </motion.button>
+            <AnimatePresence>
+              {encodingOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                  transition={{ duration: 0.16, ease: "easeOut" }}
+                  className="absolute top-[calc(100%+8px)] left-0 z-30 w-[230px] p-2 rounded-2xl border border-blue-100 bg-white/95 backdrop-blur-xl shadow-[0_24px_50px_-24px_rgba(37,99,235,0.38)]"
+                >
+                  <div className="max-h-56 overflow-y-auto custom-scrollbar space-y-1">
+                    {ENCODING_OPTIONS.map((enc) => {
+                      const active = enc === encoding;
+                      return (
+                        <button
+                          key={enc}
+                          onClick={() => {
+                            setEncoding(enc);
+                            setEncodingOpen(false);
+                          }}
+                          className={`w-full px-3 py-2 rounded-xl text-left text-[12px] font-bold transition-all ${
+                            active
+                              ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
+                              : "text-slate-600 hover:bg-blue-50 hover:text-blue-700"
+                          }`}
+                        >
+                          {enc.toUpperCase()}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+          <button
+            onClick={() => setWrapMode((v) => !v)}
+            className={`px-3 py-2 rounded-xl border text-sm font-semibold flex items-center gap-2 ${wrapMode ? "border-blue-200 text-blue-700 bg-blue-50" : "border-slate-200 text-slate-600 bg-white"}`}
+          >
+            <WrapText size={14} />
             {language === "zh" ? "自动换行" : "Wrap"}
           </button>
-        </div>
-      </div>
-      <div className="overflow-x-auto custom-scrollbar flex-1 pb-10">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr>
-              <th className="p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 w-10 text-center bg-slate-50/80 sticky top-0 z-10 backdrop-blur-md">
-                #
-              </th>
-              {data.headers.map((h, i) => (
-                <th
-                  key={i}
-                  className="p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 whitespace-nowrap bg-slate-50/80 sticky top-0 z-10 backdrop-blur-md"
-                >
-                  {t[h as keyof typeof t] || h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filteredRows.map((row) => {
-              const originalIndex = data.rows.indexOf(row);
-              return (
-                <tr
-                  key={originalIndex}
-                  onClick={() => setSelectedRowIndex(originalIndex)}
-                  className={`transition-colors group border-b border-slate-100 last:border-0 cursor-pointer ${
-                    selectedRowIndex === originalIndex ? "bg-blue-100/50" : "hover:bg-blue-50/30"
-                  }`}
-                >
-                  <td className="p-3 text-xs text-slate-400 font-mono border-b border-slate-100 text-center align-top">
-                    {originalIndex + 1}
-                  </td>
-                  {row.map((cell, j) => {
-                    // Highlight search matches
-                    const cellStr = String(cell);
-                    const shouldHighlight = tableSearchQuery.trim() && 
-                      cellStr.toLowerCase().includes(tableSearchQuery.toLowerCase());
-                    
-                    return (
-                      <td
-                        key={j}
-                        className={`p-3 text-sm font-mono align-top ${
-                          data.headers[j] === "th_credentials" 
-                            ? "max-w-none text-red-600 font-bold group-hover:text-red-700" 
-                            : `text-slate-600 group-hover:text-slate-800 max-w-[420px] ${wrapMode ? "whitespace-pre-wrap break-all" : "whitespace-nowrap truncate"} ${shouldHighlight ? 'bg-yellow-100' : ''}`
-                        }`}
-                        title={cellStr}
-                      >
-                        {data.headers[j] === "th_credentials" && cell && cellStr.length > 2 ? (
-                          <span className="flex items-center gap-1">
-                            <Key size={14} className="shrink-0 text-red-500" />
-                            {cell}
-                          </span>
-                        ) : (
-                          cell
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      <AnimatePresence>
-        {selectedRowData && (
-          <motion.div
-            initial={{ y: "100%", opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: "100%", opacity: 0 }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] p-4 z-20 rounded-t-xl"
-          >
-            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200/60">
-              <span className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                <Info size={16} className="text-blue-500" />
-                {t.analysis_details || "Row Details"}
-              </span>
-              <button
-                onClick={() => setSelectedRowIndex(null)}
-                className="p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
-              >
-                <X size={18} />
-              </button>
+          <div className="ml-auto flex items-center gap-2">
+            <div className="relative">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                ref={searchInputRef}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    jumpToMatch(e.shiftKey ? activeMatchIndex - 1 : activeMatchIndex + 1);
+                  }
+                }}
+                placeholder={language === "zh" ? "搜索（Ctrl/Cmd+F）" : "Search (Ctrl/Cmd+F)"}
+                className="ds-input pl-9 pr-3 py-2 rounded-xl text-sm w-64"
+              />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[200px] overflow-y-auto custom-scrollbar pr-2">
-              {data.headers.map((h, i) => (
-                <div key={i} className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">
-                    {t[h as keyof typeof t] || h}
-                  </span>
-                  <div className="text-xs text-slate-700 font-mono break-all bg-slate-50 p-2 rounded border border-slate-100 select-text">
-                    {selectedRowData[i]}
-                  </div>
+            <button
+              onClick={() => setCaseSensitive((v) => !v)}
+              className={`w-9 h-9 rounded-lg border flex items-center justify-center ${caseSensitive ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-500"}`}
+              title={language === "zh" ? "区分大小写" : "Case sensitive"}
+            >
+              <Type size={14} />
+            </button>
+            <button
+              onClick={() => setRegexMode((v) => !v)}
+              className={`w-9 h-9 rounded-lg border flex items-center justify-center ${regexMode ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-500"}`}
+              title={language === "zh" ? "正则模式" : "Regex mode"}
+            >
+              <Regex size={14} />
+            </button>
+            <button
+              onClick={() => jumpToMatch(activeMatchIndex - 1)}
+              className="w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-700 flex items-center justify-center"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <button
+              onClick={() => jumpToMatch(activeMatchIndex + 1)}
+              className="w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-700 flex items-center justify-center"
+            >
+              <ChevronRight size={14} />
+            </button>
+            <div className="px-2 text-xs font-semibold text-slate-500 min-w-[82px] text-right">
+              {regexError ? regexError : `${allMatches.length ? activeMatchIndex + 1 : 0}/${allMatches.length}`}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 min-h-0 flex">
+          <div className="w-16 shrink-0 border-r border-slate-100 bg-slate-50 text-right text-slate-400 font-mono text-xs overflow-auto">
+            <div className="pt-4 pb-6">
+              {pageLines.map((_, idx) => (
+                <div key={idx} className="h-6 pr-3">
+                  {startLine + idx + 1}
                 </div>
               ))}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-function RawOutputDisplay({ value, language }: { value: string; language: Language }) {
-  const [wrapMode, setWrapMode] = useState(true);
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(value || "");
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
-    } catch {
-    }
-  };
-
-  return (
-    <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50">
-      <div className="px-3 py-2 border-b border-slate-200 bg-white flex items-center justify-between">
-        <span className="text-xs text-slate-500">
-          {language === "zh" ? "原始输出" : "Raw Output"}
-        </span>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setWrapMode(v => !v)}
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-xs ${
-              wrapMode
-                ? "bg-indigo-50 text-indigo-700 border-indigo-200"
-                : "bg-white text-slate-600 border-slate-200"
-            }`}
+          </div>
+          <div
+            className="flex-1 overflow-auto custom-scrollbar font-mono text-[13px] text-slate-700"
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setViewerContextMenu({
+                x: e.clientX,
+                y: e.clientY
+              });
+            }}
           >
-            <WrapText size={12} />
-            {language === "zh" ? "换行" : "Wrap"}
-          </button>
-          <button
-            onClick={handleCopy}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-md border text-xs bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-          >
-            {copied ? <CheckCheck size={12} /> : <Copy size={12} />}
-            {language === "zh" ? "复制" : "Copy"}
-          </button>
+            <div className={`px-4 py-4 ${wrapMode ? "whitespace-pre-wrap break-all" : "whitespace-pre"}`}>
+              {pageLines.map((line, idx) => {
+                const absoluteLineIndex = startLine + idx;
+                return (
+                  <div
+                    key={absoluteLineIndex}
+                    className="min-h-6 leading-6 px-2 rounded hover:bg-slate-50"
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setViewerContextMenu({
+                        x: e.clientX,
+                        y: e.clientY,
+                        line
+                      });
+                    }}
+                  >
+                    {renderHighlightedLine(line, absoluteLineIndex)}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
-      </div>
-      <pre
-        className={`font-mono text-xs text-slate-700 overflow-auto max-h-80 custom-scrollbar p-3 ${
-          wrapMode ? "whitespace-pre-wrap break-all" : "whitespace-pre"
-        }`}
-      >
-        {value || "Empty output"}
-      </pre>
+
+        <div className="px-5 py-2.5 border-t border-white/80 bg-white/55 backdrop-blur-md flex flex-wrap items-center gap-3">
+          <div className="text-xs text-slate-500 font-semibold">
+            {language === "zh" ? "每页行数" : "Rows per page"}
+          </div>
+          <select
+            value={linesPerPage}
+            onChange={(e) => setLinesPerPage(Number(e.target.value))}
+            className="px-2 py-1.5 rounded-lg border border-slate-200 text-sm"
+          >
+            {[50, 100, 200, 500, 1000].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => setPage(1)}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold"
+            >
+              {language === "zh" ? "首页" : "First"}
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold"
+            >
+              {language === "zh" ? "上一页" : "Prev"}
+            </button>
+            <span className="text-xs font-semibold text-slate-600 px-2">
+              {safePage} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold"
+            >
+              {language === "zh" ? "下一页" : "Next"}
+            </button>
+            <button
+              onClick={() => setPage(totalPages)}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold"
+            >
+              {language === "zh" ? "末页" : "Last"}
+            </button>
+          </div>
+        </div>
+        <AnimatePresence>
+          {viewerContextMenu && (
+            <ContextMenu
+              x={viewerContextMenu.x}
+              y={viewerContextMenu.y}
+              onClose={() => setViewerContextMenu(null)}
+              items={[
+                {
+                  id: "copy-select",
+                  label: language === "zh" ? "复制选中文本" : "Copy Selection",
+                  disabled: !getSelectedText(),
+                  onClick: () =>
+                    copyText(getSelectedText())
+                },
+                {
+                  id: "copy-line",
+                  label: language === "zh" ? "复制当前行" : "Copy Current Line",
+                  disabled: !viewerContextMenu.line,
+                  onClick: () =>
+                    copyText(viewerContextMenu.line || "")
+                },
+                {
+                  id: "copy-all",
+                  label: language === "zh" ? "复制全部内容" : "Copy All",
+                  onClick: () => handleCopy()
+                },
+                {
+                  id: "toggle-wrap",
+                  label: wrapMode
+                    ? language === "zh"
+                      ? "关闭自动换行"
+                      : "Disable Wrap"
+                    : language === "zh"
+                    ? "开启自动换行"
+                    : "Enable Wrap",
+                  onClick: () => setWrapMode((v) => !v)
+                },
+                {
+                  id: "next-hit",
+                  label: language === "zh" ? "跳到下一个命中" : "Next Match",
+                  disabled: allMatches.length === 0,
+                  onClick: () => jumpToMatch(activeMatchIndex + 1)
+                },
+                {
+                  id: "export",
+                  label: language === "zh" ? "导出当前视图" : "Export Current View",
+                  onClick: () => handleDownload()
+                }
+              ]}
+            />
+          )}
+        </AnimatePresence>
+      </motion.div>
     </div>
   );
-}
 
-function SecurityLogDisplay({ data, language }: { data: SecurityLogData; language: Language }) {
-  const [wrapMode, setWrapMode] = useState(false);
-  const statCards =
-    data.logKind === "login_success" || data.logKind === "login_failed"
-      ? [
-          { labelZh: "总事件", labelEn: "Total", value: data.stats.total, style: "border-slate-200 bg-slate-50 text-slate-700" },
-          { labelZh: "成功", labelEn: "Success", value: data.stats.success, style: "border-emerald-200 bg-emerald-50 text-emerald-700" },
-          { labelZh: "失败", labelEn: "Failed", value: data.stats.failed, style: "border-red-200 bg-red-50 text-red-700" },
-          { labelZh: "异常", labelEn: "Warnings", value: data.stats.warn, style: "border-amber-200 bg-amber-50 text-amber-700" },
-          { labelZh: "来源IP数", labelEn: "Source IPs", value: data.stats.uniqueSources, style: "border-blue-200 bg-blue-50 text-blue-700" },
-        ]
-      : [
-          { labelZh: "总事件", labelEn: "Total", value: data.stats.total, style: "border-slate-200 bg-slate-50 text-slate-700" },
-          { labelZh: "错误", labelEn: "Errors", value: data.stats.failed, style: "border-red-200 bg-red-50 text-red-700" },
-          { labelZh: "告警", labelEn: "Warnings", value: data.stats.warn, style: "border-amber-200 bg-amber-50 text-amber-700" },
-          { labelZh: "信息", labelEn: "Info", value: data.stats.info, style: "border-emerald-200 bg-emerald-50 text-emerald-700" },
-          { labelZh: "来源IP数", labelEn: "Source IPs", value: data.stats.uniqueSources, style: "border-blue-200 bg-blue-50 text-blue-700" },
-        ];
-
-  const statusStyle: Record<SecurityLogStatus, string> = {
-    success: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    failed: "bg-red-50 text-red-700 border-red-200",
-    warn: "bg-amber-50 text-amber-700 border-amber-200",
-    info: "bg-slate-100 text-slate-700 border-slate-200",
-  };
-
-  const statusLabel = (status: SecurityLogStatus) => {
-    if (language === "zh") {
-      if (status === "success") return "成功";
-      if (status === "failed") return "失败";
-      if (status === "warn") return "异常";
-      return "信息";
-    }
-    if (status === "success") return "Success";
-    if (status === "failed") return "Failed";
-    if (status === "warn") return "Warning";
-    return "Info";
-  };
-
-  return (
-    <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50">
-      <div className="px-3 py-2 border-b border-slate-200 bg-white flex items-center justify-between">
-        <span className="text-xs text-slate-500">
-          {language === "zh" ? data.title : "Security Audit Summary"}
-        </span>
-        <button
-          onClick={() => setWrapMode((v) => !v)}
-          className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-xs ${
-            wrapMode
-              ? "bg-indigo-50 text-indigo-700 border-indigo-200"
-              : "bg-white text-slate-600 border-slate-200"
-          }`}
-        >
-          <WrapText size={12} />
-          {language === "zh" ? "细节换行" : "Wrap Detail"}
-        </button>
-      </div>
-      <div className="p-3 grid grid-cols-2 lg:grid-cols-5 gap-2 border-b border-slate-200 bg-white">
-        {statCards.map((card, index) => (
-          <div key={index} className={`rounded-lg border px-3 py-2 ${card.style}`}>
-            <div className="text-[10px] opacity-90">{language === "zh" ? card.labelZh : card.labelEn}</div>
-            <div className="text-base font-semibold">{card.value}</div>
-          </div>
-        ))}
-      </div>
-      <div className="max-h-80 overflow-auto custom-scrollbar p-3 space-y-2">
-        {data.rows.length === 0 && (
-          <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">
-            {language === "zh" ? "当前未发现相关日志事件" : "No matching log events found"}
-          </div>
-        )}
-        {data.rows.map((row, index) => (
-          <div key={`${row.time}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3">
-            <div className="flex flex-wrap items-center gap-2 mb-1">
-              <span className="text-xs text-slate-500 font-mono">{row.time}</span>
-              <span className={`px-2 py-0.5 rounded-full border text-[10px] ${statusStyle[row.status]}`}>
-                {statusLabel(row.status)}
-              </span>
-              <span className="text-xs text-slate-700">
-                {language === "zh" ? `操作者: ${row.actor}` : `Actor: ${row.actor}`}
-              </span>
-              <span className="text-xs text-slate-700">
-                {language === "zh" ? `来源: ${row.source}` : `Source: ${row.source}`}
-              </span>
-            </div>
-            <div className="text-sm text-slate-800 font-medium mb-1">{row.action}</div>
-            <div className={`text-xs text-slate-600 font-mono ${wrapMode ? "whitespace-pre-wrap break-all" : "truncate"}`}>
-              {row.detail}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function StatusBadge({ status, language }: { status: "ok" | "error" | "loading", language: Language }) {
-  const t = translations[language];
-  if (status === "loading") {
-    return (
-      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-500/10 text-sky-600 text-xs font-medium border border-sky-500/20">
-        <div className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
-        {t.processing_status}
-      </div>
-    );
-  }
-  if (status === "error") {
-    return (
-      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 text-red-600 text-xs font-medium border border-red-500/20">
-        <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
-        {t.error_status}
-      </div>
-    );
-  }
-  return (
-    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 text-xs font-medium border border-emerald-500/20">
-      <Check size={12} />
-      {t.ok_status}
-    </div>
-  );
+  return createPortal(modalContent, document.body);
 }
 
 function CommandCard({
   def,
-  data,
+  executed,
   loading,
-  onRefresh,
-  description,
-  title,
-  chartData,
-  isMonitoring,
-  onStartMonitoring,
-  onStopMonitoring,
-  language,
-  className,
+  failed,
+  onExecute,
+  onView,
+  onContextMenu,
+  language
 }: {
   def: PluginCommand;
-  data: any;
+  executed: boolean;
   loading: boolean;
-  onRefresh: () => void;
-  description: string;
-  title: string;
-  chartData: any[];
-  isMonitoring: boolean;
-  onStartMonitoring: (id: string) => void;
-  onStopMonitoring: () => void;
+  failed: boolean;
+  onExecute: () => void;
+  onView: () => void;
+  onContextMenu: (e: React.MouseEvent<HTMLButtonElement>) => void;
   language: Language;
-  className?: string;
 }) {
-  const t = translations[language];
-  const [showTooltip, setShowTooltip] = useState(false);
-  const tooltipTimeout = useRef<any>(null);
-  const CardIcon = def.icon || Activity;
-
-  const handleMouseEnter = () => {
-    tooltipTimeout.current = setTimeout(() => {
-      setShowTooltip(true);
-    }, 500); 
-  };
-
-  const handleMouseLeave = () => {
-    if (tooltipTimeout.current) clearTimeout(tooltipTimeout.current);
-    setShowTooltip(false);
-  };
-
-  const isChartCommand = [
-    "cpu_usage",
-    "mem_usage",
-    "disk_usage",
-    "load_avg",
-  ].includes(def.id);
-
-  let content;
-  if (!data && !loading) {
-    content = (
-      <div className="flex flex-col items-center justify-center min-h-[200px] text-center gap-4">
-        <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center group-hover:bg-blue-50 transition-colors">
-          <Globe
-            className="text-slate-400 group-hover:text-blue-500 transition-colors"
-            size={24}
-          />
-        </div>
-        <div>
-          <h3 className="text-slate-800 font-medium mb-1">{title}</h3>
-          <p className="text-slate-400 text-sm">{t.noData}</p>
-        </div>
-        <button
-          onClick={onRefresh}
-          className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-all flex items-center gap-2"
-        >
-          <RefreshCw size={14} />
-          {t.load_data}
-        </button>
-      </div>
-    );
-  } else if (loading) {
-    content = (
-      <div className="flex flex-col items-center justify-center h-48 gap-3">
-        <div className="w-8 h-8 border-2 border-blue-100 border-t-blue-500 rounded-full animate-spin" />
-        <span className="text-slate-400 text-sm">{t.fetching_data}</span>
-      </div>
-    );
-  } else if (data) {
-    const isSuccess = data.exit_code === 0;
-
-    if (isSuccess) {
-      const parser = parsers[def.parserType || "raw"] || parsers.raw;
-      const parsedData = parser(
-        data?.stdout || data?.stderr || "",
-        def.parserArgs,
-      );
-
-      if (typeof parsedData === "string") {
-        content = (
-          <RawOutputDisplay value={parsedData} language={language} />
-        );
-      } else if (isSecurityLogData(parsedData)) {
-        content = <SecurityLogDisplay data={parsedData} language={language} />;
-      } else if (isTableData(parsedData)) {
-        content = <TableDisplay data={parsedData} language={language} />;
-      } else {
-        content = <RawOutputDisplay value={data?.stdout || data?.stderr || ""} language={language} />;
-      }
-    } else if (data?.stderr) {
-      const isNotFoundError =
-        data.stderr.includes("没有那个文件或目录") ||
-        data.stderr.includes("No such file or directory") ||
-        data.stderr.includes("command not found") ||
-        data.stderr.includes("could not be found") ||
-        data.stderr.includes("no matches found") ||
-        data.stderr.includes("no crontab for");
-
-      content = isNotFoundError ? (
-        <div className="flex flex-col items-center justify-center h-48 gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400">
-            <Info size={24} />
-          </div>
-          <div>
-            <h3 className="text-slate-800 font-medium mb-1">
-              {t.serviceNotDetected}: {title}
-            </h3>
-            <p className="text-slate-400 text-sm">
-              {language === 'zh' ? '该功能或配置不存在于当前系统' : 'Function or config not found on this system'}
-            </p>
-          </div>
-        </div>
-      ) : (
-        <div className="p-4 bg-red-50/50 border border-red-100 rounded-xl text-red-600 text-sm font-mono overflow-auto max-h-48 custom-scrollbar">
-          {data.stderr}
-        </div>
-      );
-    } else {
-      content = (
-        <div className="flex flex-col items-center justify-center h-48 gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400">
-            <Info size={24} />
-          </div>
-          <div>
-            <h3 className="text-slate-800 font-medium mb-1">{t.execution_failed}</h3>
-            <p className="text-slate-400 text-sm">
-              {language === 'zh' ? '无法执行该命令，请检查权限和命令语法' : 'Failed to execute command. Check permissions and syntax.'}
-            </p>
-          </div>
-        </div>
-      );
-    }
-  } else {
-    if (isChartCommand && chartData.length > 0) {
-      content = (
-        <div>
-          <div className="mb-4">
-            <ChartDisplay
-              data={chartData}
-              title={title}
-              color="#3b82f6"
-              color2="#10b981"
-              yAxisLabel={
-                def.id === "network_traffic" ? "KB/s" : "Percentage (%)"
-              }
-              unit={def.id === "network_traffic" ? "KB/s" : "%"}
-            />
-          </div>
-          <div className="text-center">
-            <button
-              onClick={() => {
-                if (isMonitoring) {
-                  onStopMonitoring();
-                } else {
-                  onStartMonitoring(def.id);
-                }
-              }}
-              className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 mx-auto ${
-                isMonitoring
-                  ? "bg-red-500 hover:bg-red-600 text-white"
-                  : "bg-green-500 hover:bg-green-600 text-white"
-              }`}
-            >
-              {isMonitoring ? <Pause size={14} /> : <Play size={14} />}
-              {isMonitoring ? t.stop_monitoring : t.start_monitoring}
-            </button>
-          </div>
-        </div>
-      );
-    } else {
-      const parser = parsers[def.parserType || "raw"] || parsers.raw;
-      const parsedData = parser(data?.stdout || "", def.parserArgs);
-
-      if (typeof parsedData === "string") {
-        content = (
-          <RawOutputDisplay value={parsedData} language={language} />
-        );
-      } else if (isSecurityLogData(parsedData)) {
-        content = <SecurityLogDisplay data={parsedData} language={language} />;
-      } else if (isTableData(parsedData)) {
-        content = <TableDisplay data={parsedData} language={language} />;
-      } else {
-        content = <RawOutputDisplay value={data?.stdout || ""} language={language} />;
-      }
-    }
-  }
+  const Icon = def.icon || Activity;
+  const title = language === "zh" ? def.cn_name : def.name;
+  const description = language === "zh" ? def.cn_description : def.description;
 
   return (
-    <motion.div
+    <motion.button
       layout
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      whileHover={{ y: -2 }}
-      className={`bg-white/85 backdrop-blur-xl rounded-3xl shadow-[0_8px_30px_rgba(15,23,42,0.06)] border border-slate-200/70 overflow-visible relative z-0 hover:z-30 hover:shadow-[0_12px_36px_rgba(14,165,233,0.12)] hover:border-sky-200/80 transition-all duration-300 flex flex-col group ${
-        className || ""
+      whileHover={{ y: -6 }}
+      whileTap={{ scale: 0.99 }}
+      onClick={executed && !loading ? onView : onExecute}
+      onContextMenu={onContextMenu}
+      className={`text-left relative overflow-hidden w-full rounded-2xl border p-5 transition-all duration-300 ${
+        loading
+          ? "border-blue-300 bg-blue-50/75 shadow-lg shadow-blue-500/15"
+          : failed
+          ? "border-rose-200 bg-rose-50/70"
+          : executed
+          ? "ds-card-done"
+          : "ds-card ds-card-default"
       }`}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
-      <div className="h-1 w-full bg-gradient-to-r from-sky-500/70 via-indigo-500/40 to-transparent" />
-
-      {/* Tooltip */}
-      <AnimatePresence>
-        {showTooltip && (
-          <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            className="absolute z-50 left-0 right-0 -top-16 mx-4 p-3 bg-slate-800 text-white text-xs rounded-xl shadow-xl border border-slate-700 pointer-events-none"
-          >
-            <div className="font-semibold mb-0.5 flex items-center gap-2">
-              <Info size={12} className="text-blue-400" />
-              {t.function_description}
-            </div>
-            <p className="text-slate-300 leading-relaxed">{description}</p>
-            {/* Arrow */}
-            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-800 rotate-45 border-b border-r border-slate-700" />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <div className="px-6 py-4 border-b border-slate-100/90 flex items-center justify-between bg-white/60">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-50 to-indigo-50 flex items-center justify-center text-sky-600 group-hover:scale-105 transition-transform duration-300 shadow-sm border border-sky-100/60">
-            <CardIcon size={16} />
-          </div>
-          <div className="flex flex-col leading-tight">
-            <span className="font-semibold text-slate-800">{title}</span>
-            {data?.ts && (
-              <span className="text-[10px] text-slate-400">
-                Updated {new Date(data.ts).toLocaleTimeString()}
-              </span>
-            )}
-          </div>
+      {loading && (
+        <motion.div
+          className="absolute inset-0 pointer-events-none opacity-60"
+          initial={{ x: "-120%" }}
+          animate={{ x: ["-120%", "120%"] }}
+          transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
+        >
+          <div className="h-full w-1/2 bg-gradient-to-r from-transparent via-white to-transparent" />
+        </motion.div>
+      )}
+      <div className="flex items-start gap-4">
+        <div
+          className={`w-11 h-11 rounded-xl flex items-center justify-center ${
+            loading
+              ? "bg-blue-700 text-white"
+              : failed
+              ? "bg-rose-500 text-white"
+              : executed
+              ? "bg-blue-900 text-white"
+              : "bg-slate-100 text-slate-500"
+          }`}
+        >
+          {loading ? <Activity size={20} className="animate-spin" /> : <Icon size={20} />}
         </div>
-        <div className="flex items-center gap-3">
-          <StatusBadge
-            status={loading ? "loading" : data?.stderr ? "error" : "ok"}
-            language={language}
-          />
-          <button
-            onClick={onRefresh}
-            className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-all"
-          >
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-          </button>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <h4 className="font-black text-slate-800 truncate">{title}</h4>
+            {loading ? (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-bold">RUNNING</span>
+            ) : failed ? (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-100 text-rose-600 font-bold">FAILED</span>
+            ) : executed ? (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold">DONE</span>
+            ) : null}
+          </div>
+          <p className="mt-1 text-xs text-slate-500 line-clamp-2">{description}</p>
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
+            <span className="font-semibold text-slate-500">
+              {executed ? (language === "zh" ? "再次点击查看回显" : "Click again to view output") : language === "zh" ? "点击执行" : "Click to execute"}
+            </span>
+            <span className="text-blue-700 font-bold flex items-center gap-1">
+              {executed ? <FileText size={14} /> : <PlayCircle size={14} />}
+              {executed ? (language === "zh" ? "查看" : "View") : language === "zh" ? "运行" : "Run"}
+            </span>
+          </div>
         </div>
       </div>
-      <div className="p-6">{content}</div>
-    </motion.div>
+    </motion.button>
   );
 }
-
-// --- Main Dashboard Component ---
 
 interface DashboardProps {
   activeTab: string;
   language: Language;
-  onAddSession: () => void;
-  aiSettings: AISettings;
+  onAddSession?: () => void;
+  aiSettings?: AISettings;
   onOpenSettings?: () => void;
-  onAiSettingsChange?: (settings: AISettings) => void;
-  chatUserProfile?: {
-    qq?: string | null;
-    avatar?: string | null;
-  };
+  chatUserProfile?: { qq: string | null; avatar: string | null };
 }
 
-export default function Dashboard({
-  activeTab,
-  language,
-  aiSettings,
-  onOpenSettings,
-  onAiSettingsChange,
-  chatUserProfile,
-}: DashboardProps) {
-  const [showAbout, setShowAbout] = useState(false);
+export default function Dashboard({ activeTab, language, aiSettings, onOpenSettings, chatUserProfile }: DashboardProps) {
+  const { runCommand, getCommandData, currentSession, loading } = useCommandStore();
+  const { showToast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
-  const {
-    loading,
-    runCommand,
-    getCommandData,
-    getChartData,
-    progress,
-    currentTaskId,
-    startMonitoring,
-    stopMonitoring,
-    isMonitoring,
-    currentSession,
-    fetchAll,
-    clearData,
-  } = useCommandStore();
-
-  const [showDatabaseModal, setShowDatabaseModal] = useState(false);
-  const [monitoredCommandIds, setMonitoredCommandIds] = useState<string[]>([]);
+  const [viewingCommandId, setViewingCommandId] = useState<string | null>(null);
+  const [activeCategory, setActiveCategory] = useState<string>("all");
+  const [activeSubCategory, setActiveSubCategory] = useState<string>("all");
   const [generalInfo, setGeneralInfo] = useState("");
+  const [cardContextMenu, setCardContextMenu] = useState<{
+    x: number;
+    y: number;
+    cmd: PluginCommand;
+    executed: boolean;
+  } | null>(null);
 
-  // Helper booleans for view switching
-  const isGeneralAgent = activeTab === "agent-general";
-  const isAgentPanel = activeTab === "agent-panel";
-  const isContextPanel = activeTab === "agent-context";
-  const isDatabaseAgent = activeTab === "agent-database";
-  const isResponsePanel = activeTab === "response";
-  const isTerminal = activeTab === "terminal";
-  const isPentest = activeTab === "pentest";
-  const isMetrics = !isGeneralAgent && !isAgentPanel && !isContextPanel && !isDatabaseAgent && !isResponsePanel && !isTerminal && !isPentest;
+  const filteredCommands = useMemo(() => {
+    return commands.filter((c) => {
+      const title = language === "zh" ? c.cn_name : c.name;
+      const subcategory = getSubcategory(c.id, c.category);
+      const categoryMatch = activeCategory === "all" || c.category === activeCategory;
+      const subcategoryMatch = activeSubCategory === "all" || subcategory === activeSubCategory;
+      const searchMatch =
+        title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.id.toLowerCase().includes(searchTerm.toLowerCase());
+      return (
+        categoryMatch &&
+        subcategoryMatch &&
+        searchMatch
+      );
+    });
+  }, [language, searchTerm, activeCategory, activeSubCategory]);
 
-  // Filter commands
-  const tabCommands = commands.filter((c) => c.category === activeTab);
-  const filteredCommands = (searchTerm ? commands : tabCommands).filter((c) => {
-    const title = language === "zh" ? c.cn_name : c.name;
-    return (
-      title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.id.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  });
+  const groupedCommands = useMemo(() => {
+    const grouped = new Map<string, PluginCommand[]>();
+    filteredCommands.forEach((cmd) => {
+      const sub = getSubcategory(cmd.id, cmd.category);
+      const key = `${cmd.category}::${sub}`;
+      const current = grouped.get(key) || [];
+      current.push(cmd);
+      grouped.set(key, current);
+    });
+    return Array.from(grouped.entries())
+      .sort((a, b) => {
+        const [ca, sa] = a[0].split("::");
+        const [cb, sb] = b[0].split("::");
+        const cw = (CATEGORY_WEIGHT[ca] ?? 999) - (CATEGORY_WEIGHT[cb] ?? 999);
+        if (cw !== 0) return cw;
+        return sa.localeCompare(sb);
+      })
+      .map(([key, items]) => {
+        const [category, sub] = key.split("::");
+        return { category, sub, items };
+      });
+  }, [filteredCommands]);
 
-  // Filter out commands with errors
-  const visibleCommands = filteredCommands.filter((cmd) => {
-    const data = getCommandData(cmd.id);
-    const isLoading = loading[cmd.id] || false;
-    
-    // If we have data and it's not loading, check for errors
-    if (data && !isLoading) {
-      // If there is stderr output, consider it an error and hide it
-      if (data.stderr) return false;
-    }
-    
-    return true;
-  });
+  const subCategoryOptions = useMemo(() => {
+    const source = activeCategory === "all"
+      ? commands
+      : commands.filter((c) => c.category === activeCategory);
+    return Array.from(new Set(source.map((c) => getSubcategory(c.id, c.category))));
+  }, [activeCategory]);
 
-  const currentTaskCmd = commands.find((c) => c.id === currentTaskId);
-  const currentTaskTitle = currentTaskCmd
-    ? language === "zh"
-      ? currentTaskCmd.cn_name
-      : currentTaskCmd.name
-    : "";
-
-  const t = translations[language];
-
-  // Monitoring handlers
-  const handleStartMonitoring = (commandId: string) => {
-    const newMonitoredIds = [...monitoredCommandIds, commandId];
-    setMonitoredCommandIds(newMonitoredIds);
-    startMonitoring(newMonitoredIds, 3000);
-  };
-
-  const handleStopMonitoring = () => {
-    setMonitoredCommandIds([]);
-    stopMonitoring();
-  };
-
-  // Effect: Refresh data when session changes
   useEffect(() => {
-    if (currentSession && activeTab !== "terminal") {
-      const ids = tabCommands.map((c) => c.id);
-      if (ids.length > 0) {
-        fetchAll(ids, false);
-      }
-    } else if (!currentSession) {
-      clearData();
+    if (activeSubCategory !== "all" && !subCategoryOptions.includes(activeSubCategory)) {
+      setActiveSubCategory("all");
     }
-  }, [currentSession?.id, activeTab]);
+  }, [activeSubCategory, subCategoryOptions]);
 
-  return (
-    <>
-      {/* General Agent View */}
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isGeneralAgent ? 'hidden' : ''}`}>
-        <GeneralAgent 
-          language={language} 
-          aiSettings={aiSettings} 
-          onAiSettingsChange={onAiSettingsChange}
-          onOpenSettings={onOpenSettings}
+  const commandStates = useMemo(() => {
+    const all = commands.map((cmd) => {
+      const data = getCommandData(cmd.id);
+      const isLoading = !!loading[cmd.id];
+      return {
+        id: cmd.id,
+        executed: !!data,
+        loading: isLoading,
+        failed: !!data && data.exit_code !== 0
+      };
+    });
+    return {
+      total: all.length,
+      running: all.filter((s) => s.loading).length,
+      executed: all.filter((s) => s.executed).length,
+      failed: all.filter((s) => s.failed).length
+    };
+  }, [loading, getCommandData]);
+
+  const handleExecute = async (cmd: PluginCommand) => {
+    if (!currentSession) {
+      showToast("error", language === "zh" ? "请先连接服务器" : "Please connect to a server first");
+      return;
+    }
+    try {
+      const result = await runCommand(cmd.id, cmd.command);
+      if (result.exit_code === 0) {
+        showToast("success", language === "zh" ? `${cmd.cn_name} 执行成功` : `${cmd.name} executed successfully`);
+      } else if (result.stdout?.trim().length > 0) {
+        showToast("warning", language === "zh" ? `${cmd.cn_name} 已返回结果（返回码非0）` : `${cmd.name} returned output (non-zero exit code)`);
+      } else {
+        showToast("error", language === "zh" ? `${cmd.cn_name} 执行完成，但返回异常` : `${cmd.name} finished with warnings`);
+      }
+    } catch {
+      showToast("error", language === "zh" ? "执行失败" : "Execution failed");
+    }
+  };
+
+  const handleCopyCommand = async (cmd: PluginCommand) => {
+    try {
+      await navigator.clipboard.writeText(cmd.command);
+      showToast("success", language === "zh" ? "命令已复制" : "Command copied");
+    } catch {
+      showToast("error", language === "zh" ? "复制失败" : "Copy failed");
+    }
+  };
+
+  const currentViewCmd = viewingCommandId ? commands.find((c) => c.id === viewingCommandId) : null;
+  const currentViewData = viewingCommandId ? getCommandData(viewingCommandId) : null;
+
+  if (activeTab === "agent-context" && aiSettings) {
+    return (
+      <div className="h-full rounded-2xl overflow-auto ds-app-bg p-4">
+        <GeneralInfoPanel
+          language={language}
           generalInfo={generalInfo}
           setGeneralInfo={setGeneralInfo}
-          chatUserProfile={chatUserProfile}
-        />
-      </div>
-
-      {/* Agent Panel View */}
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isAgentPanel ? 'hidden' : ''}`}>
-        <AgentPanel
-          language={language}
           aiSettings={aiSettings}
-          onAiSettingsChange={onAiSettingsChange}
-          generalInfo={generalInfo}
-          chatUserProfile={chatUserProfile}
         />
       </div>
+    );
+  }
 
-      {/* General Info Context Panel */}
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isContextPanel ? 'hidden' : ''}`}>
-          <div className="h-full bg-white/90 backdrop-blur-xl rounded-2xl shadow-sm border border-slate-200/60 overflow-y-auto custom-scrollbar">
-             <GeneralInfoPanel
-                language={language}
-                generalInfo={generalInfo}
-                setGeneralInfo={setGeneralInfo}
-                aiSettings={aiSettings}
-                onAiSettingsChange={onAiSettingsChange}
-             />
-          </div>
-      </div>
+  if (activeTab === "agent-general" && aiSettings) {
+    return (
+      <GeneralAgent
+        language={language}
+        aiSettings={aiSettings}
+        onOpenSettings={onOpenSettings}
+        generalInfo={generalInfo}
+        setGeneralInfo={setGeneralInfo}
+        chatUserProfile={chatUserProfile}
+      />
+    );
+  }
 
-      {/* Database Agent View */}
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isDatabaseAgent ? 'hidden' : ''}`}>
-        <DatabaseAgent 
-          language={language} 
-          aiSettings={aiSettings} 
-          onAiSettingsChange={onAiSettingsChange}
-          onOpenSettings={onOpenSettings}
-          chatUserProfile={chatUserProfile}
-        />
-      </div>
+  if (activeTab === "agent-database" && aiSettings) {
+    return (
+      <DatabaseAgent
+        language={language}
+        aiSettings={aiSettings}
+        onOpenSettings={onOpenSettings}
+        chatUserProfile={chatUserProfile}
+      />
+    );
+  }
 
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isResponsePanel ? 'hidden' : ''}`}>
-        <ResponsePanel language={language} active={isResponsePanel} />
-      </div>
+  if (activeTab === "agent-panel" && aiSettings) {
+    return (
+      <AgentPanel
+        language={language}
+        aiSettings={aiSettings}
+        generalInfo={generalInfo}
+        chatUserProfile={chatUserProfile}
+      />
+    );
+  }
 
-      {/* Terminal View */}
-      <div className={`flex-1 h-full p-6 flex flex-col glass-dark overflow-hidden relative ${!isTerminal ? 'hidden' : ''}`}>
-        <div className="flex-1 bg-black/80 backdrop-blur-md rounded-xl overflow-hidden border border-white/10 shadow-2xl relative z-10 ring-1 ring-white/5">
-          <TerminalXterm onClose={() => {}} language={language} />
-        </div>
-      </div>
+  if (activeTab === "terminal") {
+    return <TerminalXterm onClose={() => {}} language={language} />;
+  }
 
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isPentest ? 'hidden' : ''}`}>
+  if (activeTab === "pentest") {
+    return (
+      <div className="h-full rounded-2xl overflow-auto ds-app-bg p-4">
         <PentestPanel language={language} />
       </div>
+    );
+  }
 
-      {/* Main Dashboard Metrics View */}
-      <div className={`flex-1 flex flex-col h-screen overflow-hidden glass relative ${!isMetrics ? 'hidden' : ''}`}>
-      
-      {/* Top Bar */}
-      <div className="px-8 md:px-10 py-8 flex items-center justify-between relative z-20">
-        <div>
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <h1 className="text-3xl md:text-4xl font-black text-slate-800 tracking-tight capitalize flex items-center gap-3">
-              {activeTab === 'system' && <Cpu className="text-sky-500" size={36} />}
-              {activeTab === 'network' && <Globe className="text-sky-500" size={36} />}
-              {activeTab === 'services' && <Server className="text-sky-500" size={36} />}
-              {activeTab === 'docker' && <Layout className="text-sky-500" size={36} />}
-              {t[activeTab as keyof typeof t] || activeTab}
-            </h1>
-            <div className="h-1 w-20 bg-gradient-to-r from-sky-500 to-indigo-500 mt-2 rounded-full" />
-            <p className="mt-3 text-sm text-slate-500 max-w-xl">
-              {language === "zh" ? "实时查看核心指标与取证结果，支持快速检索与聚焦分析。" : "Realtime metrics and forensic outputs with fast search and focused analysis."}
-            </p>
-          </motion.div>
-          
-          {/* Connection Status Indicator */}
-          {currentSession && (
-            <div className="flex items-center gap-2 mt-4 bg-white/70 backdrop-blur px-3 py-1.5 rounded-full border border-sky-100/60 w-fit shadow-sm">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-              <span className="text-xs font-semibold text-slate-600">
-                {t.connected_to}{" "}
-                <span className="text-sky-600 font-mono">
-                  {currentSession.user}@{currentSession.ip}
-                </span>
-              </span>
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-4 md:gap-6">
-          {/* Progress Indicator */}
-          {progress < 100 && progress > 0 && (
-            <div className="flex flex-col items-end mr-4">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-3 h-3 rounded-full border-2 border-sky-500 border-t-transparent animate-spin" />
-                <span className="text-xs font-semibold text-sky-600">
-                  {t.running}: {currentTaskTitle}
-                </span>
-              </div>
-              <div className="w-32 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                <motion.div
-                  className="h-full bg-sky-500 rounded-full"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progress}%` }}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Monitoring Status */}
-          {isMonitoring && (
-            <div className="hidden md:flex items-center gap-2 mr-2 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
-              <Activity size={14} className="text-emerald-500 animate-pulse" />
-              <span className="text-xs font-bold text-emerald-600">
-                {t.monitoring_metrics.replace('{0}', monitoredCommandIds.length.toString())}
-              </span>
-            </div>
-          )}
-
-          <div className="relative group">
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-sky-500 transition-colors"
-              size={18}
-            />
-            <input
-              type="text"
-              placeholder={t.search_metrics}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2.5 bg-white/85 backdrop-blur-sm border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 transition-all w-52 md:w-64 shadow-sm hover:shadow-md"
-            />
-          </div>
-
-          <button
-            onClick={() => setShowAbout(true)}
-            className="w-10 h-10 rounded-xl bg-white/80 backdrop-blur-sm border border-slate-200 flex items-center justify-center text-slate-500 hover:text-sky-600 hover:border-sky-200 hover:bg-sky-50 transition-all shadow-sm hover:shadow-md"
-          >
-            <HelpCircle size={20} />
-          </button>
-        </div>
+  return (
+    <div className="flex-1 h-screen overflow-hidden ds-app-bg relative">
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-[-15%] right-[10%] w-[420px] h-[420px] bg-blue-200/22 blur-[90px] rounded-full" />
+        <div className="absolute bottom-[-15%] left-[5%] w-[360px] h-[360px] bg-cyan-200/18 blur-[90px] rounded-full" />
       </div>
 
-      {/* Database Query Modal */}
-      <AnimatePresence>
-        {showDatabaseModal && (
-          <MySQLManager onClose={() => setShowDatabaseModal(false)} language={language} aiSettings={aiSettings} onAiSettingsChange={onAiSettingsChange} />
-        )}
-      </AnimatePresence>
-
-      {/* About Modal */}
-      <AnimatePresence>
-        {showAbout && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 backdrop-blur-sm p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden relative"
-            >
-              <button
-                onClick={() => setShowAbout(false)}
-                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
-              >
-                <X size={20} />
-              </button>
-
-              <div className="p-8 text-center">
-                <motion.div 
-                  whileHover={{ rotate: 360, scale: 1.1 }}
-                  transition={{ duration: 0.5 }}
-                  className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-6 text-blue-500 shadow-lg shadow-blue-500/20"
-                >
-                  <Activity size={32} />
-                </motion.div>
-                <motion.h2 
-                  whileHover={{ scale: 1.05 }}
-                  className="text-2xl font-bold text-slate-800 mb-2 cursor-default"
-                >
-                  FUXI Server Forensics
-                </motion.h2>
-                <p className="text-slate-500 mb-8">
-                  {t.about_title}
-                </p>
-
-                <div className="space-y-4 text-left">
-                  <motion.div 
-                    whileHover={{ scale: 1.02, backgroundColor: "rgba(239, 246, 255, 0.5)" }}
-                    className="p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-blue-200 transition-colors cursor-default group"
-                  >
-                    <div className="text-xs text-slate-400 group-hover:text-blue-500 font-semibold uppercase tracking-wider mb-1 transition-colors">
-                      {t.author}
-                    </div>
-                    <div className="text-slate-700 font-medium flex items-center gap-2">
-                       <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
-                       yiyi、mid2dog
-                    </div>
-                  </motion.div>
-
-                  <motion.div 
-                    whileHover={{ scale: 1.02 }}
-                    className="p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-purple-200 hover:bg-purple-50/30 transition-colors cursor-default group"
-                  >
-                    <div className="text-xs text-slate-400 group-hover:text-purple-500 font-semibold uppercase tracking-wider mb-2 transition-colors">
-                      {t.tech_stack}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { name: "Tauri v2", color: "bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100" },
-                        { name: "Rust", color: "bg-red-50 text-red-600 border-red-200 hover:bg-red-100" },
-                        { name: "React", color: "bg-cyan-50 text-cyan-600 border-cyan-200 hover:bg-cyan-100" },
-                        { name: "TypeScript", color: "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100" },
-                        { name: "Tailwind CSS", color: "bg-sky-50 text-sky-600 border-sky-200 hover:bg-sky-100" },
-                        { name: "Framer Motion", color: "bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100" },
-                      ].map((tech) => (
-                        <motion.span
-                          key={tech.name}
-                          whileHover={{ scale: 1.1, y: -2 }}
-                          whileTap={{ scale: 0.95 }}
-                          className={`px-3 py-1.5 border rounded-lg text-xs font-semibold shadow-sm cursor-pointer transition-colors ${tech.color}`}
-                        >
-                          {tech.name}
-                        </motion.span>
-                      ))}
-                    </div>
-                  </motion.div>
+      <div className="h-full relative z-10 flex flex-col">
+        <div className="px-6 pt-6 pb-4">
+          <div className="rounded-3xl ds-panel p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-700 to-blue-900 text-white flex items-center justify-center shadow-lg shadow-blue-900/30">
+                    <MonitorCheck size={22} />
+                  </div>
+                  <div>
+                    <h1 className="text-xl font-black text-slate-800">
+                      {language === "zh" ? "监控中心" : "Monitoring Center"}
+                    </h1>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {language === "zh" ? "点击卡片执行核心取证命令，再次点击查看结果。" : "Click cards to execute core forensics commands, click again to view output."}
+                    </p>
+                  </div>
                 </div>
               </div>
-
-              <div className="bg-slate-50 p-4 text-center text-xs text-slate-400 border-t border-slate-100">
-                {t.built_with.replace('{0}', APP_VERSION)}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder={language === "zh" ? "搜索命令..." : "Search commands..."}
+                    className="ds-input pl-9 pr-3 py-2.5 rounded-xl text-sm min-w-[260px] shadow-sm"
+                  />
+                </div>
+                {currentSession ? (
+                  <div className="px-3 py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 text-xs font-bold font-mono">
+                    {currentSession.user}@{currentSession.ip}
+                  </div>
+                ) : (
+                  <div className="px-3 py-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 text-xs font-bold">
+                    {language === "zh" ? "未连接服务器" : "No Active Session"}
+                  </div>
+                )}
               </div>
-            </motion.div>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mt-4">
+              {[
+                {
+                  label: language === "zh" ? "总命令" : "Total",
+                  value: commandStates.total,
+                  icon: <SquareTerminal size={16} />,
+                  tone: "text-slate-700 bg-slate-100"
+                },
+                {
+                  label: language === "zh" ? "已执行" : "Executed",
+                  value: commandStates.executed,
+                  icon: <Check size={16} />,
+                  tone: "text-blue-800 bg-blue-100"
+                },
+                {
+                  label: language === "zh" ? "执行中" : "Running",
+                  value: commandStates.running,
+                  icon: <Gauge size={16} />,
+                  tone: "text-blue-700 bg-blue-50"
+                },
+                {
+                  label: language === "zh" ? "异常" : "Failed",
+                  value: commandStates.failed,
+                  icon: <Activity size={16} />,
+                  tone: "text-rose-700 bg-rose-100"
+                }
+              ].map((kpi) => (
+                <div key={kpi.label} className="rounded-2xl ds-card p-3.5">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${kpi.tone}`}>{kpi.icon}</div>
+                  <div className="mt-2 text-xl font-black text-slate-800">{kpi.value}</div>
+                  <div className="text-xs font-semibold text-slate-500">{kpi.label}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setActiveCategory("all")}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                  activeCategory === "all"
+                    ? "ds-chip-active"
+                    : "ds-chip"
+                }`}
+              >
+                {language === "zh" ? "全部大类" : "All Categories"}
+              </button>
+              {CATEGORY_ORDER.map((category) => (
+                <button
+                  key={category}
+                  onClick={() => {
+                    setActiveCategory(category);
+                    setActiveSubCategory("all");
+                  }}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                    activeCategory === category
+                      ? "ds-chip-active"
+                      : "ds-chip"
+                  }`}
+                >
+                  {language === "zh" ? CATEGORY_META[category].zh : CATEGORY_META[category].en}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setActiveSubCategory("all")}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all ${
+                  activeSubCategory === "all"
+                    ? "ds-chip-active"
+                    : "ds-chip"
+                }`}
+              >
+                {language === "zh" ? "全部二级目录" : "All Subfolders"}
+              </button>
+              {subCategoryOptions.map((sub) => (
+                <button
+                  key={sub}
+                  onClick={() => setActiveSubCategory(sub)}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all ${
+                    activeSubCategory === sub
+                      ? "ds-chip-active"
+                      : "ds-chip"
+                  }`}
+                >
+                  {language === "zh" ? SUBCATEGORY_LABELS[sub]?.zh || sub : SUBCATEGORY_LABELS[sub]?.en || sub}
+                </button>
+              ))}
+            </div>
           </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 pb-6 custom-scrollbar">
+          {activeTab !== "dashboard" ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-8 text-slate-500 text-sm">
+              {language === "zh" ? "当前页面已统一为监控中心工作流。" : "This page has been unified into the monitoring workflow."}
+            </div>
+          ) : filteredCommands.length === 0 ? (
+            <div className="h-full flex items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white/70 text-slate-500">
+              <div className="text-center">
+                <Text size={32} className="mx-auto mb-3 text-slate-300" />
+                {language === "zh" ? "未找到匹配命令" : "No matching commands"}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {groupedCommands.map((group) => (
+                <motion.section
+                  key={`${group.category}-${group.sub}`}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-2xl ds-panel p-3.5"
+                >
+                  <div className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-700">
+                    <span>{language === "zh" ? CATEGORY_META[group.category]?.zh || group.category : CATEGORY_META[group.category]?.en || group.category}</span>
+                    <span className="text-slate-300">/</span>
+                    <span className="ds-accent-text">{language === "zh" ? SUBCATEGORY_LABELS[group.sub]?.zh || group.sub : SUBCATEGORY_LABELS[group.sub]?.en || group.sub}</span>
+                    <span className="ml-auto text-xs text-slate-400">{group.items.length}</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3.5">
+                    {group.items.map((cmd) => {
+                      const data = getCommandData(cmd.id);
+                      return (
+                        <CommandCard
+                          key={cmd.id}
+                          def={cmd}
+                          executed={!!data}
+                          loading={!!loading[cmd.id]}
+                          failed={!!data && data.exit_code !== 0}
+                          onExecute={() => handleExecute(cmd)}
+                          onView={() => setViewingCommandId(cmd.id)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setCardContextMenu({
+                              x: e.clientX,
+                              y: e.clientY,
+                              cmd,
+                              executed: !!data
+                            });
+                          }}
+                          language={language}
+                        />
+                      );
+                    })}
+                  </div>
+                </motion.section>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {cardContextMenu && (
+          <ContextMenu
+            x={cardContextMenu.x}
+            y={cardContextMenu.y}
+            onClose={() => setCardContextMenu(null)}
+            items={[
+              {
+                id: "run",
+                label: language === "zh" ? "重新执行命令" : "Re-run Command",
+                onClick: () => handleExecute(cardContextMenu.cmd)
+              },
+              {
+                id: "view",
+                label: language === "zh" ? "查看回显结果" : "View Output",
+                disabled: !cardContextMenu.executed,
+                onClick: () => setViewingCommandId(cardContextMenu.cmd.id)
+              },
+              {
+                id: "copy-cmd",
+                label: language === "zh" ? "复制命令内容" : "Copy Command",
+                onClick: () => handleCopyCommand(cardContextMenu.cmd)
+              }
+            ]}
+          />
+        )}
+        {viewingCommandId && currentViewCmd && (
+          <TextViewer
+            isOpen
+            onClose={() => setViewingCommandId(null)}
+            title={language === "zh" ? `取证结果: ${currentViewCmd.cn_name}` : `Forensics: ${currentViewCmd.name}`}
+            content={
+              currentViewData?.stdout ||
+              currentViewData?.stderr ||
+              (language === "zh" ? "暂无数据" : "No data available")
+            }
+            language={language}
+          />
         )}
       </AnimatePresence>
-
-      {/* Content Area */}
-      <div className="flex-1 overflow-y-auto px-6 md:px-8 pb-8 custom-scrollbar relative z-10">
-        {activeTab === "database" && (
-          <div className="mb-6 flex justify-end">
-            <button
-              onClick={() => setShowDatabaseModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg shadow-lg shadow-sky-500/20 transition-all font-medium text-sm transform hover:scale-105 active:scale-95"
-            >
-              <Database size={16} />
-              <span>{t.manage_database}</span>
-            </button>
-          </div>
-        )}
-
-        {/* Command Cards */}
-        {visibleCommands.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-            <div className="w-24 h-24 rounded-3xl bg-white/50 backdrop-blur shadow-xl shadow-sky-500/10 flex items-center justify-center mb-6 border border-white">
-              <Cloud className="text-sky-400" size={48} />
-            </div>
-            <h3 className="text-2xl font-bold text-slate-800 mb-2">
-              {t.no_metrics_title}
-            </h3>
-            <p className="text-slate-500 max-w-md mx-auto mb-8 text-lg">
-              {t.no_metrics_desc}
-            </p>
-            <button className="px-8 py-4 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white rounded-2xl font-bold shadow-lg shadow-sky-500/30 transition-all flex items-center gap-3 transform hover:scale-105 active:scale-95">
-              <RefreshCw size={20} />
-              <span>{t.reload_system}</span>
-            </button>
-          </div>
-        ) : (
-          <motion.div 
-            initial="hidden"
-            animate="visible"
-            variants={{
-                visible: {
-                    transition: {
-                        staggerChildren: 0.1
-                    }
-                }
-            }}
-            className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-24"
-          >
-            {visibleCommands.map((cmd) => (
-              <CommandCard
-                key={cmd.id}
-                def={cmd}
-                data={getCommandData(cmd.id)}
-                loading={loading[cmd.id] || false}
-                onRefresh={() => runCommand(cmd.id, cmd.command, undefined)}
-                description={
-                  language === "zh" ? cmd.cn_description : cmd.description
-                }
-                title={language === "zh" ? cmd.cn_name : cmd.name}
-                chartData={getChartData(cmd.id)}
-                isMonitoring={
-                  isMonitoring && monitoredCommandIds.includes(cmd.id)
-                }
-                onStartMonitoring={handleStartMonitoring}
-                onStopMonitoring={handleStopMonitoring}
-                language={language}
-                className={cmd.id === 'docker_containers' ? "xl:col-span-2" : ""}
-              />
-            ))}
-          </motion.div>
-        )}
-      </div>
-
-      {/* Footer Version */}
-      <div className="absolute bottom-4 right-6 text-[10px] text-slate-400 font-mono z-10 opacity-50">
-        FUXI_FORENSICS_CORE v{APP_VERSION}
-      </div>
     </div>
-    </>
   );
 }

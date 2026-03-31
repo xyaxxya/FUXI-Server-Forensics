@@ -82,7 +82,7 @@ interface CommandContextType {
   customCommands: CustomCommand[];
   serverGroups: ServerGroup[];
   fetchAll: (targetIds?: string[], forceRefresh?: boolean) => Promise<void>;
-  runCommand: (id: string, cmd: string, sessionId?: string) => Promise<void>;
+  runCommand: (id: string, cmd: string, sessionId?: string) => Promise<CommandResult>;
   getCommandData: (id: string) => CommandResult | null;
   getChartData: (id: string) => ChartDataPoint[];
   startMonitoring: (commandIds: string[], interval: number) => void;
@@ -237,7 +237,7 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
     setCommandHistory([]);
   };
 
-  const runCommand = async (id: string, cmd: string, sessionId?: string, timeout?: number) => {
+  const runCommand = async (id: string, cmd: string, sessionId?: string, timeout?: number): Promise<CommandResult> => {
     const sid = sessionId || currentSession?.id;
     if (!sid) {
       throw new Error('No active session selected');
@@ -281,21 +281,24 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
           return { ...prev, [sid]: { ...sessionBucket, [id]: updatedData } };
         });
       }
+      return res;
     } catch (e: any) {
       console.error(`Command ${id} failed:`, e);
       const now = Date.now();
+      const errorResult: CommandResult = { stdout: '', stderr: e.toString(), exit_code: 1, cwd: '' };
       setDataBySession(prev => {
         const bucket = prev[sid] || {};
         return { 
           ...prev, 
           [sid]: { 
             ...bucket, 
-            [id]: { stdout: '', stderr: e.toString(), exit_code: 1, cwd: '', ts: now } 
+            [id]: { ...errorResult, ts: now } 
           } 
         };
       });
       // Add to command history as failed
       addCommandToHistory(cmd, false, sid);
+      return errorResult;
     } finally {
       setLoadingBySession(prev => {
         const bucket = prev[sid] || {};

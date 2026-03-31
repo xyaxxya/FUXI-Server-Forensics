@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
-  Cpu, Network, Database, Container, Cloud, Terminal, 
-  Shield, LayoutDashboard, ChevronDown, LogOut,
-  Bot, GalleryVerticalEnd, Settings,
-  FileText, Sparkles, ScanLine, Crosshair
+  Cpu, ChevronDown, LogOut, Settings, ScanLine,
+  FileText, Bot, Sparkles, GalleryVerticalEnd, Terminal, Crosshair
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { translations, Language } from '../translations';
@@ -39,14 +37,7 @@ const menuGroups: MenuGroup[] = [
     id: 'monitoring',
     labelKey: 'monitor',
     items: [
-      { id: 'system', icon: Cpu, labelKey: 'system' },
-      { id: 'network', icon: Network, labelKey: 'network' },
-      { id: 'response', icon: ScanLine, labelKey: 'response' },
-      { id: 'docker', icon: Container, labelKey: 'docker' },
-      { id: 'k8s', icon: Cloud, labelKey: 'k8s' },
-      { id: 'database', icon: Database, labelKey: 'database' },
-      { id: 'web', icon: LayoutDashboard, labelKey: 'web' },
-      { id: 'security', icon: Shield, labelKey: 'security' },
+      { id: 'dashboard', icon: Cpu, labelKey: 'monitor_center' },
     ]
   },
   {
@@ -90,22 +81,22 @@ export default function Sidebar({ activeTab, onTabChange, onDisconnect, language
   };
 
   return (
-    <div className={`h-full flex flex-col glass transition-all duration-300 relative z-20 ${isCollapsed ? 'w-16' : 'w-64'}`}>
+    <div className={`h-full flex flex-col ds-panel transition-all duration-300 relative z-20 ${isCollapsed ? 'w-16' : 'w-64'}`}>
       {/* Decorative Top Edge */}
-      <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-sky-500/30 to-transparent" />
+      <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-blue-500/35 to-transparent" />
 
       {/* Header */}
       <div className="p-6 pb-2 shrink-0 relative" data-tauri-drag-region>
         <div className="flex items-center gap-4 mb-2">
             <motion.button
                 onClick={onToggleServerSidebar}
-                className="relative w-12 h-12 flex items-center justify-center bg-white/50 rounded-2xl shadow-sm border border-white/60 focus:outline-none glass-button overflow-hidden group"
+                className="relative w-12 h-12 flex items-center justify-center bg-white/70 rounded-2xl shadow-sm border border-blue-100 focus:outline-none glass-button overflow-hidden group"
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
             >
                 {/* Tech Scan Effect */}
                 <motion.div
-                    className="absolute inset-0 bg-gradient-to-b from-transparent via-sky-400/10 to-transparent translate-y-[-100%]"
+                    className="absolute inset-0 bg-gradient-to-b from-transparent via-blue-400/15 to-transparent translate-y-[-100%]"
                     whileHover={{ translateY: "100%" }}
                     transition={{ duration: 0.6 }}
                 />
@@ -133,7 +124,7 @@ export default function Sidebar({ activeTab, onTabChange, onDisconnect, language
                       transition={{ delay: 0.3 }}
                       className="flex items-center gap-2"
                   >
-                      <span className="text-[10px] font-bold text-sky-600 tracking-widest uppercase flex items-center gap-1">
+                      <span className="text-[10px] font-bold text-blue-700 tracking-widest uppercase flex items-center gap-1">
                         <ScanLine size={10} />
                         FUXI
                       </span>
@@ -193,24 +184,24 @@ export default function Sidebar({ activeTab, onTabChange, onDisconnect, language
                           {isActive && (
                             <motion.div
                               layoutId="activeTab"
-                              className="absolute inset-0 bg-gradient-to-r from-sky-500/10 to-sky-500/5 border border-sky-500/10 rounded-xl overflow-hidden"
+                              className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-blue-500/5 border border-blue-500/20 rounded-xl overflow-hidden"
                               initial={false}
                               transition={{ type: "spring", stiffness: 500, damping: 30 }}
                             >
                                 {/* Corner Accents for Tech Feel */}
-                                <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-sky-500/30 rounded-tl-lg" />
-                                <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-sky-500/30 rounded-br-lg" />
+                                <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-blue-500/40 rounded-tl-lg" />
+                                <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-blue-500/40 rounded-br-lg" />
 
                                 {/* Scanning Line */}
                                 <motion.div
-                                    className="absolute inset-0 bg-gradient-to-r from-transparent via-sky-400/10 to-transparent w-1/2 h-full skew-x-12"
+                                    className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-400/10 to-transparent w-1/2 h-full skew-x-12"
                                     animate={{ x: ["-150%", "200%"] }}
                                     transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
                                 />
                             </motion.div>
                           )}
 
-                          <div className={`relative z-10 p-1.5 rounded-lg transition-colors ${isActive ? 'text-sky-600 bg-sky-100/50' : 'text-slate-400 group-hover:text-slate-600'}`}>
+                          <div className={`relative z-10 p-1.5 rounded-lg transition-colors ${isActive ? 'text-blue-700 bg-blue-100/70' : 'text-slate-400 group-hover:text-slate-600'}`}>
                             <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} />
                           </div>
                           {!isCollapsed && (
@@ -224,7 +215,7 @@ export default function Sidebar({ activeTab, onTabChange, onDisconnect, language
                                 layoutId="activeIndicator"
                                 className="absolute right-2 flex items-center"
                             >
-                                <div className="w-1.5 h-1.5 rounded-full bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.6)] animate-pulse" />
+                                <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)] animate-pulse" />
                             </motion.div>
                           )}
                         </button>
@@ -276,4 +267,4 @@ export default function Sidebar({ activeTab, onTabChange, onDisconnect, language
       </div>
     </div>
   );
-}
+}

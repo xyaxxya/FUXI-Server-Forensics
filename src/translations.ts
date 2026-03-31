@@ -25,6 +25,7 @@ export const translations = {
     securityInfo: 'Security & Forensics',
     
     // Misc
+    monitor_center: 'Monitoring Center',
     serviceNotDetected: 'Service not detected',
     noData: 'No data available',
     updating: 'Updating...',
@@ -374,6 +375,7 @@ export const translations = {
     securityInfo: '安全与入侵排查',
     
     // Misc
+    monitor_center: '监控中心',
     serviceNotDetected: '未检测到服务',
     noData: '暂无数据',
     updating: '更新中...',

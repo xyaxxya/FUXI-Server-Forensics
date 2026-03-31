@@ -219,26 +219,21 @@ export default function SettingsModal({
     }
   };
 
-  // Local state for AI settings to avoid constant re-renders/writes during typing
-  // We commit changes only when specific fields blur or when saving? 
-  // For simplicity in this app, we can update parent directly or use a local buffer.
-  // Let's use direct updates for now as it was in GeneralAgent.
-
   if (!isOpen) return null;
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-blue-950/20 backdrop-blur-sm p-4">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-white w-full max-w-6xl h-[85vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+          className="ds-panel w-full max-w-6xl h-[85vh] rounded-2xl overflow-hidden flex flex-col"
         >
           {/* Header */}
-          <div className="px-8 py-6 border-b border-slate-200 flex items-center justify-between bg-white">
+          <div className="px-8 py-6 border-b border-blue-100/70 flex items-center justify-between bg-white/85 backdrop-blur-md">
             <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-700">
                 <Settings size={24} />
               </div>
               {t.settings}
@@ -251,9 +246,9 @@ export default function SettingsModal({
             </button>
           </div>
 
-          <div className="flex flex-1 overflow-hidden bg-slate-50">
+          <div className="flex flex-1 overflow-hidden bg-blue-50/50">
             {/* Sidebar */}
-            <div className="w-64 bg-white border-r border-slate-200 p-6 space-y-2">
+            <div className="w-64 bg-white/85 backdrop-blur-md border-r border-blue-100/80 p-6 space-y-2">
               <button
                 onClick={() => setActiveTab("general")}
                 className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium transition-all ${
@@ -269,7 +264,7 @@ export default function SettingsModal({
                 onClick={() => setActiveTab("tools")}
                 className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium transition-all ${
                   activeTab === "tools"
-                    ? "bg-emerald-50 text-emerald-600 shadow-sm ring-1 ring-emerald-100"
+                    ? "bg-blue-50 text-blue-600 shadow-sm ring-1 ring-blue-100"
                     : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                 }`}
               >
@@ -280,7 +275,7 @@ export default function SettingsModal({
                 onClick={() => setActiveTab("ai")}
                 className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium transition-all ${
                   activeTab === "ai"
-                    ? "bg-indigo-50 text-indigo-600 shadow-sm ring-1 ring-indigo-100"
+                    ? "bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-100"
                     : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                 }`}
               >
@@ -291,7 +286,7 @@ export default function SettingsModal({
                 onClick={() => setActiveTab("updates")}
                 className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium transition-all ${
                   activeTab === "updates"
-                    ? "bg-orange-50 text-orange-600 shadow-sm ring-1 ring-orange-100"
+                    ? "bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-100"
                     : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                 }`}
               >
@@ -354,7 +349,7 @@ export default function SettingsModal({
                     {/* Starry Mode Section */}
                     <div>
                       <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                        <Sparkles className="text-purple-500" size={24} />
+                        <Sparkles className="text-blue-600" size={24} />
                         {t.appearance}
                       </h3>
                       <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200 flex items-center justify-between">
@@ -369,7 +364,7 @@ export default function SettingsModal({
                               checked={isStarryMode}
                               onChange={(e) => onStarryModeChange(e.target.checked)}
                             />
-                            <div className="w-14 h-8 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-purple-600"></div>
+                            <div className="w-14 h-8 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-blue-600"></div>
                          </label>
                       </div>
                     </div>
@@ -381,7 +376,7 @@ export default function SettingsModal({
                   <div className="space-y-8 animate-fade-in">
                     <div>
                       <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                        <FolderSearch className="text-emerald-500" size={24} />
+                        <FolderSearch className="text-blue-600" size={24} />
                         {language === "zh" ? "渗透工具路径" : "Pentest Tool Paths"}
                       </h3>
                       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
@@ -392,7 +387,7 @@ export default function SettingsModal({
                             value={pentestPaths.fscan}
                             onChange={(e) => updatePentestPath("fscan", e.target.value)}
                             placeholder={language === "zh" ? "例如: D:\\tools\\fscan" : "e.g. D:\\tools\\fscan"}
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all font-mono text-sm"
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-mono text-sm"
                           />
                         </div>
                         <div>
@@ -402,7 +397,7 @@ export default function SettingsModal({
                             value={pentestPaths.fscanExe}
                             onChange={(e) => updatePentestPath("fscanExe", e.target.value)}
                             placeholder={language === "zh" ? "例如: D:\\tools\\fscan.exe" : "e.g. D:\\tools\\fscan.exe"}
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all font-mono text-sm"
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-mono text-sm"
                           />
                         </div>
                         <div>
@@ -412,7 +407,7 @@ export default function SettingsModal({
                             value={pentestPaths.kscan}
                             onChange={(e) => updatePentestPath("kscan", e.target.value)}
                             placeholder={language === "zh" ? "例如: D:\\tools\\kscan" : "e.g. D:\\tools\\kscan"}
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all font-mono text-sm"
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-mono text-sm"
                           />
                         </div>
                         <div>
@@ -422,7 +417,7 @@ export default function SettingsModal({
                             value={pentestPaths.kscanExe}
                             onChange={(e) => updatePentestPath("kscanExe", e.target.value)}
                             placeholder={language === "zh" ? "例如: D:\\tools\\kscan.exe" : "e.g. D:\\tools\\kscan.exe"}
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all font-mono text-sm"
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-mono text-sm"
                           />
                         </div>
                         <div className="text-xs text-slate-500">
@@ -439,7 +434,7 @@ export default function SettingsModal({
                   <div className="space-y-8 animate-fade-in">
                     <div>
                       <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                        <Sparkles className="text-orange-500" size={24} />
+                        <Sparkles className="text-blue-600" size={24} />
                         {language === "zh" ? "客户端更新" : "Client Updates"}
                       </h3>
                       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
@@ -519,7 +514,7 @@ export default function SettingsModal({
                                   animate={{ rotate: isRestarting ? [0, 0] : [0, 360] }}
                                   transition={{ duration: 1.3, repeat: Infinity, ease: "linear" }}
                                 >
-                                  <RotateCw size={14} className={isRestarting ? "text-emerald-500" : "text-blue-500"} />
+                                  <RotateCw size={14} className={"text-blue-500"} />
                                 </motion.span>
                                 {updateProgress?.message || "准备更新..."}
                               </span>
@@ -531,7 +526,7 @@ export default function SettingsModal({
                                 style={{
                                   width: `${Math.max(2, Math.min(100, updateProgress?.percentage || 0))}%`,
                                   background:
-                                    "linear-gradient(90deg, rgba(59,130,246,1) 0%, rgba(99,102,241,1) 38%, rgba(168,85,247,1) 68%, rgba(236,72,153,1) 100%)",
+                                    "linear-gradient(90deg, rgba(59,130,246,1) 0%, rgba(37,99,235,1) 45%, rgba(30,64,175,1) 100%)",
                                   backgroundSize: "240% 100%",
                                 }}
                                 animate={{ backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"] }}
@@ -556,11 +551,11 @@ export default function SettingsModal({
                               initial={{ opacity: 0, scale: 0.96, y: 8 }}
                               animate={{ opacity: 1, scale: 1, y: 0 }}
                               exit={{ opacity: 0, scale: 0.96, y: -8 }}
-                              className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"
+                              className="rounded-xl border border-blue-200 bg-blue-50 p-4"
                             >
-                              <div className="flex items-center gap-3 text-emerald-700 text-sm">
+                              <div className="flex items-center gap-3 text-blue-700 text-sm">
                                 <motion.div
-                                  className="h-2.5 w-2.5 rounded-full bg-emerald-500"
+                                  className="h-2.5 w-2.5 rounded-full bg-blue-500"
                                   animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }}
                                   transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
                                 />
@@ -612,7 +607,7 @@ export default function SettingsModal({
                     <div className="flex items-center justify-between mb-8 pb-6 border-b border-slate-200">
                       <div>
                         <h3 className="text-2xl font-bold text-slate-800 mb-2 flex items-center gap-2">
-                           <Bot className="text-indigo-500" size={28} />
+                           <Bot className="text-blue-600" size={28} />
                            {t.ai_settings}
                         </h3>
                         <p className="text-slate-500">确认你的 AI 模型与 API 密钥</p>
@@ -621,13 +616,13 @@ export default function SettingsModal({
 
                     {/* Enable Planning Mode Toggle */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                        <div className="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100 flex items-center justify-between">
+                        <div className="bg-blue-50/60 rounded-xl p-4 border border-blue-100 flex items-center justify-between">
                           <div>
-                            <h4 className="font-bold text-indigo-900 text-sm flex items-center gap-2">
-                              <Sparkles size={16} className="text-indigo-600" />
+                            <h4 className="font-bold text-blue-900 text-sm flex items-center gap-2">
+                              <Sparkles size={16} className="text-blue-600" />
                               {t.enable_planning}
                             </h4>
-                            <p className="text-xs text-indigo-700/70 mt-1 whitespace-pre-line">
+                            <p className="text-xs text-blue-700/70 mt-1 whitespace-pre-line">
                               {t.enable_planning_desc}
                             </p>
                           </div>
@@ -641,13 +636,13 @@ export default function SettingsModal({
                                 enablePlanning: e.target.checked
                               })}
                             />
-                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                           </label>
                         </div>
 
-                        <div className="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100">
-                            <h4 className="font-bold text-indigo-900 text-sm flex items-center gap-2 mb-2">
-                              <Settings size={16} className="text-indigo-600" />
+                        <div className="bg-blue-50/60 rounded-xl p-4 border border-blue-100">
+                            <h4 className="font-bold text-blue-900 text-sm flex items-center gap-2 mb-2">
+                              <Settings size={16} className="text-blue-600" />
                               {t.max_loops}
                             </h4>
                             <div className="flex items-center gap-4">
@@ -661,13 +656,13 @@ export default function SettingsModal({
                                         ...aiSettings,
                                         maxLoops: parseInt(e.target.value)
                                     })}
-                                    className="w-full h-2 bg-indigo-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                                    className="w-full h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                                 />
-                                <span className="font-mono font-bold text-indigo-700 bg-white px-2 py-1 rounded border border-indigo-100 min-w-[3rem] text-center">
+                                <span className="font-mono font-bold text-blue-700 bg-white px-2 py-1 rounded border border-blue-100 min-w-[3rem] text-center">
                                     {aiSettings.maxLoops || 25}
                                 </span>
                             </div>
-                            <p className="text-xs text-indigo-700/70 mt-2">
+                            <p className="text-xs text-blue-700/70 mt-2">
                                 {t.max_loops_desc}
                             </p>
                         </div>
@@ -675,9 +670,9 @@ export default function SettingsModal({
 
                     {/* Max Tokens Slider */}
                     <div className="mb-8">
-                        <div className="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100">
-                            <h4 className="font-bold text-indigo-900 text-sm flex items-center gap-2 mb-2">
-                              <Settings size={16} className="text-indigo-600" />
+                        <div className="bg-blue-50/60 rounded-xl p-4 border border-blue-100">
+                            <h4 className="font-bold text-blue-900 text-sm flex items-center gap-2 mb-2">
+                              <Settings size={16} className="text-blue-600" />
                               {t.max_tokens}
                             </h4>
                             <div className="flex items-center gap-4">
@@ -691,13 +686,13 @@ export default function SettingsModal({
                                         ...aiSettings,
                                         maxTokens: parseInt(e.target.value)
                                     })}
-                                    className="w-full h-2 bg-indigo-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                                    className="w-full h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                                 />
-                                <span className="font-mono font-bold text-indigo-700 bg-white px-2 py-1 rounded border border-indigo-100 min-w-[4rem] text-center">
+                                <span className="font-mono font-bold text-blue-700 bg-white px-2 py-1 rounded border border-blue-100 min-w-[4rem] text-center">
                                     {aiSettings.maxTokens || 32768}
                                 </span>
                             </div>
-                            <p className="text-xs text-indigo-700/70 mt-2">
+                            <p className="text-xs text-blue-700/70 mt-2">
                                 {t.max_tokens_desc}
                             </p>
                         </div>
@@ -705,9 +700,9 @@ export default function SettingsModal({
 
                     {/* Max Concurrent Tasks Slider */}
                     <div className="mb-8">
-                        <div className="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100">
-                            <h4 className="font-bold text-indigo-900 text-sm flex items-center gap-2 mb-2">
-                              <Settings size={16} className="text-indigo-600" />
+                        <div className="bg-blue-50/60 rounded-xl p-4 border border-blue-100">
+                            <h4 className="font-bold text-blue-900 text-sm flex items-center gap-2 mb-2">
+                              <Settings size={16} className="text-blue-600" />
                               {t.max_concurrent}
                             </h4>
                             <div className="flex items-center gap-4">
@@ -721,13 +716,13 @@ export default function SettingsModal({
                                         ...aiSettings,
                                         maxConcurrentTasks: parseInt(e.target.value)
                                     })}
-                                    className="w-full h-2 bg-indigo-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                                    className="w-full h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                                 />
-                                <span className="font-mono font-bold text-indigo-700 bg-white px-2 py-1 rounded border border-indigo-100 min-w-[3rem] text-center">
+                                <span className="font-mono font-bold text-blue-700 bg-white px-2 py-1 rounded border border-blue-100 min-w-[3rem] text-center">
                                     {aiSettings.maxConcurrentTasks || 3}
                                 </span>
                             </div>
-                            <p className="text-xs text-indigo-700/70 mt-2">
+                            <p className="text-xs text-blue-700/70 mt-2">
                                 {t.max_concurrent_desc}
                             </p>
                         </div>
@@ -747,7 +742,7 @@ export default function SettingsModal({
                               activeProvider: e.target.value as any,
                             })
                           }
-                          className="w-full appearance-none bg-white border border-slate-200 text-slate-700 py-3.5 px-4 pr-10 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-medium cursor-pointer hover:border-indigo-300 shadow-sm"
+                          className="w-full appearance-none bg-white border border-slate-200 text-slate-700 py-3.5 px-4 pr-10 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-medium cursor-pointer hover:border-blue-300 shadow-sm"
                         >
                           {(["fuxi", "zhipu", "openai", "qwen", "claude", "kimi", "gemini", "ollama"] as const).map(
                             (provider) => (
@@ -757,7 +752,7 @@ export default function SettingsModal({
                             )
                           )}
                         </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 group-hover:text-indigo-500 transition-colors">
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 group-hover:text-blue-500 transition-colors">
                           <ChevronDown size={20} />
                         </div>
                       </div>
@@ -787,7 +782,7 @@ export default function SettingsModal({
                                   },
                                 })
                               }
-                              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-mono text-sm"
+                              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-mono text-sm"
                               placeholder={
                                 DEFAULT_SETTINGS.configs[aiSettings.activeProvider]
                                   .baseUrl
@@ -815,7 +810,7 @@ export default function SettingsModal({
                                   },
                                 })
                               }
-                              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-mono text-sm"
+                              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-mono text-sm"
                               placeholder={`${aiSettings.configs[aiSettings.activeProvider].name} API Key`}
                             />
                             <p className="mt-2 text-xs text-slate-400">{t.api_key_help}</p>
@@ -843,7 +838,7 @@ export default function SettingsModal({
                               },
                             })
                           }
-                          className={`w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-mono text-sm ${aiSettings.activeProvider === 'fuxi' ? 'opacity-60 cursor-not-allowed' : ''}`}
+                          className={`w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-mono text-sm ${aiSettings.activeProvider === 'fuxi' ? 'opacity-60 cursor-not-allowed' : ''}`}
                           placeholder={
                             DEFAULT_SETTINGS.configs[aiSettings.activeProvider]
                               .model
@@ -884,7 +879,7 @@ export default function SettingsModal({
                           }
                         }}
                         disabled={isTestingConnection || !aiSettings.configs[aiSettings.activeProvider].apiKey}
-                        className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl font-medium shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-800 hover:from-blue-700 hover:to-blue-900 text-white rounded-xl font-medium shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isTestingConnection ? (
                           <>
@@ -908,18 +903,18 @@ export default function SettingsModal({
                             exit={{ opacity: 0, y: -10 }}
                             className={`mt-4 p-4 rounded-xl border flex items-start gap-3 ${
                               testResult.success
-                                ? 'bg-emerald-50 border-emerald-200'
+                                ? 'bg-blue-50 border-blue-200'
                                 : 'bg-red-50 border-red-200'
                             }`}
                           >
-                            <div className={testResult.success ? 'text-emerald-600' : 'text-red-600'}>
+                            <div className={testResult.success ? 'text-blue-600' : 'text-red-600'}>
                               {testResult.success ? <CheckCircle size={20} /> : <XCircle size={20} />}
                             </div>
                             <div className="flex-1">
-                              <div className={`text-sm font-semibold ${testResult.success ? 'text-emerald-900' : 'text-red-900'}`}>
+                              <div className={`text-sm font-semibold ${testResult.success ? 'text-blue-900' : 'text-red-900'}`}>
                                 {testResult.success ? (language === 'zh' ? '连接成功' : 'Connection Successful') : (language === 'zh' ? '连接失败' : 'Connection Failed')}
                               </div>
-                              <div className={`text-xs mt-1 ${testResult.success ? 'text-emerald-700' : 'text-red-700'}`}>
+                              <div className={`text-xs mt-1 ${testResult.success ? 'text-blue-700' : 'text-red-700'}`}>
                                 {testResult.message}
                               </div>
                             </div>
@@ -938,11 +933,11 @@ export default function SettingsModal({
                             <div className="grid grid-cols-3 gap-4 mt-4">
                                 <div className="bg-white p-3 rounded-lg border border-slate-100 text-center shadow-sm">
                                     <div className="text-xs text-slate-500 font-medium mb-1">Prompt Tokens</div>
-                                    <div className="font-mono font-bold text-indigo-600 text-lg">{aiSettings.tokenUsage?.prompt_tokens || 0}</div>
+                                    <div className="font-mono font-bold text-blue-600 text-lg">{aiSettings.tokenUsage?.prompt_tokens || 0}</div>
                                 </div>
                                 <div className="bg-white p-3 rounded-lg border border-slate-100 text-center shadow-sm">
                                     <div className="text-xs text-slate-500 font-medium mb-1">Completion Tokens</div>
-                                    <div className="font-mono font-bold text-emerald-600 text-lg">{aiSettings.tokenUsage?.completion_tokens || 0}</div>
+                                    <div className="font-mono font-bold text-blue-700 text-lg">{aiSettings.tokenUsage?.completion_tokens || 0}</div>
                                 </div>
                                 <div className="bg-white p-3 rounded-lg border border-slate-100 text-center shadow-sm">
                                     <div className="text-xs text-slate-500 font-medium mb-1">Total Tokens</div>
@@ -964,7 +959,7 @@ export default function SettingsModal({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/45 backdrop-blur-sm p-4"
+              className="fixed inset-0 z-[120] flex items-center justify-center bg-blue-950/20 backdrop-blur-sm p-4"
               onClick={() => setShowLatestDialog(false)}
             >
               <motion.div
@@ -972,15 +967,15 @@ export default function SettingsModal({
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 16, scale: 0.96 }}
                 transition={{ type: "spring", stiffness: 320, damping: 24 }}
-                className="relative w-full max-w-md overflow-hidden rounded-3xl border border-sky-100 bg-white shadow-2xl"
+                className="relative w-full max-w-md overflow-hidden rounded-3xl border border-blue-100 bg-white shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="absolute -top-16 -right-16 h-36 w-36 rounded-full bg-sky-200/40 blur-2xl" />
-                <div className="absolute -bottom-12 -left-12 h-28 w-28 rounded-full bg-indigo-200/40 blur-2xl" />
+                <div className="absolute -bottom-12 -left-12 h-28 w-28 rounded-full bg-blue-200/40 blur-2xl" />
                 <div className="relative p-6">
                   <div className="flex items-start justify-between">
                     <motion.div
-                      className="h-12 w-12 rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-sky-500/30"
+                      className="h-12 w-12 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 text-white flex items-center justify-center shadow-lg shadow-blue-500/30"
                       animate={{ scale: [1, 1.06, 1] }}
                       transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
                     >
@@ -1002,7 +997,7 @@ export default function SettingsModal({
                   <div className="mt-5 flex justify-end">
                     <button
                       onClick={() => setShowLatestDialog(false)}
-                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white text-sm font-medium shadow-lg shadow-sky-500/30 hover:shadow-sky-500/40"
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-700 text-white text-sm font-medium shadow-lg shadow-blue-500/30 hover:shadow-blue-500/40"
                     >
                       {language === "zh" ? "知道了" : "Got It"}
                     </button>

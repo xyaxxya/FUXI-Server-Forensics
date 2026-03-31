@@ -1,0 +1,287 @@
+import {
+  Lock,
+  Cpu,
+  Network,
+  Server,
+  Terminal,
+  Globe,
+  Zap,
+  List,
+  Clock,
+  UserCheck,
+  HardDrive,
+  ShieldCheck,
+  FileText,
+  Database,
+  LayoutDashboard
+} from 'lucide-react';
+import { PluginCommand } from './types';
+
+export const forensicsCommands: PluginCommand[] = [
+  // --- 系统基础 ---
+  { 
+    id: 'sys_info', 
+    category: 'system', 
+    name: 'System Info', 
+    cn_name: '系统基础信息', 
+    description: 'OS kernel, release and architecture details', 
+    cn_description: '内核版本、发行版及系统架构详情', 
+    command: 'uname -a; cat /etc/os-release | grep -E "^(NAME|VERSION)="; uptime -p', 
+    icon: Server,
+    parserType: 'raw'
+  },
+  { 
+    id: 'user_info', 
+    category: 'system', 
+    name: 'User Accounts', 
+    cn_name: '用户账户审查', 
+    description: 'List all users and current logged in users', 
+    cn_description: '列出系统所有用户及当前登录用户', 
+    command: 'who; echo "---"; awk -F: \'$3 >= 1000 || $3 == 0 {print $1 ":" $3 ":" $7}\' /etc/passwd', 
+    icon: UserCheck,
+    parserType: 'raw'
+  },
+  { 
+    id: 'disk_usage', 
+    category: 'system', 
+    name: 'Disk Usage', 
+    cn_name: '磁盘挂载分析', 
+    description: 'Disk space and mount point analysis', 
+    cn_description: '磁盘空间占用及挂载点分析', 
+    command: 'df -h', 
+    icon: HardDrive,
+    parserType: 'raw'
+  },
+  { 
+    id: 'service_status', 
+    category: 'system', 
+    name: 'Core Service Status', 
+    cn_name: '核心服务状态', 
+    description: 'Quick snapshot of key service states', 
+    cn_description: '关键服务运行状态快速快照', 
+    command: 'systemctl --type=service --state=running | head -n 80; true', 
+    icon: ShieldCheck,
+    parserType: 'raw'
+  },
+
+  // --- 网络取证 ---
+  { 
+    id: 'net_ports', 
+    category: 'network', 
+    name: 'Listening Ports', 
+    cn_name: '监听端口取证', 
+    description: 'Active listening ports and associated processes', 
+    cn_description: '活跃监听端口及其关联进程', 
+    command: 'netstat -tunlp || ss -tunlp', 
+    icon: Network,
+    parserType: 'raw'
+  },
+  { 
+    id: 'net_conns', 
+    category: 'network', 
+    name: 'Established Connections', 
+    cn_name: '已建立连接', 
+    description: 'Active network connections to/from this server', 
+    cn_description: '系统当前已建立的网络连接', 
+    command: '(netstat -antp | grep ESTABLISHED) || (ss -antp | grep ESTAB) || true', 
+    icon: Globe,
+    parserType: 'raw'
+  },
+  {
+    id: 'net_route_dns',
+    category: 'network',
+    name: 'Routes and DNS',
+    cn_name: '路由与 DNS 配置',
+    description: 'Inspect routing table and DNS resolver settings',
+    cn_description: '检查路由表与 DNS 解析配置',
+    command: 'ip route; echo "---"; cat /etc/resolv.conf 2>/dev/null; true',
+    icon: Network,
+    parserType: 'raw'
+  },
+
+  // --- 进程取证 ---
+  { 
+    id: 'proc_list', 
+    category: 'system', 
+    name: 'Process List', 
+    cn_name: '进程列表快照', 
+    description: 'Snapshot of all running processes', 
+    cn_description: '系统当前运行进程的完整快照', 
+    command: 'ps auxf', 
+    icon: List,
+    parserType: 'raw'
+  },
+  { 
+    id: 'proc_resource', 
+    category: 'system', 
+    name: 'Resource Usage', 
+    cn_name: '资源占用 Top', 
+    description: 'Top processes by CPU and Memory usage', 
+    cn_description: '按 CPU 和内存占用排序的进程 Top 列表', 
+    command: 'ps -eo pid,user,%cpu,%mem,comm --sort=-%cpu | head -n 20', 
+    icon: Cpu,
+    parserType: 'raw'
+  },
+
+  // --- 后门持久化 ---
+  { 
+    id: 'persistence_cron', 
+    category: 'security', 
+    name: 'Cron Persistence', 
+    cn_name: '定时任务审计', 
+    description: 'Check all users crontabs and system cron directories', 
+    cn_description: '检查用户定时任务及系统级 Cron 目录', 
+    command: 'for user in $(cut -f1 -d: /etc/passwd); do echo "User: $user"; crontab -u $user -l 2>/dev/null; done; ls -la /etc/cron.*', 
+    icon: Clock,
+    parserType: 'raw'
+  },
+  { 
+    id: 'persistence_service', 
+    category: 'security', 
+    name: 'System Services', 
+    cn_name: '系统服务审计', 
+    description: 'Enabled systemd services and init scripts', 
+    cn_description: '已启用的系统服务及传统启动脚本', 
+    command: 'systemctl list-unit-files --state=enabled; ls -la /etc/init.d/; true', 
+    icon: Zap,
+    parserType: 'raw'
+  },
+
+  // --- 日志审计 ---
+  { 
+    id: 'log_auth', 
+    category: 'security', 
+    name: 'Auth Logs', 
+    cn_name: '身份认证日志', 
+    description: 'Recent successful and failed login attempts', 
+    cn_description: '近期登录成功与失败的审计日志', 
+    command: '( [ -f /var/log/auth.log ] && echo "==> /var/log/auth.log <==" && tail -n 200 /var/log/auth.log ) ; ( [ -f /var/log/secure ] && echo "==> /var/log/secure <==" && tail -n 200 /var/log/secure ) ; true', 
+    icon: Lock,
+    parserType: 'raw'
+  },
+  { 
+    id: 'log_history', 
+    category: 'security', 
+    name: 'Command History', 
+    cn_name: '命令执行历史', 
+    description: 'Recent commands executed by root and current user', 
+    cn_description: 'Root 及当前用户执行过的历史命令', 
+    command: 'tail -n 200 ~/.bash_history 2>/dev/null; true', 
+    icon: Terminal,
+    parserType: 'raw'
+  },
+
+  // --- Web 取证（二级）---
+  {
+    id: 'bt_panel_status',
+    category: 'web',
+    name: 'BT Panel Status',
+    cn_name: '宝塔面板状态',
+    description: 'Check BT panel process, ports and service state',
+    cn_description: '检查宝塔面板进程、端口与服务状态',
+    command: 'ps aux | grep -E "bt|Bt-Panel|panel" | grep -v grep; echo "---"; ss -lntp | grep -E ":8888|:7800|:888" || true',
+    icon: LayoutDashboard,
+    parserType: 'raw'
+  },
+  {
+    id: 'bt_panel_logs',
+    category: 'web',
+    name: 'BT Panel Logs',
+    cn_name: '宝塔日志审计',
+    description: 'Inspect recent BT panel logs for suspicious access',
+    cn_description: '审计宝塔近期日志，排查异常访问',
+    command: 'tail -n 200 /www/server/panel/logs/error.log 2>/dev/null; echo "---"; tail -n 200 /www/server/panel/logs/request.log 2>/dev/null; true',
+    icon: FileText,
+    parserType: 'raw'
+  },
+  {
+    id: 'nginx_conf',
+    category: 'web',
+    name: 'Nginx Config Snapshot',
+    cn_name: 'Nginx 配置快照',
+    description: 'Version, main config and enabled site configs',
+    cn_description: 'Nginx 版本、主配置与站点配置快照',
+    command: 'nginx -v 2>&1; echo "---"; cat /etc/nginx/nginx.conf 2>/dev/null | head -n 260; echo "---"; ls -la /etc/nginx/conf.d /etc/nginx/sites-enabled 2>/dev/null; true',
+    icon: Globe,
+    parserType: 'raw'
+  },
+  {
+    id: 'nginx_access_error',
+    category: 'web',
+    name: 'Nginx Access/Error Logs',
+    cn_name: 'Nginx 访问/错误日志',
+    description: 'Latest access and error logs for attack traces',
+    cn_description: '查看最新访问与错误日志，排查攻击痕迹',
+    command: 'tail -n 200 /var/log/nginx/access.log 2>/dev/null; echo "---"; tail -n 200 /var/log/nginx/error.log 2>/dev/null; true',
+    icon: FileText,
+    parserType: 'raw'
+  },
+  {
+    id: 'apache_conf',
+    category: 'web',
+    name: 'Apache Config Snapshot',
+    cn_name: 'Apache 配置快照',
+    description: 'Apache version, loaded modules and vhost files',
+    cn_description: 'Apache 版本、模块与虚拟主机配置快照',
+    command: 'apache2 -v 2>/dev/null || httpd -v 2>/dev/null; echo "---"; apache2ctl -M 2>/dev/null || httpd -M 2>/dev/null; echo "---"; ls -la /etc/apache2/sites-enabled /etc/httpd/conf.d 2>/dev/null; true',
+    icon: Globe,
+    parserType: 'raw'
+  },
+  {
+    id: 'apache_logs',
+    category: 'web',
+    name: 'Apache Access/Error Logs',
+    cn_name: 'Apache 访问/错误日志',
+    description: 'Review latest Apache access/error logs',
+    cn_description: '审查 Apache 最近访问与错误日志',
+    command: 'tail -n 200 /var/log/apache2/access.log 2>/dev/null; echo "---"; tail -n 200 /var/log/apache2/error.log 2>/dev/null; echo "---"; tail -n 200 /var/log/httpd/access_log 2>/dev/null; echo "---"; tail -n 200 /var/log/httpd/error_log 2>/dev/null; true',
+    icon: FileText,
+    parserType: 'raw'
+  },
+
+  // --- 数据库取证（二级）---
+  {
+    id: 'mysql_status',
+    category: 'database',
+    name: 'MySQL Process and Accounts',
+    cn_name: 'MySQL 进程与账户审计',
+    description: 'MySQL process, listening port and account summary',
+    cn_description: 'MySQL 进程、监听端口与账户概要审计',
+    command: 'ps aux | grep -E "mysqld|mariadbd" | grep -v grep; echo "---"; ss -lntp | grep -E ":3306" || true; echo "---"; mysql -Nse "SELECT user,host FROM mysql.user;" 2>/dev/null || true',
+    icon: Database,
+    parserType: 'raw'
+  },
+  {
+    id: 'mysql_logs',
+    category: 'database',
+    name: 'MySQL Error/General Logs',
+    cn_name: 'MySQL 错误/通用日志',
+    description: 'Review mysql and mariadb logs for intrusion traces',
+    cn_description: '审查 MySQL/MariaDB 日志中的入侵痕迹',
+    command: 'tail -n 200 /var/log/mysql/error.log 2>/dev/null; echo "---"; tail -n 200 /var/log/mysqld.log 2>/dev/null; echo "---"; tail -n 200 /var/log/mysql/mysql.log 2>/dev/null; true',
+    icon: FileText,
+    parserType: 'raw'
+  },
+  {
+    id: 'postgres_status',
+    category: 'database',
+    name: 'PostgreSQL Status',
+    cn_name: 'PostgreSQL 状态取证',
+    description: 'PostgreSQL process, port and role audit',
+    cn_description: 'PostgreSQL 进程、端口与角色信息审计',
+    command: 'ps aux | grep -E "postgres" | grep -v grep; echo "---"; ss -lntp | grep -E ":5432" || true; echo "---"; sudo -u postgres psql -tAc "\\du" 2>/dev/null || true',
+    icon: Database,
+    parserType: 'raw'
+  },
+  {
+    id: 'redis_status',
+    category: 'database',
+    name: 'Redis Status',
+    cn_name: 'Redis 状态取证',
+    description: 'Redis process, bind/protected mode and key security settings',
+    cn_description: 'Redis 进程、绑定配置与关键安全项检查',
+    command: 'ps aux | grep -E "redis-server" | grep -v grep; echo "---"; ss -lntp | grep -E ":6379" || true; echo "---"; redis-cli INFO server 2>/dev/null | head -n 80; true',
+    icon: Database,
+    parserType: 'raw'
+  }
+];
