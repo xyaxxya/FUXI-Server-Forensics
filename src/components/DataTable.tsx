@@ -45,21 +45,20 @@ export default function DataTable({ headers, rows, language, title }: DataTableP
   };
 
   return (
-    <div className="flex flex-col border border-slate-200 rounded-xl bg-white overflow-hidden shadow-sm my-2 w-full max-w-full">
-      {/* Header Toolbar */}
-      <div className="flex items-center justify-between p-3 border-b border-slate-200 bg-slate-50">
+    <div className="ui-shell my-2 flex w-full max-w-full flex-col overflow-hidden rounded-[1.4rem]">
+      <div className="flex flex-col gap-3 border-b border-slate-200/70 p-3 md:flex-row md:items-center md:justify-between">
         <div className="font-semibold text-slate-700 text-sm flex items-center gap-2">
             {title || (language === 'zh' ? '查询结果' : 'Query Result')}
-            <span className="text-xs font-normal text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">
+            <span className="ui-chip text-xs font-normal text-slate-500 px-2 py-0.5 rounded-full">
                 {rows.length} {language === 'zh' ? '行' : 'rows'}
             </span>
             {searchTerm && (
-              <span className="text-xs font-normal text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+              <span className="ui-chip-active text-xs font-normal px-2 py-0.5 rounded-full">
                 {language === 'zh' ? `命中 ${matchedRows}` : `${matchedRows} matched`}
               </span>
             )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
             <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
             <input 
@@ -67,15 +66,15 @@ export default function DataTable({ headers, rows, language, title }: DataTableP
               placeholder={language === 'zh' ? "搜索..." : "Search..."}
               value={searchTerm}
               onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-              className="pl-8 pr-2 py-1 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-indigo-500 w-32 md:w-48 bg-white"
+              className="ui-input-base w-32 rounded-xl py-2 pl-8 pr-2 text-xs md:w-48"
             />
           </div>
           <button
             onClick={() => setWrapMode(v => !v)}
-            className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border transition-colors ${
+            className={`ui-pressable flex items-center gap-1 px-2.5 py-2 text-xs rounded-xl transition-colors ${
               wrapMode
-                ? "bg-indigo-50 text-indigo-700 border-indigo-200"
-                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                ? "ui-chip-active"
+                : "ui-button text-slate-600"
             }`}
           >
             <WrapText size={12} />
@@ -83,7 +82,7 @@ export default function DataTable({ headers, rows, language, title }: DataTableP
           </button>
           <button 
             onClick={handleExportCSV}
-            className="flex items-center gap-1 px-3 py-1 bg-indigo-600 text-white text-xs rounded-md hover:bg-indigo-700 transition-colors shadow-sm font-medium whitespace-nowrap"
+            className="ui-button-primary ui-pressable flex items-center gap-1 px-3 py-2 text-white text-xs rounded-xl font-medium whitespace-nowrap"
           >
             <Download size={12} />
             {language === 'zh' ? '导出 CSV' : 'Export CSV'}
@@ -91,14 +90,13 @@ export default function DataTable({ headers, rows, language, title }: DataTableP
         </div>
       </div>
 
-      {/* Table Area */}
       <div className="overflow-auto custom-scrollbar w-full max-h-[520px]">
         <table className="w-full text-left border-collapse text-xs md:text-sm">
-          <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+          <thead className="bg-slate-50/95 sticky top-0 z-10 shadow-sm backdrop-blur-sm">
             <tr>
-              <th className="p-3 border-b border-slate-200 border-r border-slate-100 w-12 text-center text-slate-400 font-mono text-xs bg-slate-50">#</th>
+              <th className="p-3 border-b border-slate-200 border-r border-slate-100 w-12 text-center text-slate-400 font-mono text-xs bg-slate-50/95">#</th>
               {headers.map((h, i) => (
-                <th key={i} className="p-3 border-b border-slate-200 border-r border-slate-100 font-bold text-slate-600 min-w-[100px] whitespace-nowrap text-xs uppercase tracking-wider bg-slate-50">
+                <th key={i} className="p-3 border-b border-slate-200 border-r border-slate-100 font-bold text-slate-600 min-w-[100px] whitespace-nowrap text-xs uppercase tracking-wider bg-slate-50/95">
                   {h}
                 </th>
               ))}
@@ -107,7 +105,7 @@ export default function DataTable({ headers, rows, language, title }: DataTableP
           <tbody>
             {currentRows.length > 0 ? (
                 currentRows.map((row, i) => (
-                <tr key={i} className="hover:bg-indigo-50/50 group transition-colors even:bg-slate-50/30">
+                <tr key={i} className="group transition-colors even:bg-slate-50/20 hover:bg-blue-50/55">
                     <td className="p-2 border-b border-slate-100 border-r border-slate-100 text-center text-slate-400 font-mono text-xs group-hover:text-slate-600">
                     {startIndex + i + 1}
                     </td>
@@ -135,9 +133,8 @@ export default function DataTable({ headers, rows, language, title }: DataTableP
         </table>
       </div>
 
-      {/* Footer / Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between p-2 border-t border-slate-200 bg-slate-50 text-xs text-slate-500">
+        <div className="flex items-center justify-between p-2 border-t border-slate-200/70 bg-slate-50/75 text-xs text-slate-500">
             <span>
                 {language === 'zh' 
                  ? `显示 ${startIndex + 1}-${Math.min(startIndex + rowsPerPage, filteredRows.length)} 共 ${filteredRows.length}` 
@@ -147,7 +144,7 @@ export default function DataTable({ headers, rows, language, title }: DataTableP
                 <button 
                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
-                    className="p-1 rounded hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="ui-button ui-pressable rounded-lg p-1 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <ChevronLeft size={14} />
                 </button>
@@ -155,7 +152,7 @@ export default function DataTable({ headers, rows, language, title }: DataTableP
                 <button 
                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                     disabled={currentPage === totalPages}
-                    className="p-1 rounded hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="ui-button ui-pressable rounded-lg p-1 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <ChevronRight size={14} />
                 </button>

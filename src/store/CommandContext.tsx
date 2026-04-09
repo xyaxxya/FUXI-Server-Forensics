@@ -126,7 +126,7 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
   const [commandHistory, setCommandHistory] = useState<CommandHistoryItem[]>([]);
   const [customCommands, setCustomCommands] = useState<CustomCommand[]>([]);
   const [serverGroups, setServerGroups] = useState<ServerGroup[]>([]);
-  const monitorTimerRef = useRef<number | null>(null);
+  const monitorTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const monitoredCommandsRef = useRef<string[]>([]);
   
   // Previous network bytes for rate calculation

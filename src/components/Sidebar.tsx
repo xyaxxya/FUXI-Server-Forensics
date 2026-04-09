@@ -1,11 +1,19 @@
-import { useState, useEffect } from 'react';
-import { 
-  Cpu, ChevronDown, LogOut, Settings, ScanLine,
-  FileText, Bot, Sparkles, GalleryVerticalEnd, Terminal, Crosshair
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { translations, Language } from '../translations';
-import tauriLogo from '../assets/tauri.png';
+import { motion } from "framer-motion";
+import {
+  Activity,
+  Bot,
+  ChevronRight,
+  Database,
+  FileSearch,
+  ListChecks,
+  LogOut,
+  type LucideIcon,
+  Settings,
+  SquareTerminal,
+  Wrench,
+} from "lucide-react";
+import { Language } from "../translations";
+import tauriLogo from "../assets/tauri.png";
 
 interface SidebarProps {
   activeTab: string;
@@ -20,250 +28,200 @@ interface SidebarProps {
   onToggleCollapse?: () => void;
 }
 
-interface MenuItem {
+interface NavItem {
   id: string;
-  icon: any;
-  labelKey: string;
+  icon: LucideIcon;
+  title: { zh: string; en: string };
+  description: { zh: string; en: string };
 }
 
-interface MenuGroup {
-  id: string;
-  labelKey: string;
-  items: MenuItem[];
-}
-
-const menuGroups: MenuGroup[] = [
+const navItems: NavItem[] = [
   {
-    id: 'monitoring',
-    labelKey: 'monitor',
-    items: [
-      { id: 'dashboard', icon: Cpu, labelKey: 'monitor_center' },
-    ]
+    id: "dashboard",
+    icon: Activity,
+    title: { zh: "命令中心", en: "Command Center" },
+    description: { zh: "执行常用命令并查看结果", en: "Run common commands and view outputs" },
   },
   {
-    id: 'ai_agents',
-    labelKey: 'agent',
-    items: [
-      { id: 'agent-context', icon: FileText, labelKey: 'agent_context' },
-      { id: 'agent-general', icon: Bot, labelKey: 'agent_general' },
-      { id: 'agent-database', icon: Sparkles, labelKey: 'agent_database' },
-      { id: 'agent-panel', icon: GalleryVerticalEnd, labelKey: 'agent_panel' },
-    ]
+    id: "agent-general",
+    icon: Bot,
+    title: { zh: "通用智能体", en: "General Agent" },
+    description: { zh: "对话分析并沉淀关键线索", en: "Chat, analyze and retain key clues" },
   },
   {
-    id: 'tools',
-    labelKey: 'tools',
-    items: [
-      { id: 'terminal', icon: Terminal, labelKey: 'terminal' },
-      { id: 'pentest', icon: Crosshair, labelKey: 'pentest' },
-    ]
-  }
+    id: "agent-database",
+    icon: Database,
+    title: { zh: "数据库智查", en: "Database Intel" },
+    description: { zh: "连接库表、查询数据与 AI 分析", en: "Connect, query and investigate with AI" },
+  },
+  {
+    id: "agent-context",
+    icon: FileSearch,
+    title: { zh: "上下文面板", en: "Context Panel" },
+    description: { zh: "一键采集系统与网站关键信息", en: "Collect system and web context quickly" },
+  },
+  {
+    id: "agent-panel",
+    icon: ListChecks,
+    title: { zh: "批量问答", en: "Batch QA" },
+    description: { zh: "批量提问并统一查看答案", en: "Ask in batch and review all answers" },
+  },
+  {
+    id: "terminal",
+    icon: SquareTerminal,
+    title: { zh: "XFTP Terminal", en: "XFTP Terminal" },
+    description: { zh: "交互终端与文件管理", en: "Interactive terminal and file manager" },
+  },
+  {
+    id: "pentest",
+    icon: Wrench,
+    title: { zh: "工具面板", en: "Tool Panel" },
+    description: { zh: "访问现有工具与辅助能力", en: "Open tools and helper capabilities" },
+  },
 ];
 
-export default function Sidebar({ activeTab, onTabChange, onDisconnect, language, onOpenSettings, onToggleServerSidebar, isCollapsed = false, onToggleCollapse }: SidebarProps) {
-  const t = translations[language];
-  const [expandedGroups, setExpandedGroups] = useState<string[]>(['monitoring', 'ai_agents', 'tools']);
+function textByLanguage(language: Language, value: { zh: string; en: string }) {
+  return language === "zh" ? value.zh : value.en;
+}
 
-  // Auto-expand group containing active tab
-  useEffect(() => {
-    const activeGroup = menuGroups.find(group => group.items.some(item => item.id === activeTab));
-    if (activeGroup && !expandedGroups.includes(activeGroup.id)) {
-      setExpandedGroups(prev => [...prev, activeGroup.id]);
-    }
-  }, [activeTab]);
-
-  const toggleGroup = (groupId: string) => {
-    setExpandedGroups(prev =>
-      prev.includes(groupId)
-        ? prev.filter(id => id !== groupId)
-        : [...prev, groupId]
-    );
-  };
+export default function Sidebar({
+  activeTab,
+  onTabChange,
+  onDisconnect,
+  language,
+  onToggleServerSidebar,
+  onOpenSettings,
+  isCollapsed = false,
+  onToggleCollapse,
+}: SidebarProps) {
+  const settingsLabel = language === "zh" ? "设置" : "Settings";
+  const disconnectLabel = language === "zh" ? "断开连接" : "Disconnect";
+  const collapseLabel = isCollapsed
+    ? language === "zh"
+      ? "展开"
+      : "Expand"
+    : language === "zh"
+      ? "折叠"
+      : "Collapse";
 
   return (
-    <div className={`h-full flex flex-col ds-panel transition-all duration-300 relative z-20 ${isCollapsed ? 'w-16' : 'w-64'}`}>
-      {/* Decorative Top Edge */}
-      <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-blue-500/35 to-transparent" />
-
-      {/* Header */}
-      <div className="p-6 pb-2 shrink-0 relative" data-tauri-drag-region>
-        <div className="flex items-center gap-4 mb-2">
-            <motion.button
-                onClick={onToggleServerSidebar}
-                className="relative w-12 h-12 flex items-center justify-center bg-white/70 rounded-2xl shadow-sm border border-blue-100 focus:outline-none glass-button overflow-hidden group"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-            >
-                {/* Tech Scan Effect */}
-                <motion.div
-                    className="absolute inset-0 bg-gradient-to-b from-transparent via-blue-400/15 to-transparent translate-y-[-100%]"
-                    whileHover={{ translateY: "100%" }}
-                    transition={{ duration: 0.6 }}
-                />
-
-                <motion.img
-                    src={tauriLogo}
-                    alt="Logo"
-                    className="w-8 h-8 object-contain relative z-10"
-                />
-            </motion.button>
-
-            {!isCollapsed && (
-              <div className="flex flex-col overflow-hidden">
-                  <motion.span
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.2 }}
-                      className="font-bold text-lg text-slate-800 tracking-tight leading-none mb-1 flex items-center gap-2"
-                  >
-                      Server Forensics
-                  </motion.span>
-                  <motion.div
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.3 }}
-                      className="flex items-center gap-2"
-                  >
-                      <span className="text-[10px] font-bold text-blue-700 tracking-widest uppercase flex items-center gap-1">
-                        <ScanLine size={10} />
-                        FUXI
-                      </span>
-                      <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/50">PRO</span>
-                  </motion.div>
+    <div className={`h-full ui-shell flex flex-col transition-all duration-300 ${isCollapsed ? "w-[88px]" : "w-[292px]"}`}>
+      <div className="border-b border-slate-200/70 p-4">
+        <div className="flex items-center gap-3">
+          <motion.button
+            onClick={onToggleServerSidebar}
+            whileHover={{ y: -2, scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
+            className="ui-button ui-pressable ui-focus-ring flex h-12 w-12 items-center justify-center rounded-[1.35rem]"
+          >
+            <img src={tauriLogo} alt="FUXI" className="h-8 w-8 object-contain" />
+          </motion.button>
+          {!isCollapsed && (
+            <div className="min-w-0 flex-1">
+              <div className="text-lg font-bold text-slate-900">FUXI AI Workbench</div>
+              <div className="mt-1 text-xs text-slate-500">
+                {language === "zh" ? "服务器取证与智能分析工作台" : "Server forensics and AI investigation workspace"}
               </div>
-            )}
+              <div className="mt-3 h-px ui-divider" />
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 px-3 py-2 space-y-4 overflow-y-auto custom-scrollbar relative z-10">
-        {menuGroups.map(group => (
-          <div key={group.id} className="mb-2">
-            {!isCollapsed && (
-              <button
-                onClick={() => toggleGroup(group.id)}
-                className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold text-slate-400 uppercase tracking-wider hover:text-slate-600 transition-colors group"
-              >
-                <span className="flex items-center gap-2">
-                  {t[group.labelKey as keyof typeof t]}
-                  <div className="h-[1px] w-4 bg-slate-200 group-hover:bg-slate-300 transition-colors" />
-                </span>
-                <motion.div
-                  animate={{ rotate: expandedGroups.includes(group.id) ? 0 : -90 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <ChevronDown size={12} />
-                </motion.div>
-              </button>
-            )}
-
-            <AnimatePresence initial={false}>
-              {(isCollapsed || expandedGroups.includes(group.id)) && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.3, ease: "easeInOut" }}
-                  className="overflow-hidden"
-                >
-                  <div className="space-y-1 mt-1 relative">
-                    {/* Vertical Guide Line */}
-                    {!isCollapsed && <div className="absolute left-3 top-2 bottom-2 w-[1px] bg-slate-200/50" />}
-
-                    {group.items.map(item => {
-                      const isActive = activeTab === item.id;
-
-                      return (
-                        <button
-                          key={item.id}
-                          onClick={() => onTabChange(item.id)}
-                          className={`w-full relative flex items-center gap-3 rounded-xl transition-all duration-200 group ${isCollapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5 ml-2'}`}
-                          style={isCollapsed ? {} : { width: "calc(100% - 8px)" }}
-                          title={isCollapsed ? t[item.labelKey as keyof typeof t] : undefined}
-                        >
-                          {isActive && (
-                            <motion.div
-                              layoutId="activeTab"
-                              className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-blue-500/5 border border-blue-500/20 rounded-xl overflow-hidden"
-                              initial={false}
-                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                            >
-                                {/* Corner Accents for Tech Feel */}
-                                <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-blue-500/40 rounded-tl-lg" />
-                                <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-blue-500/40 rounded-br-lg" />
-
-                                {/* Scanning Line */}
-                                <motion.div
-                                    className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-400/10 to-transparent w-1/2 h-full skew-x-12"
-                                    animate={{ x: ["-150%", "200%"] }}
-                                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                                />
-                            </motion.div>
-                          )}
-
-                          <div className={`relative z-10 p-1.5 rounded-lg transition-colors ${isActive ? 'text-blue-700 bg-blue-100/70' : 'text-slate-400 group-hover:text-slate-600'}`}>
-                            <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} />
-                          </div>
-                          {!isCollapsed && (
-                            <span className={`relative z-10 text-sm font-medium transition-colors ${isActive ? 'text-slate-800' : 'text-slate-500 group-hover:text-slate-700'}`}>
-                              {t[item.labelKey as keyof typeof t]}
-                            </span>
-                          )}
-
-                          {isActive && !isCollapsed && (
-                            <motion.div
-                                layoutId="activeIndicator"
-                                className="absolute right-2 flex items-center"
-                            >
-                                <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)] animate-pulse" />
-                            </motion.div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-3 pt-4 pb-3">
+        {!isCollapsed && (
+          <div className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+            {language === "zh" ? "核心工作区" : "Core Workspace"}
           </div>
-        ))}
-      </nav>
-
-      {/* Footer Actions */}
-      <div className="p-4 border-t border-white/20 bg-white/5 space-y-2 relative z-10">
-        {onToggleCollapse && (
-          <button
-            onClick={onToggleCollapse}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-500 hover:text-slate-700 hover:bg-white/40 transition-all duration-200 group relative overflow-hidden"
-            title={isCollapsed ? (language === 'zh' ? '展开侧边栏' : 'Expand') : (language === 'zh' ? '折叠侧边栏' : 'Collapse')}
-          >
-            <motion.div
-              animate={{ rotate: isCollapsed ? 0 : 180 }}
-              transition={{ duration: 0.3 }}
-            >
-              <ChevronDown size={18} className="rotate-90" />
-            </motion.div>
-            {!isCollapsed && <span className="text-sm font-medium">{language === 'zh' ? '折叠' : 'Collapse'}</span>}
-          </button>
         )}
-        <button
+        <nav className="space-y-2">
+          {navItems.map((item) => {
+            const isActive = item.id === activeTab;
+            const Icon = item.icon;
+            return (
+              <motion.button
+                key={item.id}
+                onClick={() => onTabChange(item.id)}
+                title={isCollapsed ? textByLanguage(language, item.title) : undefined}
+                whileHover={{ y: -2 }}
+                whileTap={{ scale: 0.985 }}
+                className={`ui-hover-lift ui-pressable ui-focus-ring relative w-full overflow-hidden text-left ${
+                  isActive ? "ui-chip-active rounded-[1.5rem]" : "ui-button rounded-[1.5rem]"
+                } ${isCollapsed ? "flex justify-center p-3.5" : "p-4"}`}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="sidebar-active-item"
+                    className="absolute inset-0 rounded-[1.5rem] bg-gradient-to-br from-blue-50 via-white to-indigo-50"
+                    transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                  />
+                )}
+                <div className={`relative z-10 ${isCollapsed ? "flex items-center justify-center" : "flex items-start gap-3.5"}`}>
+                  <div
+                    className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition-all ${
+                      isActive
+                        ? "bg-white text-blue-700 shadow-[0_12px_24px_-18px_rgba(37,99,235,0.6)]"
+                        : "bg-slate-100/90 text-slate-500"
+                    }`}
+                  >
+                    <Icon size={18} />
+                  </div>
+                  {!isCollapsed && (
+                    <div className="min-w-0 flex-1">
+                      <div className={`text-sm font-semibold ${isActive ? "text-slate-900" : "text-slate-700"}`}>
+                        {textByLanguage(language, item.title)}
+                      </div>
+                      <div className={`mt-1 text-xs leading-5 ${isActive ? "text-blue-700/80" : "text-slate-500"}`}>
+                        {textByLanguage(language, item.description)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.button>
+            );
+          })}
+        </nav>
+      </div>
+
+      <div className="mt-auto border-t border-slate-200/70 p-3 space-y-2">
+        {onToggleCollapse && (
+          <motion.button
+            onClick={onToggleCollapse}
+            whileHover={{ y: -1 }}
+            whileTap={{ scale: 0.985 }}
+            className={`ui-button ui-hover-lift ui-pressable ui-focus-ring w-full rounded-[1.35rem] text-slate-600 ${
+              isCollapsed ? "flex justify-center p-3.5" : "flex items-center gap-3 px-4 py-3"
+            }`}
+            title={collapseLabel}
+          >
+            <ChevronRight className={`transition-transform ${isCollapsed ? "" : "rotate-180"}`} size={18} />
+            {!isCollapsed && <span className="text-sm font-medium">{collapseLabel}</span>}
+          </motion.button>
+        )}
+        <motion.button
           onClick={onOpenSettings}
-          className={`w-full flex items-center gap-3 rounded-xl text-slate-500 hover:text-slate-700 hover:bg-white/40 transition-all duration-200 group relative overflow-hidden ${isCollapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'}`}
-          title={isCollapsed ? t.settings : undefined}
+          whileHover={{ y: -1 }}
+          whileTap={{ scale: 0.985 }}
+          className={`ui-button ui-hover-lift ui-pressable ui-focus-ring w-full rounded-[1.35rem] text-slate-600 ${
+            isCollapsed ? "flex justify-center p-3.5" : "flex items-center gap-3 px-4 py-3"
+          }`}
+          title={settingsLabel}
         >
-          <Settings size={18} className="group-hover:rotate-90 transition-transform duration-500" />
-          {!isCollapsed && <span className="text-sm font-medium">{t.settings}</span>}
-          {/* Subtle Shine */}
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
-        </button>
-        <button
+          <Settings size={18} />
+          {!isCollapsed && <span className="text-sm font-medium">{settingsLabel}</span>}
+        </motion.button>
+        <motion.button
           onClick={onDisconnect}
-          className={`w-full flex items-center gap-3 rounded-xl text-red-400 hover:text-red-500 hover:bg-red-50/50 transition-all duration-200 ${isCollapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'}`}
-          title={isCollapsed ? t.disconnect : undefined}
+          whileHover={{ y: -1 }}
+          whileTap={{ scale: 0.985 }}
+          className={`ui-button-danger ui-hover-lift ui-pressable ui-focus-ring w-full rounded-[1.35rem] ${
+            isCollapsed ? "flex justify-center p-3.5" : "flex items-center gap-3 px-4 py-3"
+          }`}
+          title={disconnectLabel}
         >
           <LogOut size={18} />
-          {!isCollapsed && <span className="text-sm font-medium">{t.disconnect}</span>}
-        </button>
+          {!isCollapsed && <span className="text-sm font-medium">{disconnectLabel}</span>}
+        </motion.button>
       </div>
     </div>
   );

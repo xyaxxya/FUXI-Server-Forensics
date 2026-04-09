@@ -10,7 +10,7 @@ import { translations, Language } from '../translations';
 import FileManager from './FileManager';
 import { FolderOpen, X, RefreshCw, Terminal as TerminalIcon, Cpu } from 'lucide-react';
 
-export default function TerminalXterm({ onClose, sessionId, language }: { onClose: () => void, sessionId?: string, language: Language }) {
+export default function TerminalXterm({ onClose, sessionId, language, isActive = true }: { onClose: () => void, sessionId?: string, language: Language, isActive?: boolean }) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -213,6 +213,39 @@ export default function TerminalXterm({ onClose, sessionId, language }: { onClos
       term.dispose();
     };
   }, [targetSessionId, retryCount, fontSize]);
+
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
+    const handleVisibleResize = () => {
+      if (!fitAddonRef.current || !xtermRef.current || !terminalRef.current) {
+        return;
+      }
+
+      if (terminalRef.current.clientHeight === 0) {
+        return;
+      }
+
+      try {
+        fitAddonRef.current.fit();
+        if (ptyIdRef.current) {
+          invoke('resize_pty', {
+            id: ptyIdRef.current,
+            cols: xtermRef.current.cols,
+            rows: xtermRef.current.rows
+          }).catch(console.error);
+        }
+        xtermRef.current.focus();
+      } catch (error) {
+        console.error("Terminal activate resize error:", error);
+      }
+    };
+
+    const timer = window.setTimeout(handleVisibleResize, 120);
+    return () => window.clearTimeout(timer);
+  }, [isActive]);
 
   const setupPtyEvents = async (term: Terminal, ptyId: string) => {
       // Listen for incoming data

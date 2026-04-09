@@ -1,109 +1,19 @@
-import React, { useState, useRef, useEffect } from "react";
-import { 
-  Bot, 
-  Play, 
-  Plus, 
-  FileText, 
-  Database, 
-  Coffee, 
-  BarChart2, 
-  CheckCircle2, 
-  Loader2, 
-  Clock, 
-  ChevronRight,
-  X,
-  Settings,
-  Send,
-  ArrowLeft,
-  Copy,
-  Check,
-  Trash2,
-  RefreshCw
-} from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
-import { translations, Language } from "../../translations";
+import { CheckCircle2, ListChecks, Loader2, Play, Square, Trash2, Wand2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { AIMessage, AISettings, sendToAI, Tool } from "../../lib/ai";
+import { Language } from "../../translations";
+import { AIMessage, AISettings, ToolCall, buildServerForensicsToolExecution, buildToolDisplayText, shouldTreatAssistantMessageAsThinking } from "../../lib/ai";
+import { buildContextSections, buildServerContextSummary, buildWorkspacePromptContext } from "../../lib/aiContext";
+import { applyUsageToSettings, runConversationLoop } from "../../lib/aiRuntime";
+import { executeResearchTool } from "../../lib/aiResearchTools";
+import { useAIWorkspaceStore } from "../../lib/aiWorkspaceStore";
 import { useCommandStore } from "../../store/CommandContext";
 import ThinkingProcess, { ThinkingStep } from "./ThinkingProcess";
-import { pLimit } from "../../lib/p-limit";
-import { useToast } from "../Toast";
-
-import JarConfigArtifact from "./JarConfigArtifact";
-
-// --- Types ---
-
-export type QuestionType = "Basic" | "Database" | "Java" | "DataAnalysis";
-export type QuestionStatus = "pending" | "processing" | "completed" | "error";
-
-export interface ChatMessage {
-  role: "user" | "assistant" | "system" | "tool";
-  content: string;
-  isThinking?: boolean;
-  tool_call_id?: string;
-  rawToolCalls?: AIMessage["tool_calls"];
-}
-
-export interface BatchQuestion {
-  id: string;
-  content: string;
-  type: QuestionType;
-  status: QuestionStatus;
-  // History of the conversation for this specific question
-  messages: ChatMessage[]; 
-  accuracy?: number;
-  timestamp: number;
-  // Store the final answer separately for quick access in the list view
-  finalAnswer?: string;
-  errorMessage?: string;
-}
-
-type DisplayItem = 
-  | { type: 'message', message: ChatMessage }
-  | { type: 'thinking', steps: ThinkingStep[], isFinished: boolean }
-  | { type: 'artifact', component: React.ReactNode };
-
-const JAR_ANALYSIS_SCRIPT = `
-param([string]$JarPath)
-$Extensions = @(".yml", ".yaml", ".properties", ".xml", ".json", ".conf")
-$Keywords = @("jdbc", "database", "datasource", "password", "secret", "redis", "mongo", "elasticsearch")
-if (-not (Test-Path $JarPath)) { Write-Output "{ ""error"": ""File not found: $JarPath"" }"; exit 1 }
-$TempDir = Join-Path $env:TEMP ("fuxi_jar_" + [Guid]::NewGuid().ToString())
-New-Item -ItemType Directory -Path $TempDir | Out-Null
-try {
-    Expand-Archive -Path $JarPath -DestinationPath $TempDir -Force
-    $Results = @()
-    $Files = Get-ChildItem -Path $TempDir -Recurse | Where-Object { $_.Extension -in $Extensions }
-    foreach ($File in $Files) {
-        $Content = Get-Content -Path $File.FullName -Raw -ErrorAction SilentlyContinue
-        if (-not $Content) { continue }
-        $IsConfig = $false
-        if ($File.Name -match "application|bootstrap|setting|config|persistence|context") { $IsConfig = $true }
-        if (-not $IsConfig) { foreach ($Keyword in $Keywords) { if ($Content -match $Keyword) { $IsConfig = $true; break } } }
-        if ($IsConfig) {
-            $RelPath = $File.FullName.Substring($TempDir.Length + 1)
-            $Results += @{ path = $RelPath; content = $Content; size = $File.Length }
-        }
-    }
-    $JsonOutput = @{ jar_path = $JarPath; timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss"); files = $Results }
-    Write-Output ($JsonOutput | ConvertTo-Json -Depth 5 -Compress)
-} catch { Write-Output "{ ""error"": ""$($_.Exception.Message)"" }" } finally { if (Test-Path $TempDir) { Remove-Item -Path $TempDir -Recurse -Force } }
-`;
-
-const encodePowerShellScript = (script: string): string => {
-  const bytes = new Uint8Array(script.length * 2);
-  for (let i = 0; i < script.length; i++) {
-    const charCode = script.charCodeAt(i);
-    bytes[i * 2] = charCode & 0xff;
-    bytes[i * 2 + 1] = (charCode >>> 8) & 0xff;
-  }
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-};
+import { ChatTranscriptMessage } from "./ChatTranscriptMessage";
+import { FloatingContextMenu, PlannerPanel, PreviewDialog, PromptDeck, SlashCommandMenu, WorkspaceHeader, getExactSlashCommand, getSlashCommandCompletion } from "./WorkbenchWidgets";
 
 interface AgentPanelProps {
   language?: Language;
@@ -116,1128 +26,687 @@ interface AgentPanelProps {
   };
 }
 
-// --- Helpers ---
+type BatchStatus = "pending" | "running" | "completed" | "error";
 
-const getIconForType = (type: QuestionType) => {
-  switch (type) {
-    case "Database": return <Database size={16} className="text-orange-500" />;
-    case "Java": return <Coffee size={16} className="text-red-500" />;
-    case "DataAnalysis": return <BarChart2 size={16} className="text-purple-500" />;
-    default: return <FileText size={16} className="text-blue-500" />;
-  }
+interface BatchItem {
+  id: string;
+  question: string;
+  status: BatchStatus;
+  messages: AIMessage[];
+  answer: string;
+  error: string;
+}
+
+type DisplayItem =
+  | { type: "message"; message: AIMessage }
+  | { type: "thinking"; steps: ThinkingStep[]; isFinished: boolean };
+
+interface RemoteSession {
+  id: string;
+  ip: string;
+  user: string;
+}
+
+const batchPromptPresets = {
+  zh: [
+    "请逐题分析，并先维护一份整体计划。",
+    "所有答案只保留结论与关键证据，不要解释常识。",
+    "如果发现共享线索池中已有证据，请优先复用。",
+  ],
+  en: [
+    "Analyze each question and maintain a shared plan first.",
+    "Return concise conclusions with supporting evidence only.",
+    "Reuse the shared clue pool before running more commands.",
+  ],
 };
 
-const getColorForType = (type: QuestionType) => {
-  switch (type) {
-    case "Database": return "bg-orange-100 text-orange-700 border-orange-200";
-    case "Java": return "bg-red-100 text-red-700 border-red-200";
-    case "DataAnalysis": return "bg-purple-100 text-purple-700 border-purple-200";
-    default: return "bg-blue-100 text-blue-700 border-blue-200";
-  }
-};
+function buildDisplayItems(messages: AIMessage[]): DisplayItem[] {
+  const items: DisplayItem[] = [];
+  let thinkingSteps: ThinkingStep[] = [];
 
-const normalizeQuestionType = (value: unknown): QuestionType => {
-  const raw = String(value ?? "").trim();
-  const v = raw.toLowerCase().replace(/[\s_\-]/g, "");
-  if (v === "database" || v === "db") return "Database";
-  if (v === "java" || v === "jar" || v === "webjar") return "Java";
-  if (v === "dataanalysis" || v === "analysis" || v === "analytics") return "DataAnalysis";
-  return "Basic";
-};
-
-const tryExtractJsonArrayText = (text: string): string | null => {
-  const trimmed = text.trim();
-  const match = trimmed.match(/\[[\s\S]*\]/);
-  if (match) return match[0];
-  if (trimmed.startsWith("```")) {
-    const unwrapped = trimmed.replace(/^```[a-zA-Z]*\n?/, "").replace(/\n?```$/, "");
-    const match2 = unwrapped.match(/\[[\s\S]*\]/);
-    return match2 ? match2[0] : null;
-  }
-  return null;
-};
-
-type SplitItem = { content: string; type: QuestionType };
-
-const parseSplitResult = (rawText: string): SplitItem[] | null => {
-  const arrText = tryExtractJsonArrayText(rawText);
-  if (arrText) {
-    try {
-      const parsed = JSON.parse(arrText);
-      if (Array.isArray(parsed)) {
-        const items = parsed
-          .map((x: any) => {
-            if (typeof x === "string") {
-              const content = x.trim();
-              return content ? { content, type: "Basic" as const } : null;
-            }
-            const content = String(x?.content ?? x?.question ?? x?.text ?? "").trim();
-            if (!content) return null;
-            return { content, type: normalizeQuestionType(x?.type ?? x?.category) };
-          })
-          .filter(Boolean) as SplitItem[];
-        return items.length > 0 ? items : null;
-      }
-    } catch {
-      return null;
+  const flush = (isFinished: boolean) => {
+    if (thinkingSteps.length > 0) {
+      items.push({ type: "thinking", steps: [...thinkingSteps], isFinished });
+      thinkingSteps = [];
     }
-  }
+  };
 
-  try {
-    const trimmed = rawText.trim().replace(/^```[a-zA-Z]*\n?/, "").replace(/\n?```$/, "");
-    const parsed = JSON.parse(trimmed);
-    if (Array.isArray(parsed)) return null;
-    if (parsed && typeof parsed === "object") {
-      const keys = ["questions", "tasks", "items", "result", "data", "list"];
-      for (const k of keys) {
-        const v = (parsed as any)[k];
-        if (Array.isArray(v)) {
-          const items = v
-            .map((x: any) => {
-              if (typeof x === "string") {
-                const content = x.trim();
-                return content ? { content, type: "Basic" as const } : null;
-              }
-              const content = String(x?.content ?? x?.question ?? x?.text ?? "").trim();
-              if (!content) return null;
-              return { content, type: normalizeQuestionType(x?.type ?? x?.category) };
-            })
-            .filter(Boolean) as SplitItem[];
-          return items.length > 0 ? items : null;
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (message.role === "system") {
+      continue;
+    }
+    if (message.role === "user") {
+      flush(true);
+      items.push({ type: "message", message });
+      continue;
+    }
+    if (message.role === "assistant") {
+      const isThinking = shouldTreatAssistantMessageAsThinking(messages, index, thinkingSteps.length > 0);
+      if (isThinking) {
+        if (message.content.trim()) {
+          thinkingSteps.push({ id: `thought-${index}`, title: message.content });
         }
-      }
-
-      const singleContent = String((parsed as any).content ?? (parsed as any).question ?? "").trim();
-      if (singleContent) return [{ content: singleContent, type: normalizeQuestionType((parsed as any).type ?? (parsed as any).category) }];
-    }
-  } catch {
-    return null;
-  }
-
-  return null;
-};
-
-// --- Components ---
-
-export default function AgentPanel({ language = 'en', aiSettings, onAiSettingsChange, generalInfo = "", chatUserProfile }: AgentPanelProps) {
-  const t = translations[language];
-  const [input, setInput] = useState("");
-  const [questions, setQuestions] = useState<BatchQuestion[]>([]);
-  const [autoIdentify, setAutoIdentify] = useState(true);
-  const [autoSkillStatus, setAutoSkillStatus] = useState<string>("");
-  
-  // Selected question for full-screen detail view
-  const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null);
-  
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [processingProgress, setProcessingProgress] = useState<{ current: number; total: number; currentQuestion: string }>({ current: 0, total: 0, currentQuestion: '' });
-  const [isClassifying, setIsClassifying] = useState(false);
-  const { showToast } = useToast();
-  
-  // Chat input in detail view
-  const [chatInput, setChatInput] = useState("");
-  const [userAvatarFailed, setUserAvatarFailed] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const normalizedAvatar = chatUserProfile?.avatar?.trim() || "";
-  const qq = (chatUserProfile?.qq || "").trim();
-  const qqAvatarSrc = qq ? `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(qq)}&s=100` : "";
-  const avatarFromLicense = normalizedAvatar
-    ? normalizedAvatar.startsWith("data:")
-      ? normalizedAvatar
-      : `data:image/png;base64,${normalizedAvatar}`
-    : "";
-  const userAvatarSrc = qqAvatarSrc || avatarFromLicense;
-
-  useEffect(() => {
-    setUserAvatarFailed(false);
-  }, [userAvatarSrc]);
-  
-  // Helper to process messages into display items (groups thoughts and tools)
-  const getDisplayItems = (messages: ChatMessage[], status: QuestionStatus): DisplayItem[] => {
-    const items: DisplayItem[] = [];
-    let currentThinking: ThinkingStep[] = [];
-    
-    // Helper to flush current thinking steps
-    const flushThinking = (isFinished: boolean) => {
-      if (currentThinking.length > 0) {
-        items.push({ 
-          type: 'thinking', 
-          steps: [...currentThinking],
-          isFinished 
-        });
-        currentThinking = [];
-      }
-    };
-
-    for (let i = 0; i < messages.length; i++) {
-      const msg = messages[i];
-
-      if (msg.role === 'system') continue;
-
-      if (msg.role === 'user') {
-        flushThinking(true);
-        items.push({ type: 'message', message: msg });
-      } else if (msg.role === 'assistant') {
-        const hasToolCalls = msg.rawToolCalls && msg.rawToolCalls.length > 0;
-        // Identify if this is a "thinking" step or a final answer
-        // Logic: If it has tool calls -> Thinking
-        // If it starts with "Thinking Process:" or similar (less reliable) -> Thinking
-        // Otherwise -> Message
-        
-        if (hasToolCalls) {
-          // This is a thinking step (Action)
-          // We can have multiple tool calls in one message
-          msg.rawToolCalls?.forEach(tc => {
-             const args = JSON.parse(tc.function.arguments);
-             currentThinking.push({
-               id: tc.id,
-               title: args.command ? `${t.execute}: ${args.command}` : `${t.call}: ${tc.function.name}`,
-               toolCall: {
-                 command: args.command || tc.function.name,
-                 args: args,
-                 isLoading: true // Will be updated by tool output
-               }
-             });
+        message.tool_calls?.forEach((toolCall) => {
+          let args: Record<string, unknown> = {};
+          try {
+            args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
+          } catch {
+            args = { raw: toolCall.function.arguments };
+          }
+          const display = buildToolDisplayText(toolCall);
+          thinkingSteps.push({
+            id: toolCall.id,
+            title: display.title,
+            toolCall: {
+              command: display.command,
+              args,
+              isLoading: true,
+            },
           });
-        } else {
-           // Normal message (Final Answer or Just Text)
-           // But wait, sometimes "Thoughts" come as text before tool calls? 
-           // In our implementation, we usually send tool calls.
-           // Let's treat it as a message, flushing previous thinking
-           flushThinking(true);
-           items.push({ type: 'message', message: msg });
-        }
-      } else if (msg.role === 'tool') {
-          // Identify Artifacts
-          if (msg.content.startsWith('{"jar_path":')) {
-            try {
-              const data = JSON.parse(msg.content);
-              items.push({ type: 'artifact', component: <JarConfigArtifact data={data} /> });
-            } catch (e) {
-              console.error("Failed to parse Jar artifact", e);
-            }
-          }
-
-          // Find the step that corresponds to this tool output
-          // In our simple model, we just look for the last step with matching ID or just the last step
-          // Since we process linearly, it should be in currentThinking
-          
-          const stepIndex = currentThinking.findIndex(s => s.id === msg.tool_call_id);
-          if (stepIndex !== -1) {
-              const step = currentThinking[stepIndex];
-              if (step.toolCall) {
-                  step.toolCall.output = msg.content;
-                  step.toolCall.isLoading = false;
-                  if (msg.content.includes("Exit:") && !msg.content.includes("Exit: 0")) {
-                      step.toolCall.isError = true;
-                  } else if (msg.content.includes("Execution failed")) {
-                      step.toolCall.isError = true;
-                  }
-              }
-          } else {
-              // Orphan tool output? Add as generic step
-              currentThinking.push({
-                  id: `tool-res-${i}`,
-                  title: t.tool_output,
-                  toolCall: {
-                      command: t.unknown,
-                      args: {},
-                      output: msg.content,
-                      isLoading: false
-                  }
-              });
-          }
+        });
+      } else {
+        flush(true);
+        items.push({ type: "message", message });
+      }
+      continue;
+    }
+    if (message.role === "tool") {
+      const step = thinkingSteps.find((item) => item.id === message.tool_call_id);
+      if (step?.toolCall) {
+        step.toolCall.output = message.content;
+        step.toolCall.isLoading = false;
+        step.toolCall.isError = /Execution failed|Exit:\s*[1-9]/.test(message.content);
       }
     }
-    
-    // Flush any remaining thinking steps
-    // If status is completed, then thinking is definitely finished
-    // If processing, it might be ongoing
-    flushThinking(status === 'completed' || status === 'error');
-    
-    return items;
-  };
-
-  // Copy feedback state
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  const { currentSession, selectedSessionIds, sessions } = useCommandStore();
-
-  const selectedQuestion = questions.find(q => q.id === selectedQuestionId);
-
-  // Scroll to bottom of chat
-  useEffect(() => {
-    if (selectedQuestionId && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
-  }, [selectedQuestionId, selectedQuestion?.messages]);
-
-  // Add questions from input
-  const handleAddQuestions = async () => {
-    if (!input.trim()) return;
-
-    // If auto-identify is on, trigger classification in background
-    if (autoIdentify && aiSettings) {
-      if (!aiSettings.configs[aiSettings.activeProvider]?.apiKey) {
-        alert(t.configure_api_key.replace("{0}", aiSettings.configs[aiSettings.activeProvider]?.name || "AI"));
-        return;
-      }
-      await splitAndClassifyQuestions(input, aiSettings);
-    } else {
-        const newLines = input.split("\n").filter(line => line.trim() !== "");
-        // We create them as "Basic" first
-        const newQuestions: BatchQuestion[] = newLines.map(line => ({
-          id: Math.random().toString(36).substring(2, 9),
-          content: line.trim(),
-          type: "Basic", // Default
-          status: "pending",
-          timestamp: Date.now(),
-          messages: [] 
-        }));
-        setQuestions(prev => [...prev, ...newQuestions]);
-    }
-
-    setInput("");
-  };
-
-  const splitAndClassifyQuestions = async (text: string, settings: AISettings) => {
-    setIsClassifying(true);
-    const prompt = `
-You are a task analyzer. 
-1. Analyze the following text and split it into distinct independent tasks/questions.
-2. For each task, classify it into exactly one of these categories: Basic, Database, Java, DataAnalysis.
-3. IMPORTANT: Prioritize "Database" over "DataAnalysis". If the task involves analyzing data that is likely stored in a database (e.g. users, orders, logs in DB tables), classify it as "Database". Only use "DataAnalysis" for general file/csv/statistical analysis that doesn't explicitly imply a database query.
-4. Return the result as a raw JSON array of objects, where each object has "content" (string) and "type" (string).
-5. Do NOT include any markdown formatting or explanation. Just the JSON array.
-6. Do NOT output any thinking process. Just output the JSON result directly and immediately.
-
-Text to analyze:
-${text}
-`;
-
-    try {
-        const res = await sendToAI([
-            { role: "user", content: prompt }
-        ], settings, []); 
-        setAutoSkillStatus(res.routing_info?.status_text || "");
-
-        const items = parseSplitResult(res.content);
-        if (!items) {
-          throw new Error("AI split result is empty or invalid");
-        }
-
-        const newQuestions: BatchQuestion[] = items.map((item) => ({
-          id: Math.random().toString(36).substring(2, 9),
-          content: item.content,
-          type: item.type,
-          status: "pending",
-          timestamp: Date.now(),
-          messages: []
-        }));
-        setQuestions(prev => [...prev, ...newQuestions]);
-    } catch (e) {
-        console.error("AI Split/Classify failed", e);
-        const newLines = text.split("\n").filter(line => line.trim() !== "");
-        if (newLines.length === 0) return;
-        const newQuestions: BatchQuestion[] = newLines.map(line => ({
-          id: Math.random().toString(36).substring(2, 9),
-          content: line.trim(),
-          type: "Basic",
-          status: "pending",
-          timestamp: Date.now(),
-          messages: [] 
-        }));
-        setQuestions(prev => [...prev, ...newQuestions]);
-    } finally {
-        setIsClassifying(false);
-    }
-  };
-
-  // Agent Loop for a single question
-  const processQuestion = async (q: BatchQuestion) => {
-    if (!aiSettings) return;
-
-    // Update status to processing
-    setQuestions(prev => prev.map(item => 
-        item.id === q.id ? { ...item, status: "processing", messages: [{ role: "user", content: q.content }] } : item
-    ));
-
-    // Determine target sessions
-    let targetSessions = sessions.filter((s) => selectedSessionIds.includes(s.id));
-    if (targetSessions.length === 0 && currentSession) {
-        targetSessions = [currentSession];
-    }
-    
-    // Initial History
-    // We add a system prompt to guide the output format
-    const systemPrompt = `你是一名全球顶尖的电子数据取证专家。
-你的任务是进行自动化批量取证分析，目标是精准、高效、安全。
-
-**核心原则**：
-1. **非交互式原则**：严禁使用 vi, nano, top 等交互式命令。使用 cat, grep, head, tail 等。
-2. **自适应分析**：根据发现的系统环境（Docker, Java, PHP等）自动调整查找策略。
-3. **数据清洗**：注意处理输出中的干扰信息。
-
-**回答格式**：
-- 对于批量提问，请**仅提供直接答案**（例如端口号、路径、状态值）。
-- 不要包含 Markdown 格式、长篇解释或思考过程的文本输出，除非用户明确要求详细报告。
-- 所有的“分析-执行-反馈”过程应体现在你的**工具调用**逻辑中，而不是最终的文本回复中。
-- 如果用户询问端口，只返回数字。如果询问路径，只返回路径。
-- 遇到错误或无法获取时，简要说明原因。`;
-
-    let history: ChatMessage[] = [
-        { 
-            role: "system", 
-            content: systemPrompt
-        },
-        { role: "user", content: q.content }
-    ];
-    
-    // Tools
-    const tools: Tool[] = [
-        {
-          type: "function",
-          function: {
-            name: "run_shell_command",
-            description: "Execute Shell Command on the target server(s).",
-            parameters: {
-              type: "object",
-              properties: {
-                command: { type: "string", description: "Shell command to execute" }
-              },
-              required: ["command"]
-            }
-          }
-        },
-        {
-          type: "function",
-          function: {
-            name: "analyze_jar_config",
-            description: "Analyze a JAR file to find configuration files (YAML, Properties, XML, JSON) and extract sensitive information (JDBC, Passwords) WITHOUT using 'strings' command.",
-            parameters: {
-              type: "object",
-              properties: {
-                jar_path: { type: "string", description: "Absolute path to the JAR file on the local system" }
-              },
-              required: ["jar_path"]
-            }
-          }
-        }
-    ];
-
-    try {
-        let finalAnswer = "";
-        let turnCount = 0;
-        const MAX_TURNS = aiSettings?.maxLoops || 10;
-
-        while (turnCount < MAX_TURNS) {
-            turnCount++;
-            
-            // 1. Send to AI
-            const aiMessages: AIMessage[] = history.map(m => ({
-                role: m.role as any,
-                content: m.content,
-                tool_call_id: m.tool_call_id,
-                tool_calls: (m as any).rawToolCalls
-            })) as AIMessage[];
-
-            const response = await sendToAI(aiMessages, aiSettings, tools, generalInfo);
-            setAutoSkillStatus(response.routing_info?.status_text || "");
-            
-            if (response.usage && onAiSettingsChange) {
-                const currentUsage = aiSettings.tokenUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
-                onAiSettingsChange({
-                    ...aiSettings,
-                    tokenUsage: {
-                        prompt_tokens: currentUsage.prompt_tokens + response.usage.prompt_tokens,
-                        completion_tokens: currentUsage.completion_tokens + response.usage.completion_tokens,
-                        total_tokens: currentUsage.total_tokens + response.usage.total_tokens,
-                    }
-                });
-            }
-
-            // 2. Add AI Response to History
-            const assistantMsg: ChatMessage = {
-                role: "assistant",
-                content: response.content,
-                rawToolCalls: response.tool_calls
-            };
-            history.push(assistantMsg);
-            
-            // Update UI with intermediate thought
-            setQuestions(prev => prev.map(item => 
-                item.id === q.id ? { ...item, messages: [...history] } : item
-            ));
-
-            // 3. Check Tool Calls
-            if (response.tool_calls && response.tool_calls.length > 0) {
-                // Execute Tools
-                for (const tc of response.tool_calls) {
-                    const functionName = tc.function.name;
-                    const args = JSON.parse(tc.function.arguments);
-                    let output = "";
-
-                    if (functionName === "run_shell_command") {
-                        const cmd = args.command;
-                        
-                        if (targetSessions.length === 0) {
-                            output = "Error: No active SSH session connected.";
-                        } else {
-                            // Run on all target sessions
-                            const results = await Promise.all(targetSessions.map(async (s) => {
-                                try {
-                                    const res: any = await invoke("exec_command", {
-                                        cmd,
-                                        sessionId: s.id
-                                    });
-                                    const out = res.stdout || res.stderr || "(No Output)";
-                                    
-                                    const exit = res.exit_code !== 0 ? ` [Exit: ${res.exit_code}]` : "";
-                                    return `[${s.user}@${s.ip}]${exit}:\n${out}`;
-                                } catch (e: any) {
-                                    return `[${s.user}@${s.ip}] Error: ${e.toString()}`;
-                                }
-                            }));
-                            output = results.join("\n\n---\n\n");
-                        }
-                    } else if (functionName === "analyze_jar_config") {
-                        const jarPath = args.jar_path;
-                        try {
-                            const encodedScript = encodePowerShellScript(JAR_ANALYSIS_SCRIPT);
-                            const safePath = jarPath.replace(/'/g, "''");
-                            const cmd = `powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encodedScript} -JarPath '${safePath}'`;
-                            
-                            const res: any = await invoke("exec_local_command", { cmd });
-                            output = res || "(No Output)";
-                        } catch (e: any) {
-                             output = `Error analyzing JAR: ${e}`;
-                        }
-                    } else {
-                        output = "Error: Unknown tool.";
-                    }
-
-                    // Add Tool Output to History
-                    const toolMsg: ChatMessage = {
-                        role: "tool",
-                        content: output,
-                        tool_call_id: tc.id
-                    };
-                    history.push(toolMsg);
-                }
-                
-                // Update UI again
-                setQuestions(prev => prev.map(item => 
-                    item.id === q.id ? { ...item, messages: [...history] } : item
-                ));
-                
-                // Loop continues to let AI see tool output
-            } else {
-                // No tool calls -> Final Answer
-                finalAnswer = response.content;
-                break;
-            }
-        }
-
-        // Completion
-        setQuestions(prev => prev.map(item => 
-            item.id === q.id ? { 
-                ...item, 
-                status: "completed", 
-                finalAnswer: finalAnswer,
-                messages: [...history],
-                // accuracy: 95 // Mock accuracy for now (Hidden by user request)
-            } : item
-        ));
-
-    } catch (error: any) {
-        setQuestions(prev => prev.map(item => 
-            item.id === q.id ? { 
-                ...item, 
-                status: "error", 
-                errorMessage: error.message 
-            } : item
-        ));
-    }
-  };
-
-  const startBatchProcessing = async () => {
-    if (!aiSettings) {
-        alert("Please configure AI settings first.");
-        return;
-    }
-    setIsProcessing(true);
-    setProcessingProgress({ current: 0, total: 0, currentQuestion: '' });
-    
-    const pendingQuestions = questions.filter(q => q.status === "pending");
-    const total = pendingQuestions.length;
-    
-    setProcessingProgress({ current: 0, total, currentQuestion: pendingQuestions[0]?.content || '' });
-    
-    // Concurrent processing with limit
-    const limit = pLimit(aiSettings.maxConcurrentTasks || 3);
-    let completed = 0;
-    
-    const tasks = pendingQuestions.map(q => limit(async () => {
-      setProcessingProgress(prev => ({ ...prev, currentQuestion: q.content }));
-      await processQuestion(q);
-      completed++;
-      setProcessingProgress(prev => ({ ...prev, current: completed }));
-    }));
-    
-    await Promise.all(tasks);
-    
-    setIsProcessing(false);
-    setProcessingProgress({ current: 0, total: 0, currentQuestion: '' });
-    
-    // 显示完成提示
-    const successCount = questions.filter(q => q.status === "completed").length;
-    const failedCount = questions.filter(q => q.status === "error").length;
-    showToast(
-      'success',
-      language === 'zh' 
-        ? `批量分析完成！成功 ${successCount} 个，失败 ${failedCount} 个` 
-        : `Batch completed! ${successCount} succeeded, ${failedCount} failed`,
-      4000
-    );
-  };
-
-  // Handle sending a follow-up message in detail view
-  const handleSendFollowUp = async () => {
-    if (!chatInput.trim() || !selectedQuestionId || !aiSettings) return;
-    
-    const q = questions.find(item => item.id === selectedQuestionId);
-    if (!q) return;
-
-    const userMsg: ChatMessage = { role: "user", content: chatInput };
-    
-    // Update local state first
-    const newMessages = [...q.messages, userMsg];
-    
-    setQuestions(prev => prev.map(item => 
-      item.id === selectedQuestionId 
-        ? { ...item, messages: newMessages, status: "processing" } 
-        : item
-    ));
-    setChatInput("");
-
-    // Continue the loop 
-    // We reuse logic similar to processQuestion but with existing history
-    try {
-        let history = [...newMessages];
-        if (!history.some((m) => m.role === "system")) {
-            history = [{
-                role: "system",
-                content: `你是一名全球顶尖的电子数据取证专家。请遵循非交互式命令原则并优先使用只读分析。`
-            }, ...history];
-        }
-        let targetSessions = sessions.filter((s) => selectedSessionIds.includes(s.id));
-        if (targetSessions.length === 0 && currentSession) {
-            targetSessions = [currentSession];
-        }
-
-        const tools: Tool[] = [
-            {
-              type: "function",
-              function: {
-                name: "run_shell_command",
-                description: "Execute Shell Command on the target server(s).",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    command: { type: "string", description: "Shell command to execute" }
-                  },
-                  required: ["command"]
-                }
-              }
-            }
-        ];
-
-        let turnCount = 0;
-        const MAX_TURNS = aiSettings?.maxLoops || 10;
-
-        while (turnCount < MAX_TURNS) {
-            turnCount++;
-            
-            const aiMessages = history.map(m => ({
-                role: m.role as any,
-                content: m.content,
-                tool_call_id: m.tool_call_id,
-                tool_calls: (m as any).rawToolCalls
-            })) as AIMessage[];
-
-            const response = await sendToAI(aiMessages, aiSettings, tools, generalInfo);
-            setAutoSkillStatus(response.routing_info?.status_text || "");
-            
-            if (response.usage && onAiSettingsChange) {
-                const currentUsage = aiSettings.tokenUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
-                onAiSettingsChange({
-                    ...aiSettings,
-                    tokenUsage: {
-                        prompt_tokens: currentUsage.prompt_tokens + response.usage.prompt_tokens,
-                        completion_tokens: currentUsage.completion_tokens + response.usage.completion_tokens,
-                        total_tokens: currentUsage.total_tokens + response.usage.total_tokens,
-                    }
-                });
-            }
-
-            const assistantMsg: ChatMessage = {
-                role: "assistant",
-                content: response.content,
-                rawToolCalls: response.tool_calls
-            };
-            history.push(assistantMsg);
-            
-            setQuestions(prev => prev.map(item => 
-                item.id === selectedQuestionId ? { ...item, messages: [...history] } : item
-            ));
-
-            if (response.tool_calls && response.tool_calls.length > 0) {
-                for (const tc of response.tool_calls) {
-                    const functionName = tc.function.name;
-                    const args = JSON.parse(tc.function.arguments);
-                    let output = "";
-
-                    if (functionName === "run_shell_command") {
-                        const cmd = args.command;
-                        if (targetSessions.length === 0) {
-                            output = "Error: No active SSH session connected.";
-                        } else {
-                            const results = await Promise.all(targetSessions.map(async (s) => {
-                                try {
-                                    const res: any = await invoke("exec_command", { cmd, sessionId: s.id });
-                                    const out = res.stdout || res.stderr || "(No Output)";
-
-                                    const exit = res.exit_code !== 0 ? ` [Exit: ${res.exit_code}]` : "";
-                                    return `[${s.user}@${s.ip}]${exit}:\n${out}`;
-                                } catch (e: any) {
-                                    return `[${s.user}@${s.ip}] Error: ${e.toString()}`;
-                                }
-                            }));
-                            output = results.join("\n\n---\n\n");
-                        }
-                    } else {
-                        output = "Error: Unknown tool.";
-                    }
-
-                    const toolMsg: ChatMessage = {
-                        role: "tool",
-                        content: output,
-                        tool_call_id: tc.id
-                    };
-                    history.push(toolMsg);
-                }
-                
-                setQuestions(prev => prev.map(item => 
-                    item.id === selectedQuestionId ? { ...item, messages: [...history] } : item
-                ));
-            } else {
-                break;
-            }
-        }
-        
-        setQuestions(prev => prev.map(item => 
-            item.id === selectedQuestionId ? { ...item, status: "completed" } : item
-        ));
-
-    } catch (e: any) {
-        // Handle error
-    }
-  };
-
-  const handleCopy = (e: React.MouseEvent, id: string, text: string) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  // Delete a question
-  const handleDelete = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    setQuestions(prev => prev.filter(q => q.id !== id));
-    if (selectedQuestionId === id) {
-        setSelectedQuestionId(null);
-    }
-  };
-
-  // Re-analyze a question
-  const handleReanalyze = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    const q = questions.find(item => item.id === id);
-    if (!q || !aiSettings) return;
-
-    // Reset status and process again
-    setQuestions(prev => prev.map(item => 
-        item.id === id ? { ...item, status: "pending", messages: [], finalAnswer: undefined, errorMessage: undefined } : item
-    ));
-
-    // We need to trigger processQuestion but it's async and we might want to do it immediately
-    // Since state update is async, we pass the reset object directly
-    const resetQ = { ...q, status: "pending" as QuestionStatus, messages: [], finalAnswer: undefined, errorMessage: undefined };
-    await processQuestion(resetQ);
-  };
-
-  // --- Detail View (Full Screen Chat) ---
-  if (selectedQuestion) {
-    return (
-      <div className="flex flex-col h-full ds-app-bg relative z-20 animate-in slide-in-from-right duration-300">
-        {/* Header */}
-        <div className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-6 shadow-sm flex-shrink-0">
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={() => setSelectedQuestionId(null)}
-              className="p-2 hover:bg-blue-50 text-slate-500 hover:text-blue-600 rounded-xl transition-all active:scale-90"
-            >
-              <ArrowLeft size={20} />
-            </button>
-            <div>
-              <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 tracking-tight">
-                {t.analysis_details}
-                <span className={`text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1.5 border font-black uppercase tracking-tight ${getColorForType(selectedQuestion.type)}`}>
-                    {getIconForType(selectedQuestion.type)}
-                    {t[`type_${selectedQuestion.type.toLowerCase().replace("dataanalysis", "data_analysis")}` as keyof typeof t] || selectedQuestion.type}
-                </span>
-              </h2>
-              <div className="text-[10px] font-bold text-blue-600/70 uppercase tracking-widest mt-0.5">{autoSkillStatus || t.skill_auto_detect_waiting}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 custom-scrollbar">
-           {selectedQuestion.messages.length === 0 ? (
-             <div className="h-full flex items-center justify-center text-slate-400">
-               <div className="text-center">
-                 <Bot size={48} className="mx-auto mb-4 opacity-20" />
-                 <p className="font-bold uppercase tracking-widest text-xs">{t.noData}</p>
-               </div>
-             </div>
-           ) : (
-             <div className="max-w-5xl mx-auto w-full">
-                {getDisplayItems(selectedQuestion.messages, selectedQuestion.status).map((item, idx) => {
-                  if (item.type === 'message') {
-                     if (item.message.role === 'user') {
-                       return (
-                        <div key={`msg-${idx}`} className="flex flex-row-reverse gap-4 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-600/20 bg-gradient-to-br from-blue-600 to-blue-800 text-white">
-                                {userAvatarSrc && !userAvatarFailed ? (
-                                  <img
-                                    src={userAvatarSrc}
-                                    alt="user avatar"
-                                    className="w-full h-full rounded-2xl object-cover"
-                                    onError={() => setUserAvatarFailed(true)}
-                                  />
-                                ) : (
-                                  <div className="text-sm font-black">U</div>
-                                )}
-                            </div>
-                            <div className="flex flex-col max-w-[85%] items-end">
-                                <div className="px-6 py-4 rounded-3xl shadow-md text-sm font-bold leading-relaxed bg-gradient-to-br from-blue-600 to-blue-800 text-white rounded-tr-sm transition-all duration-300 hover:shadow-blue-500/20">
-                                    {item.message.content}
-                                </div>
-                            </div>
-                        </div>
-                       );
-                     } else {
-                       // Assistant Message (Final Answer)
-                       return (
-                        <div key={`msg-${idx}`} className="flex gap-4 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-md ds-panel text-blue-600">
-                                <Bot size={22} />
-                            </div>
-                            <div className="flex flex-col max-w-[85%] items-start">
-                                <div className="px-7 py-5 rounded-3xl shadow-sm text-sm font-medium leading-relaxed bg-white border border-slate-100 rounded-tl-sm transition-all duration-300 hover:shadow-lg">
-                                    <div className="markdown-content prose-slate max-w-none">
-                                        <ReactMarkdown 
-                                            remarkPlugins={[remarkGfm]}
-                                            components={{
-                                                pre: ({node, ...props}) => (
-                                                    <div className="ds-panel-dark rounded-2xl p-4 my-4 overflow-x-auto text-blue-100 shadow-inner border border-blue-900/20">
-                                                        <pre {...props} className="font-mono text-xs leading-relaxed" />
-                                                    </div>
-                                                ),
-                                                code: ({node, className, children, ...props}) => (
-                                                    <code className={`${className} bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded-lg text-[11px] font-black font-mono border border-blue-100/50`} {...props}>
-                                                        {children}
-                                                    </code>
-                                                )
-                                            }}
-                                        >
-                                            {item.message.content}
-                                        </ReactMarkdown>
-                                    </div>
-                                    <button
-                                        onClick={(e) => handleCopy(e, `msg-${idx}`, item.message.content)}
-                                        className="mt-4 px-3 py-1.5 hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded-xl transition-all flex items-center gap-2 text-[11px] font-black uppercase tracking-wider"
-                                        title={t.copy}
-                                    >
-                                        {copiedId === `msg-${idx}` ? <Check size={14} className="text-emerald-600"/> : <Copy size={14}/>}
-                                        {t.copy}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                       );
-                     }
-                  } else if (item.type === 'artifact') {
-                    return (
-                        <div key={`artifact-${idx}`} className="my-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                             {item.component}
-                        </div>
-                    );
-                  } else {
-                    // Thinking Process
-                    return (
-                        <div key={`think-${idx}`} className="max-w-4xl">
-                          <ThinkingProcess 
-                              steps={item.steps} 
-                              isFinished={item.isFinished}
-                              language={language}
-                          />
-                        </div>
-                    );
-                  }
-                })}
-             </div>
-           )}
-           <div ref={messagesEndRef} className="h-12" />
-        </div>
-
-        {/* Input Area */}
-        <div className="p-6 bg-white/80 backdrop-blur-md border-t border-slate-200">
-          <div className="max-w-4xl mx-auto relative">
-            <div className="relative bg-blue-50/30 focus-within:bg-white rounded-[2rem] border border-slate-200 focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-500/5 transition-all duration-300 shadow-sm">
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSendFollowUp()}
-                placeholder={t.chat_input_placeholder}
-                disabled={!aiSettings?.configs[aiSettings.activeProvider].apiKey}
-                className="w-full pl-6 pr-14 py-4.5 bg-transparent border-none focus:ring-0 outline-none focus:outline-none text-slate-800 font-bold placeholder:text-slate-400 text-sm"
-              />
-              <button
-                onClick={handleSendFollowUp}
-                disabled={!chatInput.trim()}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 bg-gradient-to-br from-blue-600 to-blue-800 text-white rounded-full hover:shadow-lg hover:shadow-blue-500/25 disabled:opacity-50 transition-all active:scale-90"
-              >
-                <Send size={18} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
   }
 
-  // --- Main Dashboard View ---
+  flush(false);
+  return items;
+}
+
+function resolveTargetSessions(
+  sessions: RemoteSession[],
+  selectedSessionIds: string[],
+  currentSession: RemoteSession | null,
+  targetIds?: string[],
+) {
+  if (targetIds && targetIds.length > 0) {
+    return sessions.filter((session) => targetIds.includes(session.id));
+  }
+  const selected = sessions.filter((session) => selectedSessionIds.includes(session.id));
+  if (selected.length > 0) {
+    return selected;
+  }
+  return currentSession ? [currentSession] : [];
+}
+
+function extractAnswer(messages: AIMessage[]) {
+  const assistantMessages = messages.filter(
+    (message) => message.role === "assistant" && !message.tool_calls?.length && message.content.trim(),
+  );
+  return assistantMessages[assistantMessages.length - 1]?.content || "";
+}
+
+export default function AgentPanel({
+  language = "zh",
+  aiSettings,
+  onAiSettingsChange,
+  generalInfo = "",
+}: AgentPanelProps) {
+  const { currentSession, sessions, selectedSessionIds } = useCommandStore();
+  const records = useAIWorkspaceStore((state) => state.records);
+  const tasks = useAIWorkspaceStore((state) => state.tasks);
+  const promptHistory = useAIWorkspaceStore((state) => state.promptHistory);
+  const promptSnippets = useAIWorkspaceStore((state) => state.promptSnippets);
+  const sessionTitle = useAIWorkspaceStore((state) => state.sessionTitle);
+  const appendRecord = useAIWorkspaceStore((state) => state.appendRecord);
+  const syncTasks = useAIWorkspaceStore((state) => state.syncTasks);
+  const finalizeTasks = useAIWorkspaceStore((state) => state.finalizeTasks);
+  const updateTaskStatus = useAIWorkspaceStore((state) => state.updateTaskStatus);
+  const removeTask = useAIWorkspaceStore((state) => state.removeTask);
+  const clearTasks = useAIWorkspaceStore((state) => state.clearTasks);
+  const addPromptHistory = useAIWorkspaceStore((state) => state.addPromptHistory);
+  const savePromptSnippet = useAIWorkspaceStore((state) => state.savePromptSnippet);
+  const removePromptSnippet = useAIWorkspaceStore((state) => state.removePromptSnippet);
+  const togglePromptSnippetPin = useAIWorkspaceStore((state) => state.togglePromptSnippetPin);
+  const [questionInput, setQuestionInput] = useState("");
+  const [items, setItems] = useState<BatchItem[]>([]);
+  const [running, setRunning] = useState(false);
+  const [status, setStatus] = useState("");
+  const [preview, setPreview] = useState<{ title: string; content: string } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; actions: Array<{ label: string; onClick: () => void; danger?: boolean }> } | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const config = aiSettings?.configs[aiSettings.activeProvider];
+  const totalCompleted = items.filter((item) => item.status === "completed").length;
+
+  const executeToolCall = async (toolCall: ToolCall) => {
+    if (toolCall.function.name === "update_context_info") {
+      const args = JSON.parse(toolCall.function.arguments) as { info?: string };
+      if (args.info) {
+        appendRecord({
+          content: args.info,
+          source: "batch-agent",
+        });
+      }
+      return {
+        role: "tool",
+        content: language === "zh" ? "共享线索池已更新。" : "Shared clue pool updated.",
+        tool_call_id: toolCall.id,
+      } as AIMessage;
+    }
+
+    if (toolCall.function.name === "update_plan") {
+      const args = JSON.parse(toolCall.function.arguments) as {
+        tasks?: Array<{
+          id?: string;
+          content: string;
+          status: "pending" | "in_progress" | "completed";
+        }>;
+      };
+      syncTasks(args.tasks || [], "planner");
+      return {
+        role: "tool",
+        content: language === "zh" ? "执行计划已更新。" : "Execution plan updated.",
+        tool_call_id: toolCall.id,
+      } as AIMessage;
+    }
+
+    const researchResult = await executeResearchTool(toolCall, language);
+    if (researchResult) {
+      return researchResult;
+    }
+
+    const serverToolExecution = buildServerForensicsToolExecution(toolCall);
+    const args = JSON.parse(toolCall.function.arguments) as {
+      command?: string;
+      target_ids?: string[];
+    };
+    const command = serverToolExecution?.command ?? args.command;
+    const targetIds = serverToolExecution?.targetIds ?? args.target_ids;
+    if (!command) {
+      return {
+        role: "tool",
+        content: language === "zh" ? "工具参数不完整，缺少可执行内容。" : "Tool arguments are incomplete.",
+        tool_call_id: toolCall.id,
+      } as AIMessage;
+    }
+
+    const targetSessions = resolveTargetSessions(sessions, selectedSessionIds, currentSession, targetIds);
+    if (targetSessions.length === 0) {
+      return {
+        role: "tool",
+        content: language === "zh" ? "当前没有可执行的 SSH 会话。" : "No SSH session is available.",
+        tool_call_id: toolCall.id,
+      } as AIMessage;
+    }
+
+    const outputs = await Promise.all(
+      targetSessions.map(async (session) => {
+        const result = await invoke<{ stdout: string; stderr: string; exit_code: number }>("exec_command", {
+          cmd: command,
+          sessionId: session.id,
+        });
+        const body = [result.stdout.trim(), result.stderr.trim(), `Exit: ${result.exit_code}`].filter(Boolean).join("\n");
+        return `[${session.user}@${session.ip}]\n${body || (language === "zh" ? "无输出" : "No output")}`;
+      }),
+    );
+
+    return {
+      role: "tool",
+      content: outputs.join("\n\n----------------------------------------\n\n"),
+      tool_call_id: toolCall.id,
+    } as AIMessage;
+  };
+
+  const updateItem = (id: string, updater: (item: BatchItem) => BatchItem) => {
+    setItems((prev) => prev.map((item) => (item.id === id ? updater(item) : item)));
+  };
+
+  const handleStart = async () => {
+    if (running || !aiSettings || !config) {
+      return;
+    }
+    if (!config.apiKey.trim()) {
+      setStatus(language === "zh" ? "请先在设置中配置 AI Key。" : "Configure the AI key first.");
+      return;
+    }
+
+    const questions = questionInput
+      .split("\n")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (questions.length === 0) {
+      setStatus(language === "zh" ? "请先输入至少一个问题。" : "Enter at least one question.");
+      return;
+    }
+
+    addPromptHistory(questionInput);
+    const batchItems: BatchItem[] = questions.map((question) => ({
+      id: crypto.randomUUID(),
+      question,
+      status: "pending",
+      messages: [{ role: "user", content: question }],
+      answer: "",
+      error: "",
+    }));
+
+    setItems(batchItems);
+    setRunning(true);
+    setStatus(language === "zh" ? "批量问答执行中..." : "Running batch QA...");
+
+    const workspaceInfo = buildWorkspacePromptContext(generalInfo, records);
+    const serverInfo = buildServerContextSummary(sessions, selectedSessionIds, currentSession);
+    const batchContext = buildContextSections([
+      { title: "当前任务", content: "主答题面板批量问答" },
+      { title: "服务器会话", content: serverInfo },
+      { title: "共享线索池", content: workspaceInfo || "暂无" },
+      {
+        title: "约束",
+        content:
+          "逐题分析，必要时主动执行只读命令。每一题都给出明确答案。开始前先调用 update_plan 制定共享计划，并在执行过程中更新计划状态。发现可复用线索时，立即调用 update_context_info 保存到共享线索池。",
+      },
+    ]);
+
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    try {
+      const maxConcurrent = Math.max(1, aiSettings.maxConcurrentTasks ?? 3);
+      let currentIndex = 0;
+      const worker = async () => {
+        while (!abortController.signal.aborted) {
+          const batchItem = batchItems[currentIndex];
+          currentIndex += 1;
+          if (!batchItem) {
+            return;
+          }
+
+          updateItem(batchItem.id, (item) => ({ ...item, status: "running", error: "" }));
+          setStatus(
+            language === "zh"
+              ? `正在处理：${batchItem.question}`
+              : `Processing: ${batchItem.question}`,
+          );
+
+          try {
+            const finalHistory = await runConversationLoop({
+              initialHistory: [{ role: "user", content: batchItem.question }],
+              settings: aiSettings,
+              generalInfo: batchContext,
+              signal: abortController.signal,
+              executeToolCall: async ({ toolCall }) => executeToolCall(toolCall),
+              callbacks: {
+                onAssistantMessage: (_, history) => {
+                  updateItem(batchItem.id, (item) => ({ ...item, messages: history }));
+                },
+                onToolResult: (_, __, history) => {
+                  updateItem(batchItem.id, (item) => ({ ...item, messages: history }));
+                },
+                onUsage: (usage) => {
+                  onAiSettingsChange?.(applyUsageToSettings(aiSettings, usage));
+                },
+              },
+            });
+
+            updateItem(batchItem.id, (item) => ({
+              ...item,
+              status: "completed",
+              messages: finalHistory,
+              answer: extractAnswer(finalHistory),
+            }));
+          } catch (error) {
+            updateItem(batchItem.id, (item) => ({
+              ...item,
+              status: "error",
+              error: String(error),
+            }));
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(maxConcurrent, batchItems.length) }, () => worker()));
+      finalizeTasks("all");
+      setStatus(language === "zh" ? "批量问答执行完成" : "Batch QA completed");
+    } finally {
+      abortControllerRef.current = null;
+      setRunning(false);
+    }
+  };
+
+  const handleStop = () => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setRunning(false);
+    setStatus(language === "zh" ? "已停止批量执行" : "Batch execution stopped");
+  };
+
+  const summaryText = useMemo(() => {
+    if (items.length === 0) {
+      return language === "zh" ? "尚未开始批量问答。" : "Batch QA has not started.";
+    }
+    return language === "zh"
+      ? `已完成 ${totalCompleted} / ${items.length} 题`
+      : `${totalCompleted} / ${items.length} completed`;
+  }, [items.length, language, totalCompleted]);
+
+  const slashCommands = useMemo(
+    () => [
+      {
+        id: "plan",
+        command: "/plan",
+        title: language === "zh" ? "生成批量计划" : "Create batch plan",
+        description: language === "zh" ? "先规划批量问答步骤，再逐题执行" : "Plan the batch workflow before answering",
+        insertText:
+          language === "zh"
+            ? "请先给出一份适用于全部问题的共享计划，再按计划逐题分析并同步状态。"
+            : "Create a shared plan for all questions first, then answer each question step by step.",
+      },
+      {
+        id: "web",
+        command: "/web",
+        title: language === "zh" ? "联网补充资料" : "Search the web",
+        description: language === "zh" ? "为整批问题补充公开资料、文档或漏洞说明" : "Gather public references for the batch",
+        insertText:
+          language === "zh"
+            ? "请先联网搜索与这些问题相关的公开资料，再结合搜索结果统一回答。"
+            : "Search the public web for references related to these questions before answering them.",
+      },
+      {
+        id: "context",
+        command: "/context",
+        title: language === "zh" ? "复用共享线索" : "Reuse shared clues",
+        description: language === "zh" ? "优先复用共享线索池中的证据回答全部问题" : "Answer from the shared clue pool first",
+        insertText:
+          language === "zh"
+            ? "请先复用共享线索池中的证据回答这些问题，仅在必要时再补充新的验证。"
+            : "Reuse the shared clue pool first and only add new verification when necessary.",
+      },
+      {
+        id: "clear",
+        command: "/clear",
+        title: language === "zh" ? "清空批量结果" : "Clear batch results",
+        description: language === "zh" ? "清空问题输入与当前批量结果" : "Clear current input and batch output",
+        onSelect: () => {
+          setItems([]);
+          setQuestionInput("");
+          setStatus("");
+        },
+      },
+    ],
+    [language],
+  );
 
   return (
-    <div className="flex h-full bg-slate-50 overflow-hidden">
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col transition-all duration-300">
-        
-        {/* Header / Config Bar */}
-        <div className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-6 shadow-sm z-10 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-br from-blue-600 to-blue-800 p-2 rounded-xl text-white shadow-lg shadow-blue-500/20">
-              <Bot size={20} />
-            </div>
-            <h1 className="text-lg font-black text-slate-800 tracking-tight">{t.batch_agent_title}</h1>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-blue-50/50 px-3 py-1.5 rounded-full border border-blue-100">
-              <Settings size={14} className="text-blue-500" />
-              <label className="text-xs font-bold text-blue-700 flex items-center gap-2 cursor-pointer select-none uppercase tracking-wider">
-                <input 
-                  type="checkbox" 
-                  checked={autoIdentify} 
-                  onChange={(e) => setAutoIdentify(e.target.checked)}
-                  className="rounded border-blue-300 text-blue-600 focus:ring-blue-500"
-                />
-                {t.auto_identify_type}
-              </label>
-            </div>
-            
-            <button
-              onClick={startBatchProcessing}
-              disabled={isProcessing || questions.filter(q => q.status === "pending").length === 0}
-              className={`flex items-center gap-2 px-5 py-2 rounded-xl text-white text-sm font-black transition-all shadow-md active:scale-95
-                ${isProcessing || questions.filter(q => q.status === "pending").length === 0
-                  ? "bg-slate-300 cursor-not-allowed shadow-none" 
-                  : "bg-gradient-to-r from-blue-600 to-blue-800 hover:shadow-lg hover:shadow-blue-500/25"}`}
+    <div className="h-full grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="ui-shell h-full rounded-[2rem] overflow-hidden flex flex-col">
+      <WorkspaceHeader
+        language={language}
+        icon={ListChecks}
+        title={language === "zh" ? "主答题面板" : "Main Answer Panel"}
+        description={
+          language === "zh"
+            ? "批量传入问题，逐条输出答案与可见思考流程。"
+            : "Send multiple questions and get answers with visible execution flow."
+        }
+        aiSettings={aiSettings!}
+        sessionInfo={
+          currentSession
+            ? `${currentSession.user}@${currentSession.ip}`
+            : language === "zh"
+              ? "未连接 SSH 会话"
+              : "No SSH session"
+        }
+        extraItems={[
+          { label: language === "zh" ? "并发" : "Concurrency", value: String(aiSettings?.maxConcurrentTasks ?? 3) },
+          { label: language === "zh" ? "任务" : "Tasks", value: String(tasks.length) },
+          { label: language === "zh" ? "线索" : "Clues", value: String(records.length) },
+          { label: language === "zh" ? "会话标题" : "Session", value: `${sessionTitle} · ${language === "zh" ? "批量模式" : "Batch Mode"}` },
+        ]}
+        actions={
+          <>
+            {running && (
+              <motion.button
+                onClick={handleStop}
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.985 }}
+                className="ui-button-danger ui-pressable rounded-2xl px-4 py-2.5 text-sm font-medium text-amber-700"
+              >
+                <Square size={16} />
+                {language === "zh" ? "停止" : "Stop"}
+              </motion.button>
+            )}
+            <motion.button
+              onClick={() => {
+                setItems([]);
+                setQuestionInput("");
+                setStatus("");
+              }}
+              whileHover={{ y: -1 }}
+              whileTap={{ scale: 0.985 }}
+              className="ui-button ui-pressable rounded-2xl px-4 py-2.5 text-sm font-medium text-slate-600"
             >
-              {isProcessing ? <Loader2 size={18} className="animate-spin" /> : <Play size={18} fill="currentColor" />}
-              {isProcessing 
-                ? `${t.processing} (${processingProgress.current}/${processingProgress.total})` 
-                : t.start_batch}
-            </button>
-            
-            {/* Progress Bar */}
-            {isProcessing && processingProgress.total > 0 && (
-              <div className="flex-1 min-w-[200px]">
-                <div className="flex items-center justify-between text-xs text-slate-600 mb-1">
-                  <span className="truncate max-w-[300px]" title={processingProgress.currentQuestion}>
-                    {language === 'zh' ? '当前：' : 'Current: '}{processingProgress.currentQuestion}
-                  </span>
-                  <span className="font-mono font-semibold">
-                    {Math.round((processingProgress.current / processingProgress.total) * 100)}%
-                  </span>
-                </div>
-                <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-gradient-to-r from-green-500 to-emerald-600 transition-all duration-300 ease-out"
-                    style={{ width: `${(processingProgress.current / processingProgress.total) * 100}%` }}
-                  />
-                </div>
-              </div>
-            )}
+              <Trash2 size={16} />
+              {language === "zh" ? "清空" : "Clear"}
+            </motion.button>
+          </>
+        }
+      />
+      <div className="px-5 py-4 md:px-6">
+        <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_220px]">
+          <textarea
+            value={questionInput}
+            onChange={(event) => setQuestionInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Tab" && questionInput.trim().startsWith("/")) {
+                const completion = getSlashCommandCompletion(questionInput, slashCommands);
+                if (completion) {
+                  event.preventDefault();
+                  setQuestionInput(completion);
+                }
+                return;
+              }
+              if (event.key === "Enter" && !event.shiftKey && questionInput.trim().startsWith("/")) {
+                event.preventDefault();
+                const exactCommand = getExactSlashCommand(questionInput, slashCommands);
+                if (exactCommand) {
+                  if (exactCommand.onSelect) {
+                    exactCommand.onSelect();
+                  } else {
+                    setQuestionInput(exactCommand.insertText || exactCommand.command);
+                  }
+                }
+              }
+            }}
+            placeholder={
+              language === "zh"
+                ? "每行一个问题，或输入 / 打开命令面板，例如：\n当前服务器主要业务是什么？\n网站配置文件在哪里？\n数据库管理员账号有哪些？"
+                : "One question per line, or type / to open the command palette."
+            }
+            className="ui-input-base min-h-[132px] resize-none rounded-[1.7rem] px-4 py-3 text-sm text-slate-700"
+          />
+          <div className="ui-subtle-surface rounded-[1.7rem] p-4 flex flex-col justify-between">
+            <div>
+              <div className="text-sm font-semibold text-slate-900">{summaryText}</div>
+              <div className="mt-2 text-sm text-slate-500">{status || (language === "zh" ? "等待开始" : "Waiting")}</div>
+            </div>
+            <motion.button
+              onClick={() => void handleStart()}
+              disabled={running || !questionInput.trim() || questionInput.trim().startsWith("/")}
+              whileHover={{ y: -1 }}
+              whileTap={{ scale: 0.985 }}
+              className="ui-button-primary ui-pressable mt-4 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-medium text-white disabled:bg-slate-300 disabled:border-slate-300"
+            >
+              {running ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+              {language === "zh" ? "开始批量问答" : "Start Batch"}
+            </motion.button>
           </div>
         </div>
-
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-6">
-          
-          {/* Input Section */}
-          <div className="ds-panel rounded-2xl p-5 mb-6 shadow-sm border border-blue-100/50">
-            <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-              <div className="p-1.5 bg-blue-100 rounded-lg text-blue-600">
-                <Plus size={16} />
-              </div>
-              {t.add_questions_title}
-            </h3>
-            <div className="relative bg-blue-50/30 focus-within:bg-white rounded-2xl border border-slate-200 focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-500/5 transition-all duration-300">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder={t.add_questions_placeholder}
-                className="w-full h-28 p-4 bg-transparent border-none focus:ring-0 outline-none focus:outline-none resize-none text-slate-700 text-sm font-medium custom-scrollbar"
-              />
-            </div>
-            <div className="mt-4 flex items-center justify-between">
-              <div className="text-[11px] font-bold text-blue-600/70 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100/50 uppercase tracking-wider">
-                {autoSkillStatus || t.skill_auto_detect_waiting}
-              </div>
-              <button 
-                onClick={handleAddQuestions}
-                disabled={!input.trim() || isClassifying}
-                className="px-6 py-2 bg-gradient-to-r from-blue-600 to-blue-800 text-white text-sm font-black rounded-xl hover:shadow-lg hover:shadow-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2 active:scale-95"
-              >
-                {isClassifying && <Loader2 size={14} className="animate-spin" />}
-                {isClassifying ? t.analyzing : t.add_to_queue}
-              </button>
-            </div>
-          </div>
-
-          {/* Questions List */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2 flex items-center justify-between">
-              <span>{t.analysis_queue}</span>
-              <span className="text-xs font-normal text-slate-400">
-                {questions.length} items
+        <div className="mt-4 flex flex-wrap gap-2">
+          {batchPromptPresets[language].map((prompt) => (
+            <motion.button
+              key={prompt}
+              whileHover={{ y: -1 }}
+              whileTap={{ scale: 0.985 }}
+              onClick={() => setQuestionInput((prev) => (prev ? `${prev}\n${prompt}` : prompt))}
+              className="ui-chip ui-pressable rounded-2xl px-3 py-2 text-sm text-slate-600"
+            >
+              <span className="inline-flex items-center gap-2">
+                <Wand2 size={14} />
+                {prompt}
               </span>
-            </h3>
-            
-            {questions.length === 0 && (
-              <div className="text-center py-12 text-slate-400 ds-panel rounded-xl border border-dashed border-blue-200">
-                <Bot size={32} className="mx-auto mb-2 opacity-50" />
-                <p>{t.no_questions}</p>
-              </div>
-            )}
-
-            {questions.map((q) => (
-              <div 
-                key={q.id}
-                onDoubleClick={() => {
-                   setSelectedQuestionId(q.id);
-                }}
-                className={`group relative bg-white/80 backdrop-blur-sm p-4 rounded-xl border transition-all hover:shadow-lg flex flex-col md:flex-row gap-4
-                  ${(q.status === "completed" || q.status === "processing" || q.status === "error") ? "cursor-pointer hover:border-blue-400 ds-panel" : "cursor-default border-slate-200 opacity-80"}
-                `}
-              >
-                {/* Left Column: Question Info (Width 65%) */}
-                <div className="flex-1 md:w-[65%] min-w-0 border-r border-slate-100 pr-4 relative">
-                  <div className="flex items-start gap-4 h-full">
-                    {/* Icon & Status */}
-                    <div className="flex-shrink-0 pt-1">
-                      {q.status === "pending" && <Clock size={20} className="text-slate-400" />}
-                      {q.status === "processing" && <Loader2 size={20} className="text-blue-500 animate-spin" />}
-                      {q.status === "completed" && <CheckCircle2 size={20} className="text-emerald-500" />}
-                      {q.status === "error" && <X size={20} className="text-rose-500" />}
-                    </div>
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0 flex flex-col h-full justify-between">
-                      <p className="text-slate-800 font-bold line-clamp-3 mb-2 pr-16">{q.content}</p>
-                      <div className="flex items-center gap-2 mt-auto">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1.5 border font-black uppercase tracking-tight ${getColorForType(q.type)}`}>
-                          {getIconForType(q.type)}
-                          {t[`type_${q.type.toLowerCase().replace("dataanalysis", "data_analysis")}` as keyof typeof t] || q.type}
-                        </span>
-                        {q.status === "error" && (
-                           <span className="text-xs text-rose-500 font-medium">{q.errorMessage}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Action Buttons (Top Right of Left Column) */}
-                  <div className="absolute top-0 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                        onClick={(e) => handleReanalyze(e, q.id)}
-                        className="p-1.5 hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded-lg transition-all"
-                        title={t.reanalyze}
-                    >
-                        <RefreshCw size={14} />
-                    </button>
-                    <button
-                        onClick={(e) => handleDelete(e, q.id)}
-                        className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-all"
-                        title={t.delete}
-                    >
-                        <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Right Column: Answer Preview (Width 35%) */}
-                <div className="md:w-[35%] flex flex-col justify-between pl-2 relative">
-                  {q.status === "completed" && q.finalAnswer ? (
-                    <>
-                      <div className="ds-panel-light rounded-xl p-3 text-xs text-slate-600 leading-relaxed border border-blue-100/50 h-full overflow-hidden relative group/answer">
-                        <div className="absolute top-0 right-0 p-1 opacity-0 group-hover/answer:opacity-100 transition-opacity">
-                           <button
-                              onClick={(e) => handleCopy(e, q.id, q.finalAnswer || "")}
-                              className="p-1.5 hover:bg-white bg-white/80 text-slate-500 hover:text-blue-600 rounded-lg border border-slate-200 shadow-sm transition-all"
-                              title={t.copy}
-                           >
-                              {copiedId === q.id ? <Check size={14} className="text-emerald-600"/> : <Copy size={14}/>}
-                           </button>
-                        </div>
-                        <p className="line-clamp-4 text-sm font-bold text-slate-700 leading-relaxed">{q.finalAnswer}</p>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-slate-400 text-[11px] font-bold uppercase tracking-widest bg-blue-50/30 rounded-xl border border-dashed border-blue-100">
-                       {q.status === "pending" ? t.pending_analysis : q.status === "processing" ? t.processing : "Error"}
-                    </div>
-                  )}
-                  
-                  {/* View Details Arrow (Absolute positioned or just at bottom right) */}
-                  {(q.status === "completed" || q.status === "processing" || q.status === "error") && (
-                    <div className="absolute bottom-1 right-0 text-blue-300">
-                       <ChevronRight size={16} />
-                    </div>
-                  )}
-                </div>
-
-              </div>
-            ))}
-          </div>
-
+            </motion.button>
+          ))}
         </div>
+        <SlashCommandMenu
+          language={language}
+          input={questionInput}
+          commands={slashCommands}
+          onUse={(command) => {
+            if (command.onSelect) {
+              command.onSelect();
+              return;
+            }
+            setQuestionInput(command.insertText || "");
+          }}
+        />
       </div>
+
+      <div className="flex-1 overflow-auto bg-slate-50/40 px-4 py-4 md:px-6 md:py-5 space-y-4">
+        {items.length === 0 && (
+          <div className="ui-surface rounded-[1.7rem] border-dashed px-6 py-10 text-center text-slate-500">
+            {language === "zh"
+              ? "批量问题会在这里展示答案。每一题都能看到执行过程与最终结果。"
+              : "Batch answers will appear here with their visible process."}
+          </div>
+        )}
+        {items.map((item) => {
+          const displayItems = buildDisplayItems(item.messages);
+          return (
+            <motion.div
+              key={item.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              onDoubleClick={() => setPreview({ title: item.question, content: item.answer || item.error || item.question })}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setMenu({
+                  x: event.clientX,
+                  y: event.clientY,
+                  actions: [
+                    {
+                      label: language === "zh" ? "查看详情" : "Preview",
+                      onClick: () => setPreview({ title: item.question, content: item.answer || item.error || item.question }),
+                    },
+                    {
+                      label: language === "zh" ? "复制问题" : "Copy Question",
+                      onClick: () => void navigator.clipboard.writeText(item.question),
+                    },
+                    ...(item.answer
+                      ? [
+                          {
+                            label: language === "zh" ? "复制答案" : "Copy Answer",
+                            onClick: () => void navigator.clipboard.writeText(item.answer),
+                          },
+                        ]
+                      : []),
+                  ],
+                });
+              }}
+              className="ui-surface rounded-[1.7rem] p-5"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    {language === "zh" ? "问题" : "Question"}
+                  </div>
+                  <div className="mt-2 text-base font-semibold text-slate-900">{item.question}</div>
+                </div>
+                <div
+                  className={`rounded-2xl px-3 py-2 text-sm font-medium ${
+                    item.status === "completed"
+                      ? "bg-emerald-50 text-emerald-700"
+                      : item.status === "error"
+                        ? "bg-rose-50 text-rose-700"
+                        : item.status === "running"
+                          ? "bg-blue-50 text-blue-700"
+                          : "bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  {item.status === "completed"
+                    ? language === "zh"
+                      ? "已完成"
+                      : "Completed"
+                    : item.status === "error"
+                      ? language === "zh"
+                        ? "失败"
+                        : "Error"
+                      : item.status === "running"
+                        ? language === "zh"
+                          ? "处理中"
+                          : "Running"
+                        : language === "zh"
+                          ? "排队中"
+                          : "Pending"}
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-4">
+                {displayItems.map((displayItem, index) =>
+                  displayItem.type === "thinking" ? (
+                    <ThinkingProcess
+                      key={`thinking-${index}`}
+                      steps={displayItem.steps}
+                      isFinished={displayItem.isFinished}
+                      language={language}
+                    />
+                  ) : (
+                    displayItem.message.role !== "user" && (
+                      <ChatTranscriptMessage key={`message-${index}`} message={displayItem.message} language={language} />
+                    )
+                  ),
+                )}
+                {item.answer && (
+                  <div className="rounded-[1.35rem] border border-emerald-200 bg-emerald-50/95 px-4 py-3 shadow-[0_18px_30px_-24px_rgba(16,185,129,0.35)]">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
+                      <CheckCircle2 size={16} />
+                      {language === "zh" ? "最终答案" : "Final Answer"}
+                    </div>
+                    <div className="mt-2 prose prose-sm max-w-none text-slate-700">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.answer}</ReactMarkdown>
+                    </div>
+                  </div>
+                )}
+                {item.error && <div className="text-sm text-rose-600">{item.error}</div>}
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+      </div>
+      <aside className="custom-scrollbar max-h-full overflow-auto pr-1 space-y-4">
+        <PlannerPanel
+          language={language}
+          tasks={tasks}
+          onClear={() => clearTasks()}
+          onUpdateTaskStatus={updateTaskStatus}
+          onRemoveTask={removeTask}
+        />
+        <PromptDeck
+          language={language}
+          title={language === "zh" ? "批量提示词库" : "Batch Prompt Deck"}
+          promptHistory={promptHistory}
+          promptSnippets={promptSnippets}
+          currentInput={questionInput}
+          onUsePrompt={(value) => setQuestionInput((prev) => (prev ? `${prev}\n${value}` : value))}
+          onSaveCurrent={() => savePromptSnippet({ content: questionInput, pinned: false })}
+          onSaveHistoryPrompt={(value) => savePromptSnippet({ content: value, pinned: false })}
+          onRemoveSnippet={removePromptSnippet}
+          onTogglePin={togglePromptSnippetPin}
+        />
+      </aside>
+      <FloatingContextMenu menu={menu} onClose={() => setMenu(null)} />
+      {preview && <PreviewDialog title={preview.title} content={preview.content} onClose={() => setPreview(null)} />}
     </div>
   );
 }

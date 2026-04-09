@@ -210,6 +210,20 @@ export default function Intro({ onComplete, bootReady = false, bootStatusText = 
       exit={{ opacity: 0, scale: 1.1, filter: "blur(10px)" }}
       transition={{ duration: 0.8 }}
     >
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(64,158,255,0.12),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(240,85,154,0.12),_transparent_28%),radial-gradient(circle_at_left,_rgba(179,125,239,0.10),_transparent_24%)]" />
+        <motion.div
+          className="absolute -left-20 top-24 h-72 w-72 rounded-full bg-[#409EFF]/10 blur-3xl"
+          animate={{ x: [0, 28, 0], y: [0, -16, 0] }}
+          transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <motion.div
+          className="absolute -right-20 bottom-16 h-80 w-80 rounded-full bg-[#B37DEF]/10 blur-3xl"
+          animate={{ x: [0, -22, 0], y: [0, 18, 0] }}
+          transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+        />
+      </div>
+
       {/* Background Grid */}
       <div 
         className="absolute inset-0 pointer-events-none opacity-30"
@@ -235,7 +249,7 @@ export default function Intro({ onComplete, bootReady = false, bootStatusText = 
 
       {/* --- TOP STATUS BAR --- */}
       <motion.div 
-        className={`absolute top-0 left-0 right-0 h-16 border-b backdrop-blur-md z-50 flex items-center justify-between px-8 shadow-sm ${isStarryMode ? "border-slate-700/70 bg-slate-900/80" : "border-slate-100 bg-white/90"}`}
+        className={`absolute top-0 left-0 right-0 h-16 border-b backdrop-blur-xl z-50 flex items-center justify-between px-8 shadow-sm ${isStarryMode ? "border-slate-700/70 bg-slate-900/80" : "border-white/70 bg-white/78"}`}
         initial={{ y: -100 }}
         animate={{ y: 0 }}
         transition={{ delay: 0.2, type: "spring", stiffness: 100 }}
@@ -262,6 +276,49 @@ export default function Intro({ onComplete, bootReady = false, bootStatusText = 
         </div>
       </motion.div>
 
+      <motion.div
+        className="absolute right-8 top-24 z-40 hidden w-72 md:block"
+        initial={{ x: 180, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        transition={{ delay: 0.45, type: "spring", stiffness: 110, damping: 16 }}
+      >
+        <div className={`overflow-hidden rounded-[1.4rem] border p-4 backdrop-blur-xl shadow-[0_28px_56px_-34px_rgba(15,23,42,0.28)] ${isStarryMode ? "border-slate-700/70 bg-slate-900/72" : "border-white/70 bg-white/74"}`}>
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">telemetry</div>
+            <motion.div
+              className="h-2 w-2 rounded-full bg-[#32D74B] shadow-[0_0_10px_#32D74B]"
+              animate={{ opacity: [1, 0.45, 1] }}
+              transition={{ duration: 2, repeat: Infinity }}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: "Threads", value: `${24 + Math.floor(progress / 8)}` },
+              { label: "Memory", value: `${58 + Math.floor(progress / 5)}%` },
+              { label: "Modules", value: `${4 + Math.floor(progress / 25)}` },
+              { label: "Risk", value: progress > 88 ? "low" : "scan" },
+            ].map((item, index) => (
+              <motion.div
+                key={item.label}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.58 + index * 0.06 }}
+                className={`rounded-[1rem] border px-3 py-3 ${isStarryMode ? "border-slate-700/70 bg-slate-900/62" : "border-slate-200/70 bg-white/76"}`}
+              >
+                <div className="text-[10px] uppercase tracking-[0.14em] text-slate-400">{item.label}</div>
+                <div className="mt-2 text-sm font-semibold text-slate-700">{item.value}</div>
+              </motion.div>
+            ))}
+          </div>
+          <div className="mt-4 overflow-hidden rounded-full bg-slate-200/80">
+            <motion.div
+              className="h-1.5 rounded-full bg-gradient-to-r from-[#409EFF] via-[#B37DEF] to-[#F0559A]"
+              style={{ width: `${Math.max(progress, 8)}%` }}
+            />
+          </div>
+        </div>
+      </motion.div>
+
       {/* --- LEFT COLUMN --- */}
       <motion.div 
         className="absolute left-8 top-24 bottom-24 w-72 flex flex-col gap-6 z-40 hidden md:flex"
@@ -269,7 +326,7 @@ export default function Intro({ onComplete, bootReady = false, bootStatusText = 
         animate={{ x: 0, opacity: 1 }}
         transition={{ delay: 0.5, type: "spring" }}
       >
-        <div className={`flex-1 border rounded-xl p-5 relative overflow-hidden backdrop-blur-sm shadow-sm hover:shadow-md transition-shadow duration-500 ${isStarryMode ? "border-slate-700/70 bg-slate-900/70" : "border-slate-100 bg-slate-50/80"}`}>
+        <div className={`flex-1 border rounded-[1.5rem] p-5 relative overflow-hidden backdrop-blur-xl shadow-[0_28px_60px_-38px_rgba(15,23,42,0.28)] hover:shadow-[0_36px_70px_-38px_rgba(64,158,255,0.28)] transition-all duration-500 ${isStarryMode ? "border-slate-700/70 bg-slate-900/70" : "border-white/70 bg-white/72"}`}>
           <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-[#409EFF] to-[#B37DEF]" />
           <div className="flex items-center gap-2 mb-4 text-[#409EFF]">
             <Server size={18} />
@@ -337,11 +394,11 @@ export default function Intro({ onComplete, bootReady = false, bootStatusText = 
                 />
                 
                 {/* Glowing Background for Logo */}
-                <div className="absolute inset-0 bg-gradient-to-tr from-[#409EFF]/10 to-[#B37DEF]/10 rounded-full blur-xl animate-pulse" />
+                <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-[#409EFF]/14 via-[#B37DEF]/12 to-[#F0559A]/10 blur-2xl animate-pulse" />
 
                 {/* The Logo Image */}
                 <motion.div 
-                  className="relative z-10 p-6 bg-white rounded-2xl shadow-[0_10px_40px_-10px_rgba(64,158,255,0.3)] border border-slate-100"
+                  className="relative z-10 p-6 bg-white/82 backdrop-blur-xl rounded-[2rem] shadow-[0_24px_60px_-22px_rgba(64,158,255,0.34)] border border-white/80"
                   whileHover={{ scale: 1.05 }}
                   animate={{ 
                     y: [0, -10, 0],
@@ -404,7 +461,7 @@ export default function Intro({ onComplete, bootReady = false, bootStatusText = 
           </h1>
           
           {/* Progress Bar Container */}
-          <div className="w-96 h-1.5 mx-auto bg-slate-100 rounded-full overflow-hidden relative mt-8 shadow-inner">
+          <div className="w-96 h-2 mx-auto bg-slate-100/90 border border-white/70 rounded-full overflow-hidden relative mt-8 shadow-inner">
              <motion.div 
                className="h-full bg-gradient-to-r from-[#409EFF] via-[#F0559A] to-[#FFD63E]"
                style={{ width: `${progress}%` }}
@@ -439,7 +496,7 @@ export default function Intro({ onComplete, bootReady = false, bootStatusText = 
              </AnimatePresence>
           </div>
           {bootStatusText && (
-            <div className="mt-1 text-[11px] text-slate-500">{bootStatusText}</div>
+            <div className="mt-3 rounded-full border border-white/70 bg-white/74 px-3 py-1.5 text-[11px] text-slate-500 shadow-[0_16px_32px_-28px_rgba(15,23,42,0.24)]">{bootStatusText}</div>
           )}
         </motion.div>
       </div>
@@ -455,8 +512,8 @@ export default function Intro({ onComplete, bootReady = false, bootStatusText = 
            {['NETWORK', 'MEMORY', 'STORAGE', 'AI_CORE'].map((mod, i) => (
              <motion.div 
                key={mod}
-               className={`p-4 rounded-xl border flex flex-col items-center justify-center gap-2 backdrop-blur-sm transition-all duration-300
-                ${progress > (i * 25) ? (isStarryMode ? 'bg-slate-900/75 border-sky-500/40 shadow-md scale-105' : 'bg-white/80 border-[#409EFF]/30 shadow-md scale-105') : (isStarryMode ? 'bg-slate-900/45 border-slate-700/70 opacity-60 scale-100 grayscale' : 'bg-slate-50/50 border-slate-100 opacity-60 scale-100 grayscale')}
+               className={`p-4 rounded-[1.2rem] border flex flex-col items-center justify-center gap-2 backdrop-blur-xl transition-all duration-300
+                ${progress > (i * 25) ? (isStarryMode ? 'bg-slate-900/75 border-sky-500/40 shadow-md scale-105' : 'bg-white/80 border-[#409EFF]/30 shadow-[0_22px_44px_-30px_rgba(64,158,255,0.28)] scale-105') : (isStarryMode ? 'bg-slate-900/45 border-slate-700/70 opacity-60 scale-100 grayscale' : 'bg-slate-50/50 border-slate-100 opacity-60 scale-100 grayscale')}
                `}
              >
                 {i === 0 && <Wifi size={20} className={progress > 0 ? "text-[#409EFF] animate-pulse" : "text-slate-300"} />}
@@ -478,7 +535,7 @@ export default function Intro({ onComplete, bootReady = false, bootStatusText = 
              </motion.div>
            ))}
         </div>
-        <div className={`mt-4 flex items-center justify-center gap-2 p-2 rounded-lg border ${isStarryMode ? "bg-slate-900/60 border-slate-700/70" : "bg-white/50 border-slate-100"}`}>
+        <div className={`mt-4 flex items-center justify-center gap-2 p-2 rounded-xl border backdrop-blur-sm ${isStarryMode ? "bg-slate-900/60 border-slate-700/70" : "bg-white/72 border-white/70 shadow-[0_18px_34px_-28px_rgba(15,23,42,0.22)]"}`}>
            <Activity size={14} className="text-[#32D74B] animate-bounce" />
            <span className="text-[10px] text-slate-500 font-mono">DIAGNOSTICS: OPTIMAL</span>
         </div>

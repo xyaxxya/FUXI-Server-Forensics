@@ -1,19 +1,17 @@
-import { useState, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { 
-  Database, 
-  Cpu, 
-  Globe, 
-  Save,
-  Trash2,
-  Sparkles,
-  Zap
-} from 'lucide-react';
-import { translations, Language } from '../../translations';
-import { AIMessage, AISettings, sendToAI } from '../../lib/ai';
-import { useCommandStore } from '../../store/CommandContext';
+import { useMemo, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
-import ThinkingProcess, { ThinkingStep } from './ThinkingProcess';
+import { Cpu, Database, Globe, Loader2, Send, Square, Trash2 } from "lucide-react";
+import { Language } from "../../translations";
+import { AIMessage, AISettings, ToolCall, buildServerForensicsToolExecution, buildToolDisplayText, shouldTreatAssistantMessageAsThinking } from "../../lib/ai";
+import { buildContextSections, buildServerContextSummary, buildWorkspacePromptContext } from "../../lib/aiContext";
+import { applyUsageToSettings, runConversationLoop } from "../../lib/aiRuntime";
+import { executeResearchTool } from "../../lib/aiResearchTools";
+import { useAIWorkspaceStore } from "../../lib/aiWorkspaceStore";
+import { useCommandStore } from "../../store/CommandContext";
+import ThinkingProcess, { ThinkingStep } from "./ThinkingProcess";
+import { ChatTranscriptMessage } from "./ChatTranscriptMessage";
+import { FloatingContextMenu, PlannerPanel, PreviewDialog, PromptDeck, SlashCommandMenu, WorkspaceHeader, getExactSlashCommand, getSlashCommandCompletion } from "./WorkbenchWidgets";
 
 interface GeneralInfoPanelProps {
   language: Language;
@@ -23,448 +21,718 @@ interface GeneralInfoPanelProps {
   onAiSettingsChange?: (settings: AISettings) => void;
 }
 
+type DisplayItem =
+  | { type: "message"; message: AIMessage }
+  | { type: "thinking"; steps: ThinkingStep[]; isFinished: boolean };
+
+interface RemoteSession {
+  id: string;
+  ip: string;
+  user: string;
+}
+
+interface QuickAction {
+  id: string;
+  icon: typeof Cpu;
+  title: { zh: string; en: string };
+  desc: { zh: string; en: string };
+  prompt: string;
+}
+
+const quickActions: QuickAction[] = [
+  {
+    id: "system",
+    icon: Cpu,
+    title: { zh: "自动获取系统信息", en: "Auto System Info" },
+    desc: { zh: "主机、账号、进程、网络与版本信息", en: "Host, accounts, processes and version info" },
+    prompt: `你现在负责自动获取系统关键信息。
+只做只读分析，目标是收集：
+1. 操作系统版本、内核、主机名、时间与时区
+2. 当前登录用户、可登录用户、sudo 权限
+3. 关键进程、监听端口、已建立连接
+4. 机器用途判断所需的核心证据
+
+优先使用简洁命令，避免高负载扫描。
+完成后输出结构化结论，并将关键事实调用 update_context_info 沉淀到共享线索池。`,
+  },
+  {
+    id: "web",
+    icon: Globe,
+    title: { zh: "自动获取网站配置", en: "Auto Web Config" },
+    desc: { zh: "Nginx/Apache/Tomcat/站点目录/配置文件", en: "Nginx, Apache, Tomcat and site paths" },
+    prompt: `你现在负责自动获取网站配置信息。
+只做只读分析，目标是收集：
+1. 正在运行的 Web 中间件与端口
+2. 主要配置文件位置
+3. 站点根目录、虚拟主机、反向代理关系
+4. 应用框架、JAR/WAR、PHP 站点或容器线索
+
+优先定位真实有效的配置路径与业务入口。
+完成后输出结构化结论，并将关键路径、配置和访问入口调用 update_context_info 沉淀到共享线索池。`,
+  },
+  {
+    id: "database",
+    icon: Database,
+    title: { zh: "自动获取数据库账号", en: "Auto DB Credentials" },
+    desc: { zh: "应用配置中的数据库主机、端口、用户名与密码", en: "DB host, port, username and password from configs" },
+    prompt: `你现在负责自动获取数据库账号信息。
+只做只读分析，目标是收集：
+1. 应用配置文件中的数据库连接串
+2. MySQL/PostgreSQL/Redis 等服务配置中的账号信息
+3. .env、application.yml、properties、php 配置中的凭据
+4. 连接目标主机、端口、数据库名与中间件类型
+
+必须优先从实际配置中提取证据，禁止凭空猜测。
+完成后输出结构化结论，并将可复用的数据库凭据调用 update_context_info 沉淀到共享线索池。`,
+  },
+];
+
+function byLanguage(language: Language, text: { zh: string; en: string }) {
+  return language === "zh" ? text.zh : text.en;
+}
+
+function buildDisplayItems(messages: AIMessage[]): DisplayItem[] {
+  const items: DisplayItem[] = [];
+  let thinkingSteps: ThinkingStep[] = [];
+
+  const flush = (isFinished: boolean) => {
+    if (thinkingSteps.length > 0) {
+      items.push({ type: "thinking", steps: [...thinkingSteps], isFinished });
+      thinkingSteps = [];
+    }
+  };
+
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (message.role === "system") {
+      continue;
+    }
+    if (message.role === "user") {
+      flush(true);
+      items.push({ type: "message", message });
+      continue;
+    }
+    if (message.role === "assistant") {
+      const isThinking = shouldTreatAssistantMessageAsThinking(messages, index, thinkingSteps.length > 0);
+      if (isThinking) {
+        if (message.content.trim()) {
+          thinkingSteps.push({ id: `thought-${index}`, title: message.content });
+        }
+        message.tool_calls?.forEach((toolCall) => {
+          let args: Record<string, unknown> = {};
+          try {
+            args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
+          } catch {
+            args = { raw: toolCall.function.arguments };
+          }
+          const display = buildToolDisplayText(toolCall);
+          thinkingSteps.push({
+            id: toolCall.id,
+            title: display.title,
+            toolCall: {
+              command: display.command,
+              args,
+              isLoading: true,
+            },
+          });
+        });
+      } else {
+        flush(true);
+        items.push({ type: "message", message });
+      }
+      continue;
+    }
+    if (message.role === "tool") {
+      const step = thinkingSteps.find((item) => item.id === message.tool_call_id);
+      if (step?.toolCall) {
+        step.toolCall.output = message.content;
+        step.toolCall.isLoading = false;
+        step.toolCall.isError = /Execution failed|Exit:\s*[1-9]/.test(message.content);
+      }
+    }
+  }
+
+  flush(false);
+  return items;
+}
+
+function limitOutput(value: string) {
+  return value.length > 12000 ? `${value.slice(0, 12000)}\n\n...[truncated]...` : value;
+}
+
+function resolveTargetSessions(
+  sessions: RemoteSession[],
+  selectedSessionIds: string[],
+  currentSession: RemoteSession | null,
+  targetIds?: string[],
+) {
+  if (targetIds && targetIds.length > 0) {
+    return sessions.filter((session) => targetIds.includes(session.id));
+  }
+  const selected = sessions.filter((session) => selectedSessionIds.includes(session.id));
+  if (selected.length > 0) {
+    return selected;
+  }
+  return currentSession ? [currentSession] : [];
+}
+
 export default function GeneralInfoPanel({
   language,
   generalInfo,
-  setGeneralInfo,
   aiSettings,
-  onAiSettingsChange
+  onAiSettingsChange,
 }: GeneralInfoPanelProps) {
-  const t = translations[language];
-  
-  // AI Execution State
-  const [loading, setLoading] = useState(false);
-  const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([]);
-  const [isThinkingFinished, setIsThinkingFinished] = useState(true);
-  const [autoSkillStatus, setAutoSkillStatus] = useState("");
-  
   const { currentSession, sessions, selectedSessionIds } = useCommandStore();
-  
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const records = useAIWorkspaceStore((state) => state.records);
+  const tasks = useAIWorkspaceStore((state) => state.tasks);
+  const promptHistory = useAIWorkspaceStore((state) => state.promptHistory);
+  const promptSnippets = useAIWorkspaceStore((state) => state.promptSnippets);
+  const appendRecord = useAIWorkspaceStore((state) => state.appendRecord);
+  const syncTasks = useAIWorkspaceStore((state) => state.syncTasks);
+  const finalizeTasks = useAIWorkspaceStore((state) => state.finalizeTasks);
+  const updateTaskStatus = useAIWorkspaceStore((state) => state.updateTaskStatus);
+  const removeTask = useAIWorkspaceStore((state) => state.removeTask);
+  const clearTasks = useAIWorkspaceStore((state) => state.clearTasks);
+  const addPromptHistory = useAIWorkspaceStore((state) => state.addPromptHistory);
+  const savePromptSnippet = useAIWorkspaceStore((state) => state.savePromptSnippet);
+  const removePromptSnippet = useAIWorkspaceStore((state) => state.removePromptSnippet);
+  const togglePromptSnippetPin = useAIWorkspaceStore((state) => state.togglePromptSnippetPin);
+  const removeRecord = useAIWorkspaceStore((state) => state.removeRecord);
+  const clearRecords = useAIWorkspaceStore((state) => state.clearRecords);
+  const [messages, setMessages] = useState<AIMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState("");
+  const [activeActionId, setActiveActionId] = useState<string | null>(null);
+  const [cluePreview, setCluePreview] = useState<{ title: string; content: string } | null>(null);
+  const [clueMenu, setClueMenu] = useState<{ x: number; y: number; actions: Array<{ label: string; onClick: () => void; danger?: boolean }> } | null>(null);
+  const listEndRef = useRef<HTMLDivElement | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  const presets = [
-    {
-      id: 'sys',
-      label: t.general_info_auto_sys,
-      icon: <Cpu size={16} />,
-      prompt: `**任务：系统深度取证与基线检查**
-请执行以下取证命令序列，并对发现的**高危项**（如老旧内核、高负载、异常账号）进行**标红**或加粗警告。
+  const displayItems = useMemo(() => buildDisplayItems(messages), [messages]);
+  const config = aiSettings.configs[aiSettings.activeProvider];
 
-1.  **OS基础信息**：
-    - \`cat /etc/*release\` (发行版)
-    - \`uname -a\` (内核版本，检查是否存在DirtyCow等已知漏洞)
-    - \`hostnamectl\`
-
-2.  **资源负载**：
-    - \`uptime\` (检查负载是否异常高)
-    - \`free -h\` (内存占用)
-    - \`df -hT | grep -v 'tmpfs'\` (磁盘空间，重点关注 /var /tmp 是否爆满)
-
-3.  **账号与权限**：
-    - \`cat /etc/passwd | grep -v 'nologin'\` (查看可登录用户)
-    - \`grep 'sudo' /etc/group\` (查看sudo权限组)
-    - \`lastlog | head -n 10\` (最近登录记录)
-
-4.  **网络连接**：
-    - \`ip addr show\`
-    - \`route -n\`
-
-请将收集到的信息整理为结构化报告，并调用 \`update_context_info\` 保存。`
-    },
-    {
-      id: 'web',
-      label: t.general_info_auto_web,
-      icon: <Globe size={16} />,
-      prompt: `**任务：Web服务与中间件取证**
-请识别服务器上运行的所有Web组件，并寻找潜在的**Webshell**或**配置文件**。
-
-1.  **服务识别**：
-    - \`netstat -tulpn | grep -E '80|443|8080|8888|3306|6379'\` (关键端口监听)
-    - \`ps aux | grep -E 'nginx|apache|tomcat|java|php|docker'\` (进程特征)
-
-2.  **配置定位** (尝试查找，但不强制)：
-    - Nginx: \`find /etc/nginx -name "*.conf" 2>/dev/null | head -n 5\`
-    - Apache: \`find /etc/httpd /etc/apache2 -name "*.conf" 2>/dev/null | head -n 5\`
-    - Tomcat: \`find / -name "server.xml" 2>/dev/null | head -n 5\`
-
-3.  **Web根目录推断**：
-    - 根据配置文件或进程参数，推断 Web Root 路径（如 \`/var/www/html\`, \`/usr/share/nginx/html\`, \`/opt/tomcat/webapps\`）。
-
-4.  **异常检查**：
-    - 检查 Web 目录下是否有最近修改的 \`.php\` / \`.jsp\` 文件 (疑似Webshell):
-      \`find /var/www/html -type f -name "*.php" -mtime -7 2>/dev/null\` (示例路径，需根据实际情况调整)
-
-请总结 Web 架构（前端->后端->数据库），并记录关键路径到 \`update_context_info\`。`
-    },
-    {
-      id: 'db',
-      label: t.general_info_auto_db,
-      icon: <Database size={16} />,
-      prompt: `**任务：数据库凭据与连接取证**
-你的目标是找到数据库连接信息（主机、端口、用户、密码）。
-
-1.  **配置文件扫描**：
-    - 扫描常见 Web 应用配置文件（如 WordPress \`wp-config.php\`, Drupal \`wp-config.php\`, Spring Boot \`application.yml\`, .env 文件）。
-    - 命令示例：
-      - \`find /var/www -name "wp-config.php" -o -name ".env" -o -name "config.php" 2>/dev/null\`
-      - \`grep -rE "DB_PASSWORD|jdbc|redis" /var/www 2>/dev/null | head -n 10\`
-
-2.  **服务配置**：
-    - MySQL: \`cat /etc/my.cnf /etc/mysql/my.cnf 2>/dev/null\`
-    - Redis: \`grep -v '^#' /etc/redis/redis.conf | grep 'requirepass'\`
-
-3.  **历史记录挖掘**：
-    - 检查 \`.bash_history\` 中是否有带密码的 mysql 连接命令：
-      \`grep -E 'mysql -u|redis-cli' ~/.bash_history | head -n 20\`
-
-**安全警告**：找到密码后，请**脱敏**展示（如 \`pass****\`），但必须将**明文**完整保存到 \`update_context_info\` 中以便后续自动连接使用。`
-    },
-    {
-        id: 'persistence',
-        label: t.general_info_auto_persistence || "Persistence Check",
-        icon: <Save size={16} />,
-        prompt: `**任务：持久化后门排查 (Persistence Mechanisms)**
-请检查攻击者可能留下的自启动后门。对于任何**可疑项**，请加粗并标记 **[SUSPICIOUS]**。
-
-1.  **定时任务 (Cron)**：
-    - \`cat /etc/crontab\`
-    - \`ls -la /etc/cron.d/ /etc/cron.daily/ /etc/cron.hourly/\`
-    - \`cat /var/spool/cron/crontabs/* 2>/dev/null\`
-
-2.  **系统服务 (Systemd)**：
-    - \`systemctl list-unit-files --state=enabled | grep -v 'static'\` (列出所有自启服务)
-    - 检查最近修改的服务文件：\`find /etc/systemd/system -mtime -30 -type f\`
-
-3.  **启动脚本**：
-    - \`cat /etc/rc.local\`
-    - \`ls -la /etc/init.d/\`
-    - 检查 \`.bashrc\` / \`.profile\` 中的异常别名或导出：
-      \`grep -E 'alias|export' ~/.bashrc ~/.profile /etc/profile\`
-
-4.  **SSH 后门**：
-    - 检查 \`~/.ssh/authorized_keys\` 是否包含陌生公钥。
-
-请汇总所有自启动项，并指出哪些看起来不属于标准 Linux 发行版。`
-    },
-    {
-        id: 'network',
-        label: t.general_info_auto_network || "Network Connections",
-        icon: <Globe size={16} />,
-        prompt: `**任务：异常网络连接与反弹Shell排查**
-分析当前网络连接，寻找反弹 Shell 或 C2 连接迹象。
-
-1.  **建立的连接**：
-    - \`netstat -antp | grep 'ESTABLISHED'\`
-    - 关注非标准端口（如 4444, 5555, 6666）的外连。
-
-2.  **监听端口**：
-    - \`netstat -tulpn\`
-    - 注意绑定在 \`0.0.0.0\` 的未知高位端口。
-
-3.  **进程关联**：
-    - 对于可疑连接，查看 PID 对应的进程详情：
-      \`ls -l /proc/[PID]/exe\` (将 [PID] 替换为实际数字)
-
-4.  **DNS/Hosts**：
-    - \`cat /etc/hosts\`
-    - \`cat /etc/resolv.conf\`
-
-请列出所有**外连 IP** (Outbound Connections) 及其对应的进程名。如果发现连接到**公网 IP** 的 Shell 进程（bash/sh/python），请立即告警！`
-    }
-  ];
-
-  const handleExecute = async (prompt: string) => {
-      setLoading(true);
-      setThinkingSteps([]); // Clear previous steps
-      setIsThinkingFinished(false);
-      
-      const initialHistory: AIMessage[] = [
-          { role: 'user', content: prompt }
-      ];
-
-      try {
-          await processConversation(initialHistory);
-      } catch (e) {
-          console.error(e);
-          setThinkingSteps(prev => [...prev, {
-              id: 'error',
-              title: `Error: ${e}`,
-          }]);
-      } finally {
-          setLoading(false);
-          setIsThinkingFinished(true);
+  const executeToolCall = async (toolCall: ToolCall) => {
+    if (toolCall.function.name === "update_context_info") {
+      const args = JSON.parse(toolCall.function.arguments) as { info?: string };
+      if (args.info) {
+        appendRecord({
+          content: args.info,
+          source: "system",
+        });
       }
+      return {
+        role: "tool",
+        content: language === "zh" ? "共享线索池已更新。" : "Shared clue pool updated.",
+        tool_call_id: toolCall.id,
+      } as AIMessage;
+    }
+
+    if (toolCall.function.name === "update_plan") {
+      const args = JSON.parse(toolCall.function.arguments) as {
+        tasks?: Array<{
+          id?: string;
+          content: string;
+          status: "pending" | "in_progress" | "completed";
+        }>;
+      };
+      syncTasks(args.tasks || [], "planner");
+      return {
+        role: "tool",
+        content: language === "zh" ? "执行计划已更新。" : "Execution plan updated.",
+        tool_call_id: toolCall.id,
+      } as AIMessage;
+    }
+
+    const researchResult = await executeResearchTool(toolCall, language);
+    if (researchResult) {
+      return researchResult;
+    }
+
+    const serverToolExecution = buildServerForensicsToolExecution(toolCall);
+    const args = JSON.parse(toolCall.function.arguments) as {
+      command?: string;
+      target_ids?: string[];
+    };
+    const command = serverToolExecution?.command ?? args.command;
+    const targetIds = serverToolExecution?.targetIds ?? args.target_ids;
+    if (!command) {
+      return {
+        role: "tool",
+        content: language === "zh" ? "工具参数不完整，缺少可执行内容。" : "Tool arguments are incomplete.",
+        tool_call_id: toolCall.id,
+      } as AIMessage;
+    }
+
+    const targetSessions = resolveTargetSessions(sessions, selectedSessionIds, currentSession, targetIds);
+    if (targetSessions.length === 0) {
+      return {
+        role: "tool",
+        content: language === "zh" ? "当前没有可执行的 SSH 会话。" : "No SSH session is available.",
+        tool_call_id: toolCall.id,
+      } as AIMessage;
+    }
+
+    const resultBlocks = await Promise.all(
+      targetSessions.map(async (session) => {
+        const result = await invoke<{ stdout: string; stderr: string; exit_code: number }>("exec_command", {
+          cmd: command,
+          sessionId: session.id,
+        });
+        const body = [result.stdout.trim(), result.stderr.trim(), `Exit: ${result.exit_code}`].filter(Boolean).join("\n");
+        return `[${session.user}@${session.ip}]\n${body || (language === "zh" ? "无输出" : "No output")}`;
+      }),
+    );
+
+    return {
+      role: "tool",
+      content: limitOutput(resultBlocks.join("\n\n----------------------------------------\n\n")),
+      tool_call_id: toolCall.id,
+    } as AIMessage;
   };
 
-  const processConversation = async (history: AIMessage[], depth = 0) => {
-    const maxLoops = aiSettings.maxLoops || 25;
-    if (depth > maxLoops) return;
+  const runCollectionPrompt = async (prompt: string, actionId?: string) => {
+    if (loading) {
+      return;
+    }
+    if (!config.apiKey.trim()) {
+      setStatus(language === "zh" ? "请先在设置中配置 AI Key。" : "Configure the AI key first.");
+      return;
+    }
+    const normalizedPrompt = prompt.trim();
+    if (!normalizedPrompt) {
+      return;
+    }
+
+    const baseMessage: AIMessage = {
+      role: "user",
+      content: normalizedPrompt,
+    };
+    const nextHistory = [baseMessage];
+    addPromptHistory(normalizedPrompt);
+    setMessages(nextHistory);
+    setLoading(true);
+    setActiveActionId(actionId || "manual");
+    setStatus(language === "zh" ? "正在自动采集关键上下文..." : "Collecting key context...");
+
+    const serverInfo = buildServerContextSummary(sessions, selectedSessionIds, currentSession);
+    const workspaceInfo = buildWorkspacePromptContext(generalInfo, records);
+    const actionTitle = quickActions.find((item) => item.id === actionId)?.title;
+    const context = buildContextSections([
+      { title: "当前任务", content: `上下文面板自动采集：${actionTitle ? byLanguage(language, actionTitle) : language === "zh" ? "自定义采集" : "Custom collection"}` },
+      { title: "服务器会话", content: serverInfo },
+      { title: "共享线索池", content: workspaceInfo || "暂无" },
+      {
+        title: "约束",
+        content: "仅保留系统信息、网站配置、数据库账号这三类关键事实。先调用 update_plan 输出计划，再精炼执行，并及时调用 update_context_info 保存有用结论。",
+      },
+    ]);
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
 
     try {
-      // 1. Get response from AI
-      // Pass current generalInfo to give context even for these tasks
-      const response = await sendToAI(history, aiSettings, undefined, generalInfo);
-      setAutoSkillStatus(response.routing_info?.status_text || "");
-
-      // Update token usage
-      if (response.usage && onAiSettingsChange) {
-          const currentUsage = aiSettings.tokenUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
-          onAiSettingsChange({
-              ...aiSettings,
-              tokenUsage: {
-                  prompt_tokens: currentUsage.prompt_tokens + response.usage.prompt_tokens,
-                  completion_tokens: currentUsage.completion_tokens + response.usage.completion_tokens,
-                  total_tokens: currentUsage.total_tokens + response.usage.total_tokens,
-              }
-          });
-      }
-
-      // Update thinking steps based on response content (reasoning)
-      if (response.content) {
-          setThinkingSteps(prev => [...prev, {
-              id: `step-${depth}`,
-              title: response.content
-          }]);
-      }
-
-      const newHistory = [...history, response];
-
-      // 2. Check for tool calls
-      if (response.tool_calls && response.tool_calls.length > 0) {
-        for (const toolCall of response.tool_calls) {
-          if (toolCall.function.name === "run_shell_command") {
-            const args = JSON.parse(toolCall.function.arguments);
-            const cmd = args.command;
-
-            // Add step for tool execution
-            const stepId = toolCall.id;
-            setThinkingSteps(prev => [...prev, {
-                id: stepId,
-                title: `${t.execute}: ${cmd}`,
-                toolCall: {
-                    command: cmd,
-                    args: args,
-                    isLoading: true
-                }
-            }]);
-
-            // Execute command
-            let output = "";
-            let isCommandError = false;
-            try {
-              let targetSessions = sessions.filter((s) => selectedSessionIds.includes(s.id));
-              if (targetSessions.length === 0 && currentSession) {
-                targetSessions = [currentSession];
-              }
-
-              if (targetSessions.length === 0) {
-                output = t.no_active_session;
-                isCommandError = true;
-              } else if (targetSessions.length === 1) {
-                const session = targetSessions[0];
-                const res: any = await invoke("exec_command", {
-                  cmd,
-                  sessionId: session.id,
-                });
-                output = res.stdout || res.stderr || t.no_output;
-                if (res.exit_code !== 0) {
-                  output += `\n(${t.exit_code}: ${res.exit_code})`;
-                  isCommandError = true;
-                }
-              } else {
-                 // Multi-session
-                 const results = await Promise.all(
-                  targetSessions.map(async (session) => {
-                    try {
-                      const res: any = await invoke("exec_command", {
-                        cmd,
-                        sessionId: session.id,
-                      });
-                      const out = res.stdout || res.stderr || t.no_output;
-                      return { 
-                          text: `[${session.ip}]:\n${out}`, 
-                          isError: res.exit_code !== 0 
-                      };
-                    } catch (e: any) {
-                      return { 
-                          text: `[${session.ip}]: Error ${e}`, 
-                          isError: true 
-                      };
-                    }
-                  })
-                 );
-                 output = results.map(r => r.text).join("\n\n");
-                 isCommandError = results.some(r => r.isError);
-              }
-            } catch (e: any) {
-              output = `${t.execution_failed}: ${e.toString()}`;
-              isCommandError = true;
-            }
-
-            // Update step with result
-            setThinkingSteps(prev => prev.map(step => {
-                if (step.id === stepId && step.toolCall) {
-                    return {
-                        ...step,
-                        toolCall: {
-                            ...step.toolCall,
-                            isLoading: false,
-                            output: output,
-                            isError: isCommandError
-                        }
-                    };
-                }
-                return step;
-            }));
-
-            // Add tool result to history
-            newHistory.push({
-              role: "tool",
-              content: output,
-              tool_call_id: toolCall.id,
-            });
-
-          } else if (toolCall.function.name === "update_context_info") {
-              const args = JSON.parse(toolCall.function.arguments);
-              const info = args.info;
-              
-              const stepId = toolCall.id;
-              setThinkingSteps(prev => [...prev, {
-                  id: stepId,
-                  title: t.general_info_updated,
-                  toolCall: {
-                      command: "update_context_info",
-                      args: args,
-                      isLoading: false,
-                      output: "Context Updated",
-                      isError: false
-                  }
-              }]);
-
-              if (info) {
-                  setGeneralInfo(prev => {
-                      const newInfo = prev ? prev + "\n\n" + info : info;
-                      return newInfo;
-                  });
-              }
-              
-              newHistory.push({
-                  role: "tool",
-                  content: "Context updated successfully.",
-                  tool_call_id: toolCall.id,
-              });
-          }
-        }
-
-        // Recursively call AI
-        await processConversation(newHistory, depth + 1);
-      }
+      const finalHistory = await runConversationLoop({
+        initialHistory: nextHistory,
+        settings: aiSettings,
+        generalInfo: context,
+        signal: abortController.signal,
+        executeToolCall: async ({ toolCall }) => executeToolCall(toolCall),
+        callbacks: {
+          onAssistantMessage: (_, history) => setMessages(history),
+          onToolResult: (_, __, history) => {
+            setMessages(history);
+            setStatus(language === "zh" ? "正在归纳有效信息..." : "Summarizing useful findings...");
+          },
+          onUsage: (usage) => {
+            onAiSettingsChange?.(applyUsageToSettings(aiSettings, usage));
+          },
+        },
+      });
+      setMessages(finalHistory);
+      finalizeTasks("all");
+      setStatus(language === "zh" ? "采集完成" : "Done");
+      queueMicrotask(() => {
+        listEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      });
     } catch (error) {
-      console.error("AI Error", error);
-      setThinkingSteps(prev => [...prev, {
-          id: `error-${depth}`,
-          title: `Error: ${error}`
-      }]);
+      setStatus(String(error));
+    } finally {
+      setLoading(false);
+      setActiveActionId(null);
+      abortControllerRef.current = null;
     }
+  };
+
+  const runQuickAction = async (action: QuickAction) => {
+    await runCollectionPrompt(action.prompt, action.id);
+  };
+
+  const handleStop = () => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setLoading(false);
+    setActiveActionId(null);
+    setStatus(language === "zh" ? "已停止采集" : "Collection stopped");
+  };
+
+  const slashCommands = useMemo(
+    () => [
+      {
+        id: "system",
+        command: "/system",
+        title: language === "zh" ? "采集系统信息" : "Collect system info",
+        description: language === "zh" ? "读取系统版本、用户、进程、网络等关键信息" : "Read OS, users, processes and network information",
+        onSelect: () => {
+          void runQuickAction(quickActions[0]);
+          setInput("");
+        },
+      },
+      {
+        id: "web",
+        command: "/web",
+        title: language === "zh" ? "采集网站配置" : "Collect web config",
+        description: language === "zh" ? "定位中间件、配置文件、站点目录与入口" : "Locate middleware, configs, site paths and entry points",
+        onSelect: () => {
+          void runQuickAction(quickActions[1]);
+          setInput("");
+        },
+      },
+      {
+        id: "database",
+        command: "/database",
+        title: language === "zh" ? "采集数据库账号" : "Collect DB credentials",
+        description: language === "zh" ? "提取配置中的数据库主机、账号、密码等线索" : "Extract DB hosts, accounts and secrets from configs",
+        onSelect: () => {
+          void runQuickAction(quickActions[2]);
+          setInput("");
+        },
+      },
+      {
+        id: "plan",
+        command: "/plan",
+        title: language === "zh" ? "先生成采集计划" : "Create collection plan",
+        description: language === "zh" ? "先规划采集步骤，再执行只读验证" : "Plan the collection workflow first",
+        insertText:
+          language === "zh"
+            ? "请先给出一份上下文采集计划，再按计划收集系统信息、网站配置和数据库凭据。"
+            : "Create a context collection plan first, then gather system, web and database evidence step by step.",
+      },
+      {
+        id: "clear",
+        command: "/clear",
+        title: language === "zh" ? "清空当前结果" : "Clear results",
+        description: language === "zh" ? "清空采集结果与输入框，保留工作台数据" : "Clear results and input while keeping workspace data",
+        onSelect: () => {
+          setMessages([]);
+          setInput("");
+          setStatus("");
+        },
+      },
+    ],
+    [language],
+  );
+
+  const handleSend = async () => {
+    if (loading || !input.trim() || input.trim().startsWith("/")) {
+      return;
+    }
+    const prompt = input.trim();
+    setInput("");
+    await runCollectionPrompt(prompt);
   };
 
   return (
-    <div className="bg-slate-50 border-b border-slate-200 min-h-full flex flex-col">
-      <div className="p-4 space-y-4 flex-1 overflow-y-auto custom-scrollbar pb-20">
-        
-        {/* Quick Actions Grid */}
-        <div>
-            <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                    <Zap size={12} className="text-amber-500"/>
-                    {t.general_info_presets}
-                </label>
-            </div>
-            <div className="mb-2 text-[11px] text-sky-600">{autoSkillStatus || t.skill_auto_detect_waiting}</div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {presets.map((preset) => (
-                    <button
-                        key={preset.id}
-                        onClick={() => handleExecute(preset.prompt)}
-                        disabled={loading}
-                        className={`flex items-center gap-2 p-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-600 transition-all text-left ${
-                            loading ? 'opacity-50 cursor-not-allowed' : 'hover:border-indigo-300 hover:text-indigo-600 hover:shadow-sm'
-                        }`}
-                    >
-                        <div className="p-1.5 bg-indigo-50 text-indigo-500 rounded-md">
-                            {preset.icon}
-                        </div>
-                        <span className="font-medium truncate">{preset.label}</span>
-                    </button>
-                ))}
-            </div>
-        </div>
+    <div className="h-full grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="ui-shell order-1 min-h-0 rounded-[2rem] flex flex-col overflow-hidden">
+        <WorkspaceHeader
+          language={language}
+          icon={Cpu}
+          title={language === "zh" ? "上下文面板" : "Context Panel"}
+          description={
+            language === "zh"
+              ? "一键采集系统信息、网站配置和数据库账号，并同步沉淀共享线索。"
+              : "Collect system, web and database evidence and retain it as shared clues."
+          }
+          aiSettings={aiSettings}
+          sessionInfo={
+            currentSession
+              ? `${currentSession.user}@${currentSession.ip}`
+              : language === "zh"
+                ? "未连接 SSH 会话"
+                : "No SSH session"
+          }
+          extraItems={[
+            { label: language === "zh" ? "线索" : "Clues", value: String(records.length) },
+            { label: language === "zh" ? "任务" : "Tasks", value: String(tasks.length) },
+            { label: language === "zh" ? "会话" : "Sessions", value: String(selectedSessionIds.length || (currentSession ? 1 : 0)) },
+          ]}
+          actions={
+            <>
+              {loading && (
+                <motion.button
+                  onClick={handleStop}
+                  whileHover={{ y: -1 }}
+                  whileTap={{ scale: 0.985 }}
+                  className="ui-button-danger ui-pressable rounded-2xl px-4 py-2.5 text-sm font-medium"
+                >
+                  <Square size={16} />
+                  {language === "zh" ? "停止" : "Stop"}
+                </motion.button>
+              )}
+              <motion.button
+                onClick={() => {
+                  setMessages([]);
+                  setInput("");
+                  setStatus("");
+                }}
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.985 }}
+                className="ui-button ui-pressable rounded-2xl px-4 py-2.5 text-sm text-slate-600"
+              >
+                <Trash2 size={15} />
+                {language === "zh" ? "清空" : "Clear"}
+              </motion.button>
+            </>
+          }
+        />
 
-        {/* Text Area */}
-        <div className="space-y-2">
-            <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                    <Save size={12} className="text-blue-500"/>
-                    {t.general_info_context}
-                </label>
-                <span className="text-[10px] text-slate-400 font-mono">
-                    {generalInfo.length} chars
-                </span>
+        <div className="flex-1 min-h-0 overflow-auto bg-slate-50/40 px-4 py-4 md:px-6 md:py-5">
+          <div className="mb-4 grid grid-cols-1 gap-3 xl:grid-cols-3">
+            {quickActions.map((action) => {
+              const Icon = action.icon;
+              const isActive = activeActionId === action.id;
+              return (
+                <motion.button
+                  key={action.id}
+                  onClick={() => void runQuickAction(action)}
+                  disabled={loading}
+                  whileHover={{ y: -2 }}
+                  whileTap={{ scale: 0.985 }}
+                  className={`ui-hover-lift ui-pressable rounded-[1.5rem] p-4 text-left transition-all ${
+                    isActive ? "ui-chip-active" : "ui-surface"
+                  } disabled:opacity-60`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-blue-700 shadow-[0_16px_28px_-22px_rgba(37,99,235,0.45)]">
+                      {isActive ? <Loader2 size={17} className="animate-spin" /> : <Icon size={17} />}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-900">{byLanguage(language, action.title)}</div>
+                      <div className="mt-1 text-xs leading-5 text-slate-500">{byLanguage(language, action.desc)}</div>
+                    </div>
+                  </div>
+                </motion.button>
+              );
+            })}
+          </div>
+          {messages.length === 0 && (
+            <div className="ui-surface rounded-[1.7rem] border-dashed px-6 py-10 text-center text-slate-500">
+              {language === "zh"
+                ? "点击上方任一动作后，AI 会自动读取关键证据、展示思考流程，并将有效线索沉淀到共享线索池。"
+                : "Start a quick action to collect evidence, show the process and retain useful clues."}
             </div>
-            
-            <div className="relative group bg-white focus-within:bg-white rounded-xl border border-slate-200 focus-within:border-indigo-200 focus-within:ring-4 focus-within:ring-indigo-50/50 transition-all duration-300 shadow-sm">
-                <textarea
-                    value={generalInfo}
-                    onChange={(e) => setGeneralInfo(e.target.value)}
-                    placeholder={t.general_info_placeholder}
-                    className="w-full h-48 p-3 text-sm bg-transparent border-none focus:ring-0 outline-none focus:outline-none resize-none custom-scrollbar font-mono leading-relaxed"
+          )}
+          <div className="space-y-4">
+            {displayItems.map((item, index) =>
+              item.type === "thinking" ? (
+                <ThinkingProcess
+                  key={`thinking-${index}`}
+                  steps={item.steps}
+                  isFinished={item.isFinished}
+                  language={language}
                 />
-                <div className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                     <button 
-                        onClick={() => setGeneralInfo('')}
-                        className="p-1 text-slate-300 hover:text-red-400 transition-colors"
-                        title={t.delete}
-                     >
-                        <Trash2 size={14} />
-                     </button>
-                </div>
-            </div>
-            
-            <p className="text-[10px] text-slate-400 flex items-start gap-1">
-                <Sparkles size={10} className="mt-0.5 text-indigo-400 flex-shrink-0" />
-                {t.general_info_desc}
-            </p>
+              ) : (
+                <ChatTranscriptMessage key={`message-${index}`} message={item.message} language={language} />
+              ),
+            )}
+            {status && (
+              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/85 px-3 py-1.5 font-mono text-[11px] text-slate-500 shadow-[0_18px_34px_-32px_rgba(15,23,42,0.55)]">
+                <span className={`h-2 w-2 rounded-full ${loading ? "bg-blue-500 animate-pulse" : "bg-slate-400"}`} />
+                {loading && <Loader2 size={13} className="animate-spin" />}
+                {status}
+              </div>
+            )}
+            <div ref={listEndRef} />
+          </div>
         </div>
-
-        {/* Thinking Process Display */}
-        {thinkingSteps.length > 0 && (
-            <div className="mt-6">
-                <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                        <Cpu size={12} className="text-blue-500"/>
-                        {t.thinking_process}
-                    </label>
-                    {loading && (
-                        <span className="text-[10px] text-blue-500 flex items-center gap-1">
-                            <motion.div 
-                                animate={{ rotate: 360 }}
-                                transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-                                className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full"
-                            />
-                            {t.ai_thinking}
-                        </span>
-                    )}
+        <div className="sticky bottom-0 z-20 border-t border-slate-200/70 bg-white/78 p-4 backdrop-blur-xl">
+          <div className="ui-subtle-surface rounded-[1.8rem] border border-white/70 bg-white/90 p-3 shadow-[0_30px_60px_-34px_rgba(15,23,42,0.26)] sm:p-4">
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-slate-900">{language === "zh" ? "自定义采集指令" : "Custom Collection Prompt"}</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {language === "zh"
+                    ? "输入自定义采集目标，或使用 / 打开命令面板。"
+                    : "Type a custom collection goal or use / to open the command palette."}
                 </div>
-                <ThinkingProcess 
-                    steps={thinkingSteps} 
-                    isFinished={isThinkingFinished} 
-                    language={language} 
-                />
-                <div ref={messagesEndRef} />
+              </div>
+              <motion.button
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.985 }}
+                onClick={() => void handleSend()}
+                disabled={loading || !input.trim() || input.trim().startsWith("/")}
+                className="ui-button-primary ui-pressable inline-flex items-center justify-center gap-2 rounded-[1.2rem] px-4 py-2.5 text-sm font-medium disabled:bg-slate-300 disabled:border-slate-300 sm:self-start"
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                {language === "zh" ? "开始采集" : "Run"}
+              </motion.button>
             </div>
-        )}
+            <textarea
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Tab" && input.trim().startsWith("/")) {
+                  const completion = getSlashCommandCompletion(input, slashCommands);
+                  if (completion) {
+                    event.preventDefault();
+                    setInput(completion);
+                  }
+                  return;
+                }
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  if (input.trim().startsWith("/")) {
+                    const exactCommand = getExactSlashCommand(input, slashCommands);
+                    if (exactCommand) {
+                      if (exactCommand.onSelect) {
+                        exactCommand.onSelect();
+                      } else {
+                        setInput(exactCommand.insertText || exactCommand.command);
+                      }
+                    }
+                  } else {
+                    void handleSend();
+                  }
+                }
+              }}
+              placeholder={
+                language === "zh"
+                  ? "例如：请先给出一份采集计划，再自动收集当前服务器的网站配置和数据库连接信息。"
+                  : "Example: create a collection plan first, then gather web config and database connection evidence."
+              }
+              className="ui-input-base min-h-[104px] w-full resize-none rounded-[1.4rem] border-white/0 bg-slate-50/80 px-4 py-3 text-sm text-slate-700 shadow-inner"
+            />
+            <SlashCommandMenu
+              language={language}
+              input={input}
+              commands={slashCommands}
+              onUse={(command) => {
+                if (command.onSelect) {
+                  command.onSelect();
+                  return;
+                }
+                setInput(command.insertText || "");
+              }}
+            />
+          </div>
+        </div>
+      </section>
 
-      </div>
+      <aside className="order-2 min-h-0 custom-scrollbar overflow-auto pr-1 flex flex-col gap-4">
+        <PlannerPanel
+          language={language}
+          tasks={tasks}
+          onClear={() => clearTasks()}
+          onUpdateTaskStatus={updateTaskStatus}
+          onRemoveTask={removeTask}
+        />
+        <PromptDeck
+          language={language}
+          title={language === "zh" ? "上下文提示词库" : "Context Prompt Deck"}
+          promptHistory={promptHistory}
+          promptSnippets={promptSnippets}
+          currentInput={input}
+          onUsePrompt={(value) => setInput(value)}
+          onSaveCurrent={() => savePromptSnippet({ content: input, pinned: false })}
+          onSaveHistoryPrompt={(value) => savePromptSnippet({ content: value, pinned: false })}
+          onRemoveSnippet={removePromptSnippet}
+          onTogglePin={togglePromptSnippetPin}
+        />
+        <div className="ui-shell min-h-0 rounded-[2rem] overflow-hidden flex flex-col">
+        <div className="border-b border-slate-200/70 px-5 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                {language === "zh" ? "共享线索池" : "Shared Clue Pool"}
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                {language === "zh" ? "仅保留对后续分析有价值的关键信息。" : "Only keep findings useful for later analysis."}
+              </p>
+            </div>
+            <motion.button
+              onClick={() => clearRecords()}
+              whileHover={{ y: -1 }}
+              whileTap={{ scale: 0.985 }}
+              className="ui-button ui-pressable rounded-2xl px-3 py-2 text-sm text-slate-600"
+            >
+              <Trash2 size={15} />
+              {language === "zh" ? "清空" : "Clear"}
+            </motion.button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto p-4 space-y-3">
+          {records.length === 0 && (
+            <div className="rounded-[1.4rem] border border-dashed border-slate-300 bg-white/80 p-5 text-sm text-slate-500">
+              {language === "zh" ? "暂无线索。" : "No clues yet."}
+            </div>
+          )}
+          {records.map((record) => (
+            <motion.div
+              key={record.id}
+              whileHover={{ y: -2 }}
+              onDoubleClick={() => setCluePreview({ title: record.title, content: record.content })}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setClueMenu({
+                  x: event.clientX,
+                  y: event.clientY,
+                  actions: [
+                    {
+                      label: language === "zh" ? "查看详情" : "Preview",
+                      onClick: () => setCluePreview({ title: record.title, content: record.content }),
+                    },
+                    {
+                      label: language === "zh" ? "复制内容" : "Copy",
+                      onClick: () => void navigator.clipboard.writeText(record.content),
+                    },
+                    {
+                      label: language === "zh" ? "存为提示词模板" : "Save as Prompt Snippet",
+                      onClick: () => savePromptSnippet({ content: record.content, title: record.title, pinned: false }),
+                    },
+                    {
+                      label: language === "zh" ? "删除线索" : "Delete",
+                      onClick: () => removeRecord(record.id),
+                      danger: true,
+                    },
+                  ],
+                });
+              }}
+              className="ui-subtle-surface rounded-[1.4rem] p-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-slate-900">{record.title}</div>
+                  <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{record.content}</div>
+                </div>
+                <motion.button
+                  onClick={() => removeRecord(record.id)}
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.96 }}
+                  className="ui-button ui-pressable rounded-xl p-2 text-slate-500"
+                >
+                  <Trash2 size={15} />
+                </motion.button>
+              </div>
+              <div className="mt-3 text-xs text-slate-400">
+                {language === "zh" ? "来源" : "Source"} · {record.source}
+              </div>
+            </motion.div>
+          ))}
+        </div>
+        </div>
+        <FloatingContextMenu menu={clueMenu} onClose={() => setClueMenu(null)} />
+        {cluePreview && <PreviewDialog title={cluePreview.title} content={cluePreview.content} onClose={() => setCluePreview(null)} />}
+      </aside>
     </div>
   );
 }

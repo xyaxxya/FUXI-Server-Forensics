@@ -1,30 +1,17 @@
-import { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  Bot,
-  Send,
-  Settings,
-  Terminal,
-  Loader2,
-  Sparkles,
-  Trash2,
-  MessageSquare,
-  Plus,
-  Menu,
-  X,
-  Square,
-  Wrench
-} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { Bot, Loader2, Send, Square, Trash2, Wand2 } from "lucide-react";
 import { useCommandStore } from "../../store/CommandContext";
-import { AIMessage, AISettings, sendToAI } from "../../lib/ai";
-import { translations, Language } from "../../translations";
+import { AIMessage, AISettings, ToolCall, buildServerForensicsToolExecution, buildToolDisplayText, shouldTreatAssistantMessageAsThinking } from "../../lib/ai";
+import { buildContextSections, buildServerContextSummary, buildWorkspacePromptContext } from "../../lib/aiContext";
+import { applyUsageToSettings, runConversationLoop } from "../../lib/aiRuntime";
+import { executeResearchTool } from "../../lib/aiResearchTools";
+import { useAIWorkspaceStore } from "../../lib/aiWorkspaceStore";
+import { Language } from "../../translations";
+import { ChatTranscriptMessage } from "./ChatTranscriptMessage";
 import ThinkingProcess, { ThinkingStep } from "./ThinkingProcess";
-import { useChatStore } from "../../lib/chatStore";
-import { useToast } from "../Toast";
-import { getFriendlyError } from "../../lib/errorHandler";
+import { FloatingContextMenu, PlannerPanel, PreviewDialog, PromptDeck, SlashCommandMenu, WorkspaceHeader, getExactSlashCommand, getSlashCommandCompletion } from "./WorkbenchWidgets";
 
 interface GeneralAgentProps {
   language: Language;
@@ -39,758 +26,643 @@ interface GeneralAgentProps {
   };
 }
 
-type DisplayItem = 
-  | { type: 'message', message: AIMessage }
-  | { type: 'thinking', steps: ThinkingStep[], isFinished: boolean };
+type DisplayItem =
+  | { type: "message"; message: AIMessage }
+  | { type: "thinking"; steps: ThinkingStep[]; isFinished: boolean };
 
-type AgentMode = "general_agent" | "server_refactor_agent";
+interface RemoteSession {
+  id: string;
+  ip: string;
+  user: string;
+}
 
-export default function GeneralAgent({ language, aiSettings, onOpenSettings, generalInfo, setGeneralInfo, onAiSettingsChange, chatUserProfile }: GeneralAgentProps) {
-  const { showToast } = useToast();
-  // Chat Store
-  const { 
-    sessions: chatSessions, 
-    activeSessionId, 
-    createSession, 
-    deleteSession, 
-    setActiveSession, 
-    updateSessionMessages,
-    updateSessionTitle,
-    clearSessionMessages
-  } = useChatStore();
+const quickPrompts = {
+  zh: [
+    "先给出一份调查计划，再按计划分析当前服务器。",
+    "识别当前服务器的网站业务、启动方式、配置入口和可疑点。",
+    "从已知共享线索出发，告诉我下一步最值得验证的证据。",
+    "只输出高价值发现，并同步维护执行计划。",
+  ],
+  en: [
+    "Create an investigation plan first, then analyze the current server.",
+    "Identify the web stack, config paths and suspicious entry points.",
+    "Use the shared clue pool and tell me the next evidence to verify.",
+    "Return only high-value findings and keep the execution plan updated.",
+  ],
+};
 
-  // Local State
+function buildDisplayItems(messages: AIMessage[]): DisplayItem[] {
+  const items: DisplayItem[] = [];
+  let thinkingSteps: ThinkingStep[] = [];
+
+  const pushThinking = (isFinished: boolean) => {
+    if (thinkingSteps.length > 0) {
+      items.push({ type: "thinking", steps: [...thinkingSteps], isFinished });
+      thinkingSteps = [];
+    }
+  };
+
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (message.role === "system") {
+      continue;
+    }
+    if (message.role === "user") {
+      pushThinking(true);
+      items.push({ type: "message", message });
+      continue;
+    }
+    if (message.role === "assistant") {
+      const isThinking = shouldTreatAssistantMessageAsThinking(messages, index, thinkingSteps.length > 0);
+      if (isThinking) {
+        if (message.content.trim()) {
+          thinkingSteps.push({
+            id: `thought-${index}`,
+            title: message.content,
+          });
+        }
+        message.tool_calls?.forEach((toolCall) => {
+          let args: Record<string, unknown> = {};
+          try {
+            args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
+          } catch {
+            args = { raw: toolCall.function.arguments };
+          }
+          const display = buildToolDisplayText(toolCall);
+          thinkingSteps.push({
+            id: toolCall.id,
+            title: display.title,
+            toolCall: {
+              command: display.command,
+              args,
+              isLoading: true,
+            },
+          });
+        });
+      } else {
+        pushThinking(true);
+        items.push({ type: "message", message });
+      }
+      continue;
+    }
+    if (message.role === "tool") {
+      const matchedStep = thinkingSteps.find((step) => step.id === message.tool_call_id);
+      if (matchedStep?.toolCall) {
+        matchedStep.toolCall.output = message.content;
+        matchedStep.toolCall.isLoading = false;
+        matchedStep.toolCall.isError = /Execution failed|Exit:\s*[1-9]/.test(message.content);
+      } else {
+        thinkingSteps.push({
+          id: `tool-${index}`,
+          title: "Tool Output",
+          toolCall: {
+            command: "Unknown Tool",
+            args: {},
+            output: message.content,
+            isLoading: false,
+          },
+        });
+      }
+    }
+  }
+
+  pushThinking(false);
+  return items;
+}
+
+function limitOutput(value: string) {
+  return value.length > 12000 ? `${value.slice(0, 12000)}\n\n...[truncated]...` : value;
+}
+
+function resolveTargetSessions(
+  sessions: RemoteSession[],
+  selectedSessionIds: string[],
+  currentSession: RemoteSession | null,
+  targetIds?: string[],
+) {
+  if (targetIds && targetIds.length > 0) {
+    return sessions.filter((session) => targetIds.includes(session.id));
+  }
+  const selected = sessions.filter((session) => selectedSessionIds.includes(session.id));
+  if (selected.length > 0) {
+    return selected;
+  }
+  return currentSession ? [currentSession] : [];
+}
+
+export default function GeneralAgent({
+  language,
+  aiSettings,
+  generalInfo,
+  onAiSettingsChange,
+}: GeneralAgentProps) {
+  const { currentSession, sessions, selectedSessionIds } = useCommandStore();
+  const records = useAIWorkspaceStore((state) => state.records);
+  const tasks = useAIWorkspaceStore((state) => state.tasks);
+  const promptHistory = useAIWorkspaceStore((state) => state.promptHistory);
+  const promptSnippets = useAIWorkspaceStore((state) => state.promptSnippets);
+  const sessionTitle = useAIWorkspaceStore((state) => state.sessionTitle);
+  const appendRecord = useAIWorkspaceStore((state) => state.appendRecord);
+  const syncTasks = useAIWorkspaceStore((state) => state.syncTasks);
+  const finalizeTasks = useAIWorkspaceStore((state) => state.finalizeTasks);
+  const updateTaskStatus = useAIWorkspaceStore((state) => state.updateTaskStatus);
+  const removeTask = useAIWorkspaceStore((state) => state.removeTask);
+  const clearTasks = useAIWorkspaceStore((state) => state.clearTasks);
+  const addPromptHistory = useAIWorkspaceStore((state) => state.addPromptHistory);
+  const savePromptSnippet = useAIWorkspaceStore((state) => state.savePromptSnippet);
+  const removePromptSnippet = useAIWorkspaceStore((state) => state.removePromptSnippet);
+  const togglePromptSnippetPin = useAIWorkspaceStore((state) => state.togglePromptSnippetPin);
+  const [messages, setMessages] = useState<AIMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<string>("");
-  const [autoSkillStatus, setAutoSkillStatus] = useState<string>("");
-  const [agentMode, setAgentMode] = useState<AgentMode>("general_agent");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [userAvatarFailed, setUserAvatarFailed] = useState(false);
-  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState("");
-  const [sessionSearchQuery, setSessionSearchQuery] = useState("");
-  
+  const [status, setStatus] = useState("");
+  const [cluePreview, setCluePreview] = useState<{ title: string; content: string } | null>(null);
+  const [clueMenu, setClueMenu] = useState<{ x: number; y: number; actions: Array<{ label: string; onClick: () => void; danger?: boolean }> } | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  
-  const { currentSession, sessions, selectedSessionIds } = useCommandStore();
-  const t = translations[language];
-  const normalizedAvatar = chatUserProfile?.avatar?.trim() || "";
-  const qq = (chatUserProfile?.qq || "").trim();
-  const qqAvatarSrc = qq ? `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(qq)}&s=100` : "";
-  const avatarFromLicense = normalizedAvatar
-    ? normalizedAvatar.startsWith("data:")
-      ? normalizedAvatar
-      : `data:image/png;base64,${normalizedAvatar}`
-    : "";
-  const userAvatarSrc = qqAvatarSrc || avatarFromLicense;
+  const listEndRef = useRef<HTMLDivElement | null>(null);
+
+  const displayItems = useMemo(() => buildDisplayItems(messages), [messages]);
+  const config = aiSettings.configs[aiSettings.activeProvider];
 
   useEffect(() => {
-    setUserAvatarFailed(false);
-  }, [userAvatarSrc]);
+    listEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [displayItems.length, loading, messages.length, status]);
 
-  // Derived State
-  const activeSession = Array.isArray(chatSessions) ? chatSessions.find(s => s.id === activeSessionId) : undefined;
-  const messages = activeSession ? activeSession.messages : [];
-
-  // Filter sessions based on search
-  const filteredSessions = sessionSearchQuery.trim() 
-    ? chatSessions.filter(session => {
-        const query = sessionSearchQuery.toLowerCase();
-        return session.title.toLowerCase().includes(query) ||
-               session.messages.some(msg => msg.content.toLowerCase().includes(query));
-      })
-    : chatSessions;
-
-  // Ensure there's always at least one session if none exist
-  useEffect(() => {
-    if ((!chatSessions || chatSessions.length === 0) && !activeSessionId) {
-        createSession();
-    } else if (chatSessions && chatSessions.length > 0 && !activeSessionId) {
-        setActiveSession(chatSessions[0].id);
-    }
-  }, [chatSessions?.length, activeSessionId, createSession, setActiveSession]);
-
-  const format = (str: string, ...args: any[]) => {
-    return str.replace(/{(\d+)}/g, (match, number) => {
-      return typeof args[number] != 'undefined'
-        ? args[number]
-        : match
-      ;
-    });
-  };
-
-  // Process messages into display items
-  const getDisplayItems = (msgs: AIMessage[]): DisplayItem[] => {
-    const items: DisplayItem[] = [];
-    let currentThinking: ThinkingStep[] = [];
-    
-    const flushThinking = (isFinished: boolean) => {
-      if (currentThinking.length > 0) {
-        items.push({ type: 'thinking', steps: [...currentThinking], isFinished });
-        currentThinking = [];
+  const executeToolCall = async (toolCall: ToolCall) => {
+    if (toolCall.function.name === "update_context_info") {
+      const args = JSON.parse(toolCall.function.arguments) as { info?: string };
+      if (args.info) {
+        appendRecord({
+          content: args.info,
+          source: "general-agent",
+        });
       }
+      return {
+        role: "tool",
+        content: language === "zh" ? "共享线索池已更新。" : "Shared clue pool updated.",
+        tool_call_id: toolCall.id,
+      } as AIMessage;
+    }
+
+    if (toolCall.function.name === "update_plan") {
+      const args = JSON.parse(toolCall.function.arguments) as {
+        tasks?: Array<{
+          id?: string;
+          content: string;
+          status: "pending" | "in_progress" | "completed";
+        }>;
+      };
+      syncTasks(args.tasks || [], "planner");
+      return {
+        role: "tool",
+        content: language === "zh" ? "执行计划已更新。" : "Execution plan updated.",
+        tool_call_id: toolCall.id,
+      } as AIMessage;
+    }
+
+    const researchResult = await executeResearchTool(toolCall, language);
+    if (researchResult) {
+      return researchResult;
+    }
+
+    const serverToolExecution = buildServerForensicsToolExecution(toolCall);
+    const args = JSON.parse(toolCall.function.arguments) as {
+      command?: string;
+      target_ids?: string[];
     };
+    const command = serverToolExecution?.command ?? args.command;
+    const targetIds = serverToolExecution?.targetIds ?? args.target_ids;
+    if (!command) {
+      return {
+        role: "tool",
+        content: language === "zh" ? "工具参数不完整，缺少可执行内容。" : "Tool arguments are incomplete.",
+        tool_call_id: toolCall.id,
+      } as AIMessage;
+    }
 
-    for (let i = 0; i < msgs.length; i++) {
-      const msg = msgs[i];
-      
-      if (msg.role === 'user') {
-        flushThinking(true);
-        items.push({ type: 'message', message: msg });
-        continue;
-      }
+    const targetSessions = resolveTargetSessions(sessions, selectedSessionIds, currentSession, targetIds);
 
-      if (msg.role === 'system') continue;
+    if (targetSessions.length === 0) {
+      return {
+        role: "tool",
+        content: language === "zh" ? "当前没有可执行的 SSH 会话。" : "No SSH session is available.",
+        tool_call_id: toolCall.id,
+      } as AIMessage;
+    }
 
-      if (msg.role === 'assistant') {
-        const content = msg.content || "";
-        const hasKeywords = content.includes("Analysis") || content.includes("Plan") || content.includes("分析") || content.includes("规划") || content.includes("思索") || content.includes("执行") || content.includes("反馈");
-        const hasTools = msg.tool_calls && msg.tool_calls.length > 0;
-        const isThinking = hasTools || (hasKeywords && content.length < 500);
+    if (targetSessions.length === 1) {
+      const session = targetSessions[0];
+      setStatus(`${language === "zh" ? "执行中" : "Running"}：${session.user}@${session.ip}`);
+      const result = await invoke<{ stdout: string; stderr: string; exit_code: number }>("exec_command", {
+          cmd: command,
+        sessionId: session.id,
+      });
+      const output = [result.stdout.trim(), result.stderr.trim(), `Exit: ${result.exit_code}`].filter(Boolean).join("\n");
+      return {
+        role: "tool",
+        content: limitOutput(output || (language === "zh" ? "无输出" : "No output")),
+        tool_call_id: toolCall.id,
+      } as AIMessage;
+    }
 
-        if (isThinking) {
-          if (msg.content) {
-             currentThinking.push({
-               id: `thought-${i}`,
-               title: msg.content
-             });
-          }
-          
-          if (msg.tool_calls) {
-            msg.tool_calls.forEach((tc) => {
-               let args: any = {};
-               try { args = JSON.parse(tc.function.arguments); } catch (e) { args = { command: tc.function.arguments }; }
-               
-               currentThinking.push({
-                 id: tc.id,
-                 title: args.command ? `${t.execute}: ${args.command}` : `${t.call}: ${tc.function.name}`,
-                 toolCall: {
-                   command: args.command || tc.function.name,
-                   args: args,
-                   isLoading: true 
-                 }
-               });
-            });
-          }
-        } else {
-          flushThinking(true);
-          items.push({ type: 'message', message: msg });
+    const parts = await Promise.all(
+      targetSessions.map(async (session) => {
+        try {
+          const result = await invoke<{ stdout: string; stderr: string; exit_code: number }>("exec_command", {
+            cmd: args.command,
+            sessionId: session.id,
+          });
+          const body = [result.stdout.trim(), result.stderr.trim()].filter(Boolean).join("\n");
+          return `[${session.user}@${session.ip}] Exit: ${result.exit_code}\n${body || (language === "zh" ? "无输出" : "No output")}`;
+        } catch (error) {
+          return `[${session.user}@${session.ip}] ${String(error)}`;
         }
-      } else if (msg.role === 'tool') {
-          const stepIndex = currentThinking.findIndex(s => s.id === msg.tool_call_id);
-          if (stepIndex !== -1) {
-              const step = currentThinking[stepIndex];
-              if (step.toolCall) {
-                  step.toolCall.output = msg.content;
-                  step.toolCall.isLoading = false;
-                  if (msg.content.includes("Exit:") && !msg.content.includes("Exit: 0")) {
-                      step.toolCall.isError = true;
-                  } else if (msg.content.includes("Execution failed")) {
-                      step.toolCall.isError = true;
-                  }
-              }
-          } else {
-              currentThinking.push({
-                  id: `tool-res-${i}`,
-                  title: t.tool_output,
-                  toolCall: {
-                      command: t.unknown,
-                      args: {},
-                      output: msg.content,
-                      isLoading: false
-                  }
-              });
-          }
-      }
-    }
-    flushThinking(false);
-    return items;
+      }),
+    );
+
+    return {
+      role: "tool",
+      content: limitOutput(parts.join("\n\n----------------------------------------\n\n")),
+      tool_call_id: toolCall.id,
+    } as AIMessage;
   };
 
-  const displayItems = getDisplayItems(messages);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [messages, loading, status, displayItems.length]);
-
-  const handleClearChat = () => {
-    if (activeSessionId && messages.length > 0 && window.confirm(t.clear_chat_confirm)) {
-        clearSessionMessages(activeSessionId);
-    }
+  const handleStop = () => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setLoading(false);
+    setStatus(language === "zh" ? "已停止" : "Stopped");
   };
 
-  const handleStopGeneration = () => {
-      if (abortControllerRef.current) {
-          abortControllerRef.current.abort();
-          abortControllerRef.current = null;
-          setLoading(false);
-          setStatus(t.stopped_by_user);
-      }
+  const handleClear = () => {
+    if (loading) {
+      return;
+    }
+    setMessages([]);
+    setStatus("");
   };
 
-  const handleSendMessage = async () => {
-    if (!input.trim() || loading) return;
+  const slashCommands = useMemo(
+    () => [
+      {
+        id: "plan",
+        command: "/plan",
+        title: language === "zh" ? "生成调查计划" : "Create investigation plan",
+        description: language === "zh" ? "先生成 3-6 步调查计划再开始分析" : "Generate a 3-6 step plan before analysis",
+        insertText: language === "zh" ? "请先给出一份清晰的调查计划，再按计划逐步执行分析。" : "Create a clear investigation plan first, then execute it step by step.",
+      },
+      {
+        id: "web",
+        command: "/web",
+        title: language === "zh" ? "联网查询资料" : "Search the web",
+        description: language === "zh" ? "主动搜索公开资料、文档或漏洞说明" : "Search public docs, references or vulnerability information",
+        insertText: language === "zh" ? "请联网搜索相关公开资料，并基于搜索结果给我结论。" : "Search the public web for relevant references and answer from those results.",
+      },
+      {
+        id: "context",
+        command: "/context",
+        title: language === "zh" ? "基于共享线索继续分析" : "Use shared clue pool",
+        description: language === "zh" ? "优先复用共享线索池中的内容继续分析" : "Continue analysis from the shared clue pool first",
+        insertText: language === "zh" ? "请先基于共享线索池中的内容继续推理，并告诉我下一步最值得验证的点。" : "Use the shared clue pool first and tell me the next best evidence to verify.",
+      },
+      {
+        id: "clear",
+        command: "/clear",
+        title: language === "zh" ? "清空当前会话" : "Clear session",
+        description: language === "zh" ? "清空当前对话消息，保留工作台数据" : "Clear current chat while preserving workspace data",
+        onSelect: () => {
+          handleClear();
+          setInput("");
+        },
+      },
+    ],
+    [handleClear, language],
+  );
 
-    const config = aiSettings.configs[aiSettings.activeProvider];
-    if (!config.apiKey) {
-        // We can't easily add a message to store without it being "real", but we can temporary show it or just add it.
-        // Let's add it to store for consistency
-        if (activeSessionId) {
-             const errorMsg: AIMessage = {
-                role: "assistant",
-                content: `${format(t.configure_api_key, config.name)} [${t.settings}](#settings)`,
-             };
-             updateSessionMessages(activeSessionId, [...messages, errorMsg]);
-        }
-        return;
+  const handleSend = async () => {
+    if (!input.trim() || loading) {
+      return;
+    }
+    if (!config.apiKey.trim()) {
+      setStatus(language === "zh" ? "请先在设置中配置 AI Key。" : "Configure the AI key first.");
+      return;
     }
 
-    // Ensure active session
-    let sessionId = activeSessionId;
-    let currentMessages = messages;
-    
-    if (!sessionId) {
-        sessionId = createSession();
-        currentMessages = [];
-    }
-
-    const msgToStore: AIMessage = {
+    const nextUserMessage: AIMessage = {
       role: "user",
-      content:
-        selectedSessionIds.length > 0
-          ? `(Selected ${selectedSessionIds.length} servers) ${input}`
-          : input,
+      content: input.trim(),
     };
-
-    const newHistory = [...currentMessages, msgToStore];
-    updateSessionMessages(sessionId, newHistory);
+    addPromptHistory(input);
+    const nextHistory = [...messages, nextUserMessage];
+    setMessages(nextHistory);
     setInput("");
     setLoading(true);
-    setStatus(t.ai_thinking);
+    setStatus(language === "zh" ? "智能体正在分析..." : "Agent is analyzing...");
 
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
 
-    try {
-      await processConversation(sessionId, newHistory, 0, controller.signal);
-    } catch (error: any) {
-      if (error.name !== 'AbortError') {
-          const friendlyError = getFriendlyError(error, language);
-          const errHistory = [...newHistory, { 
-            role: "assistant", 
-            content: `❌ ${friendlyError.title}\n\n${friendlyError.message}${friendlyError.suggestion ? '\n\n💡 ' + friendlyError.suggestion : ''}` 
-          } as AIMessage];
-          updateSessionMessages(sessionId, errHistory);
-          showToast('error', friendlyError.title, 3000);
-      }
-    } finally {
-      if (abortControllerRef.current === controller) {
-         setLoading(false);
-         setStatus("");
-         abortControllerRef.current = null;
-      }
-    }
-  };
-
-  const processConversation = async (sessionId: string, history: AIMessage[], depth = 0, signal: AbortSignal) => {
-    if (signal.aborted) return;
-    
-    const maxLoops = aiSettings.maxLoops || 25;
-    if (depth > maxLoops) {
-        const loopMsg: AIMessage = { role: 'assistant', content: t.max_loops_reached };
-        updateSessionMessages(sessionId, [...history, loopMsg]);
-        return;
-    }
+    const serverInfo = buildServerContextSummary(sessions, selectedSessionIds, currentSession);
+    const workspaceInfo = buildWorkspacePromptContext(generalInfo, records);
+    const conversationContext = buildContextSections([
+      { title: "当前任务", content: "通用智能体对话分析与线索沉淀" },
+      { title: "服务器会话", content: serverInfo },
+      { title: "共享线索池", content: workspaceInfo || "暂无" },
+      {
+        title: "执行计划要求",
+        content: "复杂问题先调用 update_plan 给出 3-6 步计划；过程中持续更新 pending / in_progress / completed 状态。",
+      },
+    ]);
 
     try {
-      // Prepare enhanced context with server list
-      let enhancedInfo = generalInfo;
-      const modeContext =
-        agentMode === "server_refactor_agent"
-          ? "【当前模式：服务器重构智能体】面向网站重构与交付，先只读探测框架，再分批改造与验证回滚。"
-          : "【当前模式：通用智能体】面向通用取证分析与答疑。";
-      const serverListInfo = sessions
-          .map(s => `- ${s.user}@${s.ip} (ID: ${s.id}) ${s.note ? `[Note: ${s.note}]` : ''} ${selectedSessionIds.includes(s.id) ? '(Selected)' : ''}`)
-          .join('\n');
-      
-      enhancedInfo = `${modeContext}\n\n**Current Server List**:\n${serverListInfo}\n\n${enhancedInfo}`;
-
-      // 1. Get response from AI
-      const response = await sendToAI(history, aiSettings, undefined, enhancedInfo, signal);
-      setAutoSkillStatus(response.routing_info?.status_text || "");
-      if (signal.aborted) return;
-
-      // 2. Add AI response to history
-      const newHistory = [...history, response];
-      updateSessionMessages(sessionId, newHistory);
-      
-      // Update global token usage
-      if (response.usage) {
-          const currentUsage = aiSettings.tokenUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
-          onAiSettingsChange?.({
-              ...aiSettings,
-              tokenUsage: {
-                  prompt_tokens: currentUsage.prompt_tokens + response.usage.prompt_tokens,
-                  completion_tokens: currentUsage.completion_tokens + response.usage.completion_tokens,
-                  total_tokens: currentUsage.total_tokens + response.usage.total_tokens,
-              }
-          });
-      }
-
-      // 3. Check for tool calls
-      if (response.tool_calls && response.tool_calls.length > 0) {
-        setStatus(t.executing_command);
-
-        for (const toolCall of response.tool_calls) {
-          if (signal.aborted) break;
-
-          if (toolCall.function.name === "run_shell_command") {
-            const args = JSON.parse(toolCall.function.arguments);
-            const cmd = args.command;
-            const targetIds = args.target_ids;
-
-            let output = "";
-            try {
-              let targetSessions: typeof sessions = [];
-              
-              if (targetIds && Array.isArray(targetIds) && targetIds.length > 0) {
-                  // If AI specified targets, use them
-                  targetSessions = sessions.filter(s => targetIds.includes(s.id));
-              } 
-              
-              if (targetSessions.length === 0) {
-                  // Fallback to selected sessions or current session
-                  targetSessions = sessions.filter((s) => selectedSessionIds.includes(s.id));
-                  if (targetSessions.length === 0 && currentSession) targetSessions = [currentSession];
-              }
-
-              if (targetSessions.length === 0) {
-                output = t.no_active_session;
-              } else if (targetSessions.length === 1) {
-                const session = targetSessions[0];
-                setStatus(format(t.running_command, session.ip, cmd));
-                const res: any = await invoke("exec_command", { cmd, sessionId: session.id });
-                output = res.stdout || res.stderr || t.no_output;
-                if (res.exit_code !== 0) output += `\n(${t.exit_code}: ${res.exit_code})`;
-              } else {
-                setStatus(format(t.running_on_servers, targetSessions.length, cmd));
-                const results = await Promise.all(
-                  targetSessions.map(async (session) => {
-                    try {
-                      const res: any = await invoke("exec_command", { cmd, sessionId: session.id });
-                      const truncated = res.stdout || res.stderr || t.no_output;
-                      const exitInfo = res.exit_code !== 0 ? ` (${t.exit_code}: ${res.exit_code})` : "";
-                      return `[${session.user}@${session.ip}]${exitInfo}:\n${truncated}`;
-                    } catch (e: any) {
-                      return `[${session.user}@${session.ip}]: ${format(t.execution_failed, e.toString())}`;
-                    }
-                  }),
-                );
-                output = results.join("\n\n" + "-".repeat(40) + "\n\n");
-              }
-            } catch (e: any) {
-              output = format(t.execution_failed, e.toString());
-            }
-
-            const toolMsg: AIMessage = {
-              role: "tool",
-              content: output,
-              tool_call_id: toolCall.id,
-            };
-            newHistory.push(toolMsg);
-          } else if (toolCall.function.name === "update_context_info") {
-              const args = JSON.parse(toolCall.function.arguments);
-              if (args.info) {
-                  setGeneralInfo(prev => prev ? prev + "\n\n" + args.info : args.info);
-                  setStatus(t.general_info_updated);
-              }
-               const toolMsg: AIMessage = {
-                  role: "tool",
-                  content: "Context updated successfully.",
-                  tool_call_id: toolCall.id,
-                };
-                newHistory.push(toolMsg);
-          }
-        }
-
-        if (signal.aborted) return;
-        updateSessionMessages(sessionId, newHistory);
-
-        // 4. Recursively call AI with tool outputs
-        setStatus(t.analyzing_results);
-        await processConversation(sessionId, newHistory, depth + 1, signal);
-      }
+      const finalHistory = await runConversationLoop({
+        initialHistory: nextHistory,
+        settings: aiSettings,
+        generalInfo: conversationContext,
+        signal: abortController.signal,
+        executeToolCall: async ({ toolCall }) => executeToolCall(toolCall),
+        callbacks: {
+          onAssistantMessage: (_, history) => {
+            setMessages(history);
+          },
+          onToolResult: (_, __, history) => {
+            setMessages(history);
+            setStatus(language === "zh" ? "正在处理工具结果..." : "Processing tool output...");
+          },
+          onUsage: (usage) => {
+            onAiSettingsChange?.(applyUsageToSettings(aiSettings, usage));
+          },
+        },
+      });
+      setMessages(finalHistory);
+      finalizeTasks("all");
+      setStatus(language === "zh" ? "分析完成" : "Done");
     } catch (error) {
-      throw error;
+      setStatus(String(error));
+    } finally {
+      setLoading(false);
+      abortControllerRef.current = null;
     }
   };
 
   return (
-    <div className="flex h-full bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-        {/* Sidebar */}
-        <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} bg-slate-50 border-r border-slate-200 flex flex-col transition-all duration-300 overflow-hidden`}>
-            <div className="p-4 border-b border-slate-200 space-y-2">
-                <button 
-                    onClick={() => createSession()}
-                    className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+    <div className="h-full grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="ui-shell order-1 min-h-0 rounded-[2rem] flex flex-col overflow-hidden">
+        <WorkspaceHeader
+          language={language}
+          icon={Bot}
+          title={language === "zh" ? "通用智能体" : "General Agent"}
+          description={
+            language === "zh"
+              ? "围绕当前服务器对话分析、提炼结论并沉淀共享线索。"
+              : "Analyze the current servers, summarize findings and retain shared clues."
+          }
+          aiSettings={aiSettings}
+          sessionInfo={
+            currentSession
+              ? `${currentSession.user}@${currentSession.ip}`
+              : language === "zh"
+                ? "未连接 SSH 会话"
+                : "No SSH session"
+          }
+          extraItems={[
+            { label: language === "zh" ? "线索" : "Clues", value: String(records.length) },
+            { label: language === "zh" ? "计划任务" : "Tasks", value: String(tasks.length) },
+            { label: language === "zh" ? "服务器" : "Servers", value: String(selectedSessionIds.length || (currentSession ? 1 : 0)) },
+            { label: language === "zh" ? "会话标题" : "Session", value: sessionTitle },
+          ]}
+          actions={
+            <>
+              {loading && (
+                <motion.button
+                  onClick={handleStop}
+                  whileHover={{ y: -1 }}
+                  whileTap={{ scale: 0.985 }}
+                  className="ui-button-danger ui-pressable ui-focus-ring inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium text-amber-700"
                 >
-                    <Plus size={16} />
-                    <span className="text-sm font-medium">{language === 'zh' ? '新对话' : 'New Chat'}</span>
-                </button>
-                <input
-                    type="text"
-                    placeholder={language === 'zh' ? '搜索对话...' : 'Search chats...'}
-                    value={sessionSearchQuery}
-                    onChange={(e) => setSessionSearchQuery(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  <Square size={16} />
+                  {language === "zh" ? "停止" : "Stop"}
+                </motion.button>
+              )}
+              <motion.button
+                onClick={handleClear}
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.985 }}
+                className="ui-button ui-pressable ui-focus-ring inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium text-slate-600"
+              >
+                <Trash2 size={16} />
+                {language === "zh" ? "清空会话" : "Clear"}
+              </motion.button>
+            </>
+          }
+        />
+
+        <div className="flex-1 min-h-0 overflow-auto bg-slate-50/40 px-4 py-4 md:px-6 md:py-5">
+          <div className="mb-4 flex flex-wrap gap-2">
+            {quickPrompts[language].map((prompt) => (
+              <motion.button
+                key={prompt}
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.985 }}
+                onClick={() => setInput(prompt)}
+                className="ui-chip ui-pressable rounded-2xl px-3 py-2 text-sm text-slate-600"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Wand2 size={14} />
+                  {prompt}
+                </span>
+              </motion.button>
+            ))}
+          </div>
+          {messages.length === 0 && (
+            <div className="ui-surface rounded-[1.7rem] border-dashed px-6 py-10 text-center text-slate-500">
+              {language === "zh"
+                ? "开始提问，智能体会在需要时主动执行命令并把关键线索沉淀进共享线索池。"
+                : "Ask a question to let the agent investigate and retain key clues."}
+            </div>
+          )}
+          <div className="space-y-4">
+            {displayItems.map((item, index) =>
+              item.type === "thinking" ? (
+                <ThinkingProcess
+                  key={`thinking-${index}`}
+                  steps={item.steps}
+                  isFinished={item.isFinished}
+                  language={language}
                 />
-            </div>
-            <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
-                {filteredSessions.map(session => (
-                    <div 
-                        key={session.id}
-                        className={`group p-3 rounded-lg border cursor-pointer transition-all ${
-                            activeSessionId === session.id 
-                            ? 'bg-white border-indigo-200 shadow-sm ring-1 ring-indigo-50' 
-                            : 'bg-transparent border-transparent hover:bg-slate-200/50'
-                        }`}
-                        onClick={() => setActiveSession(session.id)}
-                    >
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2 overflow-hidden flex-1">
-                                <MessageSquare size={16} className={activeSessionId === session.id ? 'text-indigo-500' : 'text-slate-400'} />
-                                {editingSessionId === session.id ? (
-                                    <input
-                                        type="text"
-                                        value={editingTitle}
-                                        onChange={(e) => setEditingTitle(e.target.value)}
-                                        onBlur={() => {
-                                            if (editingTitle.trim()) {
-                                                updateSessionTitle(session.id, editingTitle.trim());
-                                            }
-                                            setEditingSessionId(null);
-                                        }}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                                if (editingTitle.trim()) {
-                                                    updateSessionTitle(session.id, editingTitle.trim());
-                                                }
-                                                setEditingSessionId(null);
-                                            } else if (e.key === 'Escape') {
-                                                setEditingSessionId(null);
-                                            }
-                                        }}
-                                        onClick={(e) => e.stopPropagation()}
-                                        autoFocus
-                                        className="flex-1 text-sm px-2 py-1 border border-indigo-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                    />
-                                ) : (
-                                    <span 
-                                        className={`text-sm truncate ${activeSessionId === session.id ? 'text-slate-700 font-medium' : 'text-slate-600'}`}
-                                        onDoubleClick={(e) => {
-                                            e.stopPropagation();
-                                            setEditingSessionId(session.id);
-                                            setEditingTitle(session.title);
-                                        }}
-                                        title={language === 'zh' ? '双击重命名' : 'Double-click to rename'}
-                                    >
-                                        {session.title}
-                                    </span>
-                                )}
-                            </div>
-                            <button 
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    if(window.confirm(t.delete_confirm)) {
-                                        deleteSession(session.id);
-                                    }
-                                }}
-                                className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 rounded hover:bg-red-50 transition-all"
-                            >
-                                <X size={14} />
-                            </button>
-                        </div>
-                        <div className="text-[10px] text-slate-400 mt-1 pl-6">
-                            {new Date(session.updatedAt).toLocaleString()}
-                        </div>
-                    </div>
-                ))}
-            </div>
+              ) : (
+                <ChatTranscriptMessage key={`message-${index}`} message={item.message} language={language} />
+              ),
+            )}
+            {loading && (
+              <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-2 pl-4 font-mono text-[11px] text-slate-500 shadow-[0_18px_34px_-32px_rgba(15,23,42,0.55)] w-fit">
+                <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                <Loader2 size={14} className="animate-spin" />
+                {status || (language === "zh" ? "处理中..." : "Processing...")}
+              </div>
+            )}
+            {!loading && status && (
+              <div className="inline-flex items-center gap-2 rounded-full bg-slate-100/90 px-3 py-1.5 font-mono text-[11px] text-slate-500">
+                <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                {status}
+              </div>
+            )}
+            <div ref={listEndRef} />
+          </div>
         </div>
 
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col min-w-0 bg-white">
-            {/* Header */}
-            <div className="p-4 bg-slate-50/50 border-b border-slate-200 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-3 overflow-hidden">
-                    <button 
-                        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                        className="p-2 text-slate-500 hover:bg-slate-200 rounded-lg transition-colors"
-                    >
-                        <Menu size={20} />
-                    </button>
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600">
-                            <Bot size={20} />
-                        </div>
-                        <div>
-                            <h3 className="font-bold text-slate-800">{t.ai_assistant}</h3>
-                            <p className="text-xs text-slate-500 flex items-center gap-1">
-                                {selectedSessionIds.length > 0 ? (
-                                    <span className="text-blue-600 flex items-center gap-1">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                        {format(t.selected_servers, selectedSessionIds.length)}
-                                    </span>
-                                ) : currentSession ? (
-                                    <span className="text-green-600 flex items-center gap-1">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                                        {format(t.connected_to, currentSession.ip)}
-                                    </span>
-                                ) : (
-                                    <span className="text-amber-500">{t.not_connected}</span>
-                                )}
-                            </p>
-                            <p className="text-[11px] text-sky-600 mt-0.5 truncate">{autoSkillStatus || t.skill_auto_detect_waiting}</p>
-                        </div>
-                    </div>
-                </div>
-                <div className="flex items-center gap-2">
-                    <div
-                        className="relative p-1 rounded-2xl border border-slate-200/90 bg-gradient-to-r from-slate-100 to-slate-50 grid grid-cols-2 w-[300px] shadow-inner"
-                        title={t.agent_mode}
-                    >
-                        <motion.div
-                            className={`absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-xl border transition-colors ${
-                                agentMode === "server_refactor_agent"
-                                    ? "bg-gradient-to-r from-indigo-500 to-blue-500 border-indigo-400/50"
-                                    : "bg-gradient-to-r from-blue-500 to-cyan-500 border-blue-400/50"
-                            }`}
-                            animate={{ x: agentMode === "server_refactor_agent" ? "100%" : "0%" }}
-                            transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                        />
-                        <motion.button
-                            onClick={() => setAgentMode("general_agent")}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            className={`relative z-10 px-3 py-2 text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 ${
-                                agentMode === "general_agent"
-                                    ? "text-white"
-                                    : "text-slate-600 hover:text-slate-900"
-                            }`}
-                        >
-                            <Bot size={13} />
-                            {t.agent_mode_sole_coder}
-                        </motion.button>
-                        <motion.button
-                            onClick={() => setAgentMode("server_refactor_agent")}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            className={`relative z-10 px-3 py-2 text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 ${
-                                agentMode === "server_refactor_agent"
-                                    ? "text-white"
-                                    : "text-slate-600 hover:text-slate-900"
-                            }`}
-                        >
-                            <Wrench size={13} />
-                            {t.agent_mode_solo_builder}
-                        </motion.button>
-                    </div>
-                    {messages.length > 0 && (
-                        <button
-                            onClick={handleClearChat}
-                            className="p-2 rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
-                            title={t.clear_chat}
-                        >
-                            <Trash2 size={20} />
-                        </button>
-                    )}
-                </div>
-            </div>
-
-            {/* Chat Area */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-white custom-scrollbar scroll-smooth">
-                {messages.length === 0 && (
-                    <div className="flex flex-col items-center justify-center h-full text-center px-4">
-                        <div className="mb-6 opacity-0 animate-fade-in-up" style={{ animationFillMode: "forwards" }}>
-                            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl shadow-lg flex items-center justify-center mx-auto mb-4 text-white">
-                                <Bot size={32} />
-                            </div>
-                            <h3 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600 mb-2">
-                                {t.how_can_i_help}
-                            </h3>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-2xl w-full px-4 opacity-0 animate-fade-in-up" style={{ animationDelay: "0.1s", animationFillMode: "forwards" }}>
-                            {[
-                                { icon: <Terminal size={16} />, text: t.example_disk_usage },
-                                { icon: <Sparkles size={16} />, text: t.example_nginx_logs },
-                                { icon: <Bot size={16} />, text: t.example_active_connections },
-                                { icon: <Settings size={16} />, text: t.example_kernel_versions },
-                            ].map((item, i) => (
-                                <button
-                                    key={i}
-                                    onClick={() => setInput(item.text)}
-                                    className="group flex items-center gap-3 p-4 bg-slate-50 hover:bg-blue-50/50 border border-slate-200 hover:border-blue-200 rounded-xl text-left transition-all duration-200 hover:shadow-md"
-                                >
-                                    <div className="p-2 bg-white rounded-lg text-slate-400 group-hover:text-blue-500 transition-colors shadow-sm">
-                                        {item.icon}
-                                    </div>
-                                    <span className="text-sm text-slate-600 group-hover:text-slate-900 font-medium">
-                                        {item.text}
-                                    </span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {displayItems.map((item, idx) => {
-                    if (item.type === 'thinking') {
-                        return <ThinkingProcess key={`thinking-${idx}`} steps={item.steps} isFinished={item.isFinished} language={language} />;
+        <div className="sticky bottom-0 z-20 border-t border-slate-200/70 bg-white/78 p-4 backdrop-blur-xl">
+          <div className="mb-3 text-xs text-slate-400">
+            {language === "zh"
+              ? "支持像 Claude Code 一样维护计划、复用历史提示词、沉淀共享线索。"
+              : "Supports Claude Code style plan tracking, prompt reuse and shared clues."}
+          </div>
+          <div className="rounded-[1.8rem] border border-white/70 bg-white/90 p-3 shadow-[0_30px_60px_-34px_rgba(15,23,42,0.26)] backdrop-blur-sm">
+            <div className="flex items-end gap-3">
+              <textarea
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Tab" && input.trim().startsWith("/")) {
+                    const completion = getSlashCommandCompletion(input, slashCommands);
+                    if (completion) {
+                      event.preventDefault();
+                      setInput(completion);
                     }
-                    const msg = item.message;
-                    return (
-                        <motion.div
-                            key={idx}
-                            initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            transition={{ duration: 0.3, ease: "easeOut" }}
-                            className={`flex gap-4 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
-                        >
-                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-1 shadow-sm transition-transform hover:scale-110 duration-200 ${
-                                msg.role === "user" 
-                                ? "bg-gradient-to-br from-indigo-500 to-blue-600 text-white" 
-                                : "bg-white text-indigo-600 border border-indigo-50"
-                            }`}>
-                                {msg.role === "user" ? (
-                                  userAvatarSrc && !userAvatarFailed ? (
-                                    <img
-                                      src={userAvatarSrc}
-                                      alt="user avatar"
-                                      className="w-full h-full rounded-xl object-cover"
-                                      onError={() => setUserAvatarFailed(true)}
-                                    />
-                                  ) : (
-                                    <div className="text-xs font-bold">U</div>
-                                  )
-                                ) : <Sparkles size={16} />}
-                            </div>
-                            <div className={`max-w-[85%] rounded-2xl px-6 py-4 text-sm shadow-sm transition-all duration-200 hover:shadow-md ${
-                                msg.role === "user" 
-                                ? "bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-tr-sm" 
-                                : "bg-white text-slate-700 rounded-tl-sm border border-slate-100/60"
-                            }`}>
-                                <div className={`prose prose-sm max-w-none leading-relaxed ${msg.role === "user" ? "prose-invert [&_*]:text-white/95" : "prose-slate"}`}>
-                                    <ReactMarkdown
-                                        remarkPlugins={[remarkGfm]}
-                                        components={{
-                                            a: ({ node, href, children, ...props }) => {
-                                                if (href === "#settings") {
-                                                    return (
-                                                        <button onClick={() => onOpenSettings?.()} className="text-blue-600 hover:underline font-medium inline-flex items-center gap-1">
-                                                            {children} <Settings size={12} />
-                                                        </button>
-                                                    );
-                                                }
-                                                return <a href={href} {...props}>{children}</a>;
-                                            },
-                                            pre: ({ node, ...props }) => (
-                                                <div className="bg-slate-900 rounded-lg p-3 my-2 overflow-x-auto text-slate-200 shadow-inner">
-                                                    <pre {...props} />
-                                                </div>
-                                            ),
-                                            code: ({ node, className, children, ...props }) => {
-                                                return !className ? (
-                                                    <code className={`${msg.role === "user" ? "bg-white/20 text-white" : "bg-slate-200 text-pink-600"} px-1.5 py-0.5 rounded text-xs font-mono`} {...props}>
-                                                        {children}
-                                                    </code>
-                                                ) : <code className={className} {...props}>{children}</code>;
-                                            },
-                                        }}
-                                    >
-                                        {msg.content}
-                                    </ReactMarkdown>
-                                </div>
-                            </div>
-                        </motion.div>
-                    );
-                })}
-
-                {status && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-2 text-xs text-slate-400 ml-12">
-                        <div className="w-2 h-2 bg-indigo-400 rounded-full animate-pulse" />
-                        <span>{status}</span>
-                    </motion.div>
-                )}
-
-                <div ref={messagesEndRef} />
+                    return;
+                  }
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    if (input.trim().startsWith("/")) {
+                      const exactCommand = getExactSlashCommand(input, slashCommands);
+                      if (exactCommand) {
+                        if (exactCommand.onSelect) {
+                          exactCommand.onSelect();
+                        } else {
+                          setInput(exactCommand.insertText || exactCommand.command);
+                        }
+                      }
+                    } else {
+                      void handleSend();
+                    }
+                  }
+                }}
+                placeholder={
+                  language === "zh"
+                    ? "输入问题，或输入 / 打开命令面板。"
+                    : "Ask a question, or type / to open the command palette."
+                }
+                className="ui-input-base min-h-[104px] flex-1 resize-none rounded-[1.55rem] border-white/0 bg-slate-50/80 px-4 py-3 text-sm text-slate-700 shadow-inner"
+              />
+              <motion.button
+                onClick={() => void handleSend()}
+                disabled={loading || !input.trim() || input.trim().startsWith("/")}
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.985 }}
+                className="ui-button-primary ui-pressable rounded-[1.35rem] inline-flex h-12 w-12 items-center justify-center disabled:bg-slate-300 disabled:border-slate-300"
+              >
+                <Send size={18} />
+              </motion.button>
             </div>
-
-            {/* Input Area */}
-            <div className="p-4 bg-white/80 backdrop-blur-sm border-t border-slate-100">
-                <div className="relative max-w-4xl mx-auto">
-                    <AnimatePresence>
-                        {loading && (
-                            <motion.div
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: 10 }}
-                                className="absolute -top-12 left-0 right-0 flex justify-center pointer-events-none"
-                            >
-                                <div className="bg-white/90 backdrop-blur border border-indigo-100 text-indigo-600 text-xs px-4 py-1.5 rounded-full flex items-center gap-2 shadow-sm ring-1 ring-indigo-50">
-                                    <Loader2 size={12} className="animate-spin" />
-                                    <span className="font-medium">{status || t.ai_thinking}</span>
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-
-                    <div className={`relative bg-slate-100/50 hover:bg-slate-100 focus-within:bg-white rounded-[2rem] border border-slate-200 focus-within:border-indigo-200 focus-within:ring-4 focus-within:ring-indigo-50/50 transition-all duration-300 ${loading ? "opacity-80" : ""}`}>
-                        <textarea
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === "Enter" && !e.shiftKey) {
-                                    e.preventDefault();
-                                    handleSendMessage();
-                                }
-                            }}
-                            placeholder={selectedSessionIds.length > 0 ? format(t.input_placeholder_selected, selectedSessionIds.length) : t.input_placeholder_default}
-                            className="w-full pl-6 pr-14 py-4 bg-transparent border-none focus:ring-0 outline-none focus:outline-none resize-none max-h-32 min-h-[56px] text-slate-700 placeholder:text-slate-400 leading-relaxed custom-scrollbar"
-                            style={{ height: "auto" }}
-                        />
-                        <div className="absolute right-2 bottom-2">
-                            {loading ? (
-                                <button
-                                    onClick={handleStopGeneration}
-                                    className="p-2.5 rounded-full bg-red-500 text-white shadow-md hover:bg-red-600 hover:shadow-lg hover:scale-105 active:scale-95 transition-all duration-200"
-                                    title={language === 'zh' ? "停止生成" : "Stop generation"}
-                                >
-                                    <Square size={16} fill="currentColor" />
-                                </button>
-                            ) : (
-                                <button
-                                    onClick={handleSendMessage}
-                                    disabled={!input.trim()}
-                                    className={`p-2.5 rounded-full transition-all duration-200 ${input.trim() ? "bg-blue-600 text-white shadow-md hover:bg-blue-700 hover:shadow-lg hover:scale-105 active:scale-95" : "bg-slate-200 text-slate-400 cursor-not-allowed"}`}
-                                >
-                                    <Send size={20} className={input.trim() ? "ml-0.5" : ""} />
-                                </button>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="mt-3 text-center">
-                        <p className="text-[10px] text-slate-400 flex items-center justify-center gap-1">
-                            <Sparkles size={10} className="text-indigo-400" />
-                            {t.ai_disclaimer}
-                        </p>
-                    </div>
-                </div>
-            </div>
+            <SlashCommandMenu
+              language={language}
+              input={input}
+              commands={slashCommands}
+              onUse={(command) => {
+                if (command.onSelect) {
+                  command.onSelect();
+                  return;
+                }
+                setInput(command.insertText || "");
+              }}
+            />
+          </div>
         </div>
+      </section>
+
+      <aside className="order-2 min-h-0 custom-scrollbar overflow-auto pr-1 flex flex-col gap-4">
+        <PlannerPanel
+          language={language}
+          tasks={tasks}
+          onClear={() => clearTasks()}
+          onUpdateTaskStatus={updateTaskStatus}
+          onRemoveTask={removeTask}
+        />
+        <PromptDeck
+          language={language}
+          title={language === "zh" ? "提示词面板" : "Prompt Deck"}
+          promptHistory={promptHistory}
+          promptSnippets={promptSnippets}
+          currentInput={input}
+          onUsePrompt={(value) => setInput(value)}
+          onSaveCurrent={() => {
+            savePromptSnippet({ content: input, pinned: true });
+          }}
+          onSaveHistoryPrompt={(value) => savePromptSnippet({ content: value, pinned: false })}
+          onRemoveSnippet={removePromptSnippet}
+          onTogglePin={togglePromptSnippetPin}
+        />
+        <div className="ui-shell min-h-0 rounded-[2rem] overflow-hidden flex flex-col">
+          <div className="border-b border-slate-200/70 px-5 py-4">
+            <h3 className="text-base font-bold text-slate-900">
+              {language === "zh" ? "共享线索池" : "Shared Clue Pool"}
+            </h3>
+            <p className="mt-1 text-sm text-slate-500">
+              {language === "zh"
+                ? "所有 AI 面板都会把有效信息沉淀到这里，并自动参与后续推理。"
+                : "All AI panels retain useful findings here for later reasoning."}
+            </p>
+          </div>
+          <div className="flex-1 overflow-auto p-4 space-y-3">
+            {records.length === 0 && (
+              <div className="rounded-[1.4rem] border border-dashed border-slate-300 bg-white/80 p-5 text-sm text-slate-500">
+                {language === "zh" ? "暂时还没有沉淀线索。" : "No clues have been retained yet."}
+              </div>
+            )}
+            {records.map((record) => (
+              <motion.div
+                key={record.id}
+                whileHover={{ y: -2 }}
+                onDoubleClick={() => setCluePreview({ title: record.title, content: record.content })}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  setClueMenu({
+                    x: event.clientX,
+                    y: event.clientY,
+                    actions: [
+                      {
+                        label: language === "zh" ? "查看详情" : "Preview",
+                        onClick: () => setCluePreview({ title: record.title, content: record.content }),
+                      },
+                      {
+                        label: language === "zh" ? "复制内容" : "Copy",
+                        onClick: () => void navigator.clipboard.writeText(record.content),
+                      },
+                      {
+                        label: language === "zh" ? "存为提示词模板" : "Save as Prompt Snippet",
+                        onClick: () => savePromptSnippet({ content: record.content, title: record.title, pinned: false }),
+                      },
+                      {
+                        label: language === "zh" ? "发送到输入框" : "Send to Input",
+                        onClick: () => setInput(record.content),
+                      },
+                    ],
+                  });
+                }}
+                className="ui-subtle-surface rounded-[1.4rem] p-4"
+              >
+                <div className="text-sm font-semibold text-slate-900">{record.title}</div>
+                <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{record.content}</div>
+                <div className="mt-3 text-xs text-slate-400">
+                  {language === "zh" ? "来源" : "Source"} · {record.source}
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+        <FloatingContextMenu menu={clueMenu} onClose={() => setClueMenu(null)} />
+        {cluePreview && <PreviewDialog title={cluePreview.title} content={cluePreview.content} onClose={() => setCluePreview(null)} />}
+      </aside>
     </div>
   );
 }

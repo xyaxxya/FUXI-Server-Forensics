@@ -6,7 +6,7 @@ use mysql::{OptsBuilder, Pool, PoolConstraints, PoolOpts};
 use serde::{Deserialize, Serialize};
 use socks::Socks5Stream;
 use ssh2::Session;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -44,6 +44,14 @@ struct ProxyConfig {
     port: u16,
     username: Option<String>,
     password: Option<String>,
+}
+
+#[derive(Serialize)]
+struct BenefitAiConfig {
+    provider_id: String,
+    api_key: String,
+    base_url: String,
+    model: String,
 }
 
 // PTY Session Management
@@ -130,6 +138,260 @@ struct FileEntry {
     mtime: u64,
 }
 
+#[derive(Serialize)]
+struct WebSearchItem {
+    title: String,
+    url: String,
+    snippet: String,
+    engine: String,
+}
+
+#[derive(Serialize)]
+struct WebPageResult {
+    url: String,
+    title: String,
+    content: String,
+}
+
+fn decode_html_entities(input: &str) -> String {
+    input
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&nbsp;", " ")
+}
+
+fn strip_html_tags(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut in_tag = false;
+    let mut last_was_space = false;
+
+    for ch in input.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => {
+                if ch.is_whitespace() {
+                    if !last_was_space {
+                        output.push(' ');
+                        last_was_space = true;
+                    }
+                } else {
+                    output.push(ch);
+                    last_was_space = false;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    decode_html_entities(output.trim())
+}
+
+fn extract_html_title(input: &str) -> String {
+    let lower = input.to_lowercase();
+    if let Some(start) = lower.find("<title>") {
+        if let Some(end) = lower[start + 7..].find("</title>") {
+            return strip_html_tags(&input[start + 7..start + 7 + end]);
+        }
+    }
+    String::new()
+}
+
+fn truncate_text(input: String, limit: usize) -> String {
+    if input.chars().count() <= limit {
+        return input;
+    }
+
+    let truncated: String = input.chars().take(limit).collect();
+    format!("{truncated}...")
+}
+
+fn extract_between<'a>(input: &'a str, start: &str, end: &str) -> Option<&'a str> {
+    let start_index = input.find(start)?;
+    let content_start = start_index + start.len();
+    let end_index = input[content_start..].find(end)?;
+    Some(&input[content_start..content_start + end_index])
+}
+
+fn extract_anchor_info(input: &str) -> Option<(String, String)> {
+    let anchor_pos = input.find("<a ")?;
+    let anchor = &input[anchor_pos..];
+    let href = extract_between(anchor, "href=\"", "\"")
+        .or_else(|| extract_between(anchor, "href='", "'"))?;
+    let title_start = anchor.find('>')? + 1;
+    let title_end = anchor[title_start..].find("</a>")?;
+
+    Some((
+        strip_html_tags(&anchor[title_start..title_start + title_end]),
+        decode_html_entities(href),
+    ))
+}
+
+fn extract_first_paragraph(input: &str) -> Option<String> {
+    let paragraph_pos = input.find("<p")?;
+    let paragraph = &input[paragraph_pos..];
+    let content_start = paragraph.find('>')? + 1;
+    let content_end = paragraph[content_start..].find("</p>")?;
+    Some(strip_html_tags(
+        &paragraph[content_start..content_start + content_end],
+    ))
+}
+
+fn is_search_result_url(url: &str) -> bool {
+    let normalized = url.trim().to_ascii_lowercase();
+    if !normalized.starts_with("http://") && !normalized.starts_with("https://") {
+        return false;
+    }
+
+    if normalized.contains("://r.bing.com/")
+        || normalized.contains("://www.bing.com/ck/")
+        || normalized.contains("://cn.bing.com/ck/")
+    {
+        return false;
+    }
+
+    let path = normalized
+        .split('?')
+        .next()
+        .unwrap_or(normalized.as_str())
+        .split('#')
+        .next()
+        .unwrap_or(normalized.as_str());
+
+    ![
+        ".css", ".js", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".woff",
+        ".woff2", ".ttf", ".map", ".xml",
+    ]
+    .iter()
+    .any(|ext| path.ends_with(ext))
+}
+
+fn dedupe_search_items(items: Vec<WebSearchItem>) -> Vec<WebSearchItem> {
+    let mut seen = HashSet::new();
+    let mut deduped = Vec::new();
+
+    for item in items {
+        let key = item.url.trim().to_ascii_lowercase();
+        if seen.insert(key) {
+            deduped.push(item);
+        }
+    }
+
+    deduped
+}
+
+fn parse_bing_results(html: &str) -> Vec<WebSearchItem> {
+    let mut items = Vec::new();
+    let mut cursor = html;
+
+    while items.len() < 6 {
+        let Some(block_pos) = cursor.find("b_algo") else {
+            break;
+        };
+        cursor = &cursor[block_pos..];
+
+        let next_block_pos = cursor
+            .get(1..)
+            .and_then(|slice| slice.find("b_algo").map(|pos| pos + 1))
+            .unwrap_or(cursor.len());
+        let block = &cursor[..next_block_pos];
+
+        let title_scope = if let Some(h2_pos) = block.find("<h2") {
+            &block[h2_pos..]
+        } else {
+            block
+        };
+
+        let Some((title, clean_url)) = extract_anchor_info(title_scope) else {
+            cursor = &cursor[next_block_pos..];
+            continue;
+        };
+
+        let snippet = if let Some(snippet_pos) = block.find("b_caption") {
+            let snippet_slice = &block[snippet_pos..];
+            extract_first_paragraph(snippet_slice)
+                .or_else(|| extract_between(snippet_slice, ">", "</div>").map(strip_html_tags))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        if is_search_result_url(&clean_url) && !title.is_empty() {
+            items.push(WebSearchItem {
+                title,
+                url: clean_url,
+                snippet: truncate_text(snippet, 280),
+                engine: "bing".to_string(),
+            });
+        }
+
+        cursor = &cursor[next_block_pos..];
+    }
+
+    dedupe_search_items(items)
+}
+
+fn parse_baidu_results(html: &str) -> Vec<WebSearchItem> {
+    let mut items = Vec::new();
+    let mut cursor = html;
+
+    while items.len() < 6 {
+        let next_result_pos = cursor
+            .find("result c-container")
+            .or_else(|| cursor.find("result-op c-container"))
+            .or_else(|| cursor.find("<h3"));
+        let Some(block_pos) = next_result_pos else {
+            break;
+        };
+        cursor = &cursor[block_pos..];
+
+        let next_block_pos = cursor
+            .get(1..)
+            .and_then(|slice| {
+                slice
+                    .find("result c-container")
+                    .or_else(|| slice.find("result-op c-container"))
+                    .or_else(|| slice.find("<h3"))
+                    .map(|pos| pos + 1)
+            })
+            .unwrap_or(cursor.len());
+        let block = &cursor[..next_block_pos];
+
+        let title_scope = if let Some(h3_pos) = block.find("<h3") {
+            &block[h3_pos..]
+        } else {
+            block
+        };
+
+        let Some((title, clean_url)) = extract_anchor_info(title_scope) else {
+            cursor = &cursor[next_block_pos..];
+            continue;
+        };
+
+        let snippet = extract_between(block, "<span class=\"content-right_8Zs40\">", "</span>")
+            .or_else(|| extract_between(block, "<div class=\"c-abstract\">", "</div>"))
+            .or_else(|| extract_between(block, "<div class=\"content-right_8Zs40\">", "</div>"))
+            .map(strip_html_tags)
+            .unwrap_or_default();
+
+        if is_search_result_url(&clean_url) && !title.is_empty() {
+            items.push(WebSearchItem {
+                title,
+                url: clean_url,
+                snippet: truncate_text(snippet, 280),
+                engine: "baidu".to_string(),
+            });
+        }
+
+        cursor = &cursor[next_block_pos..];
+    }
+
+    dedupe_search_items(items)
+}
+
 fn ensure_license_valid() -> Result<(), String> {
     license::verify_local_license().map(|_| ())
 }
@@ -147,6 +409,63 @@ fn activate_license(license_content: String) -> Result<license::LicenseInfo, Str
 #[tauri::command]
 fn get_license_status() -> Result<license::LicenseStatus, String> {
     license::get_license_status()
+}
+
+#[tauri::command]
+fn get_ai_benefit_config() -> Result<Option<BenefitAiConfig>, String> {
+    let api_key = option_env!("FUXI_FREE_API_KEY")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            std::env::var("FUXI_FREE_API_KEY")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        });
+
+    let Some(api_key) = api_key else {
+        return Ok(None);
+    };
+
+    let base_url = option_env!("FUXI_FREE_BASE_URL")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            std::env::var("FUXI_FREE_BASE_URL")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or_else(|| "https://linkapi.ai/v1".to_string());
+
+    let model = option_env!("FUXI_FREE_MODEL")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            std::env::var("FUXI_FREE_MODEL")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or_else(|| "gpt-5.3-codex".to_string());
+
+    let provider_id = option_env!("FUXI_FREE_PROVIDER_ID")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            std::env::var("FUXI_FREE_PROVIDER_ID")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or_else(|| "fuxi".to_string());
+
+    Ok(Some(BenefitAiConfig {
+        provider_id,
+        api_key,
+        base_url,
+        model,
+    }))
 }
 
 #[tauri::command]
@@ -1761,6 +2080,104 @@ async fn exec_local_command(cmd: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn web_search(query: String) -> Result<Vec<WebSearchItem>, String> {
+    ensure_license_valid()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(15))
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .build()
+            .map_err(|e| e.to_string())?;
+
+        let bing_html = client
+            .get("https://www.bing.com/search")
+            .query(&[("q", query.as_str()), ("setlang", "zh-Hans")])
+            .send()
+            .and_then(|response| response.error_for_status())
+            .map_err(|e| e.to_string())?
+            .text()
+            .map_err(|e| e.to_string())?;
+
+        let mut items = parse_bing_results(&bing_html);
+
+        if items.len() < 3 {
+            let baidu_html = client
+                .get("https://www.baidu.com/s")
+                .query(&[("wd", query.as_str())])
+                .send()
+                .and_then(|response| response.error_for_status())
+                .map_err(|e| e.to_string())?
+                .text()
+                .map_err(|e| e.to_string())?;
+            items.extend(parse_baidu_results(&baidu_html));
+            items = dedupe_search_items(items);
+            items.truncate(6);
+        }
+
+        Ok(items)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn fetch_webpage(url: String) -> Result<WebPageResult, String> {
+    ensure_license_valid()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(20))
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .build()
+            .map_err(|e| e.to_string())?;
+
+        let response = client
+            .get(&url)
+            .send()
+            .and_then(|response| response.error_for_status())
+            .map_err(|e| e.to_string())?;
+
+        let body = response.text().map_err(|e| e.to_string())?;
+        let title = extract_html_title(&body);
+        let content = truncate_text(strip_html_tags(&body), 12000);
+
+        Ok(WebPageResult {
+            url,
+            title,
+            content,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_bing_results_uses_primary_result_anchor() {
+        let html = r#"
+        <li class="b_algo">
+          <link rel="stylesheet" href="https://r.bing.com/rs/4c/gq/cc,nc/K4L6NoSyjvNKc9E9DD920sTC_hg.css?or=n">
+          <h2>
+            <a href="https://www.weather.com.cn/weather/101210101.shtml">杭州天气预报</a>
+          </h2>
+          <div class="b_caption">
+            <p>杭州明天天气预报，包含温度、降水和风力。</p>
+          </div>
+        </li>
+        "#;
+
+        let items = parse_bing_results(html);
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "杭州天气预报");
+        assert_eq!(items[0].url, "https://www.weather.com.cn/weather/101210101.shtml");
+        assert!(items[0].snippet.contains("杭州明天天气预报"));
+    }
+}
+
+#[tauri::command]
 async fn cleanup_ssh_log_for_user(
     state: State<'_, AppState>,
     session_id: String,
@@ -1877,6 +2294,7 @@ pub fn run() {
             get_machine_code,
             activate_license,
             get_license_status,
+            get_ai_benefit_config,
             check_client_update,
             perform_client_update,
             cancel_client_update,
@@ -1889,6 +2307,8 @@ pub fn run() {
             batch_exec_command,
             exec_command_stream,
             exec_local_command,
+            web_search,
+            fetch_webpage,
             list_sessions,
             update_session_note,
             reorder_sessions,
