@@ -405,9 +405,33 @@ export default function GeneralAgent({
     }
   };
 
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const customEvent = event as CustomEvent<{ scope?: string; type?: string; value?: string }>;
+      if (customEvent.detail?.scope !== "agent-general") {
+        return;
+      }
+
+      if (customEvent.detail.type === "append-input" && customEvent.detail.value) {
+        setInput((current) => `${current}${current.trim() ? "\n" : ""}${customEvent.detail?.value}`);
+      }
+
+      if (customEvent.detail.type === "clear-input") {
+        setInput("");
+      }
+
+      if (customEvent.detail.type === "send-input") {
+        void handleSend();
+      }
+    };
+
+    window.addEventListener("fuxi-scope-context-action", handler as EventListener);
+    return () => window.removeEventListener("fuxi-scope-context-action", handler as EventListener);
+  }, [handleSend]);
+
   return (
     <div className="h-full grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
-      <section className="ui-shell order-1 min-h-0 rounded-[2rem] flex flex-col overflow-hidden">
+      <section className="ui-shell order-1 min-h-0 rounded-[2rem] flex flex-col overflow-hidden" data-context-scope="agent-general">
         <WorkspaceHeader
           language={language}
           icon={Bot}

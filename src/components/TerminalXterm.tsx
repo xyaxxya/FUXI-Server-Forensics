@@ -21,6 +21,12 @@ export default function TerminalXterm({ onClose, sessionId, language, isActive =
   const [showFileManager, setShowFileManager] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [isFocused, setIsFocused] = useState(false);
+  const [fileManagerWidth, setFileManagerWidth] = useState(() => {
+    const saved = localStorage.getItem('terminal_file_manager_width');
+    const parsed = saved ? parseInt(saved, 10) : NaN;
+    return Number.isFinite(parsed) ? Math.min(900, Math.max(340, parsed)) : 460;
+  });
+  const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const [fontSize, setFontSize] = useState(() => {
     const saved = localStorage.getItem('terminal_font_size');
     return saved ? parseInt(saved) : 14;
@@ -267,8 +273,88 @@ export default function TerminalXterm({ onClose, sessionId, language, isActive =
       });
   };
 
+  useEffect(() => {
+    if (!showFileManager) {
+      return;
+    }
+
+    const handleMove = (event: MouseEvent) => {
+      const state = resizeStateRef.current;
+      if (!state) {
+        return;
+      }
+      const minWidth = 340;
+      const maxWidth = 900;
+      const nextWidth = Math.min(maxWidth, Math.max(minWidth, state.startWidth + (state.startX - event.clientX)));
+      setFileManagerWidth(nextWidth);
+    };
+
+    const handleUp = () => {
+      if (!resizeStateRef.current) {
+        return;
+      }
+      resizeStateRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      localStorage.setItem('terminal_file_manager_width', String(fileManagerWidth));
+    };
+
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+  }, [fileManagerWidth, showFileManager]);
+
+  useEffect(() => {
+    const handler = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ type?: string }>;
+      const actionType = customEvent.detail?.type;
+      if (!actionType) {
+        return;
+      }
+
+      if (actionType === 'toggle-ftp') {
+        setShowFileManager((value) => !value);
+        return;
+      }
+
+      if (actionType === 'paste' && ptyIdRef.current) {
+        const text = await navigator.clipboard.readText().catch(() => '');
+        if (!text) {
+          return;
+        }
+        try {
+          await invoke('write_pty', { ptyId: ptyIdRef.current, data: text });
+        } catch (error) {
+          console.error('Context menu paste failed:', error);
+        }
+      }
+
+      if (actionType === 'clear' && ptyIdRef.current) {
+        try {
+          await invoke('write_pty', { ptyId: ptyIdRef.current, data: 'clear\r' });
+        } catch (error) {
+          console.error('Context menu clear failed:', error);
+        }
+      }
+
+      if (actionType === 'copy-output') {
+        const content = terminalRef.current?.innerText?.trim() || '';
+        if (content) {
+          await navigator.clipboard.writeText(content).catch(() => undefined);
+        }
+      }
+    };
+
+    window.addEventListener('fuxi-terminal-context-action', handler as EventListener);
+    return () => window.removeEventListener('fuxi-terminal-context-action', handler as EventListener);
+  }, []);
+
   return (
     <motion.div 
+      data-context-scope="terminal"
       initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
@@ -400,8 +486,31 @@ export default function TerminalXterm({ onClose, sessionId, language, isActive =
                      animate={{ x: 0, opacity: 1 }}
                      exit={{ x: "100%", opacity: 0 }}
                      transition={{ type: "spring", damping: 30, stiffness: 300 }}
-                     className="w-80 border-l border-white/10 bg-[#0f172a]/95 flex flex-col backdrop-blur-3xl shadow-[-10px_0_40px_rgba(0,0,0,0.3)] z-30"
+                     className="border-l border-white/10 bg-[#0f172a]/95 flex flex-col backdrop-blur-3xl shadow-[-10px_0_40px_rgba(0,0,0,0.3)] z-30 relative"
+                     style={{ width: fileManagerWidth }}
                  >
+                      <div
+                        onMouseDown={(event) => {
+                          resizeStateRef.current = { startX: event.clientX, startWidth: fileManagerWidth };
+                          document.body.style.cursor = 'col-resize';
+                          document.body.style.userSelect = 'none';
+                        }}
+                        onDoubleClick={() => {
+                          const nextWidth = 460;
+                          setFileManagerWidth(nextWidth);
+                          localStorage.setItem('terminal_file_manager_width', String(nextWidth));
+                        }}
+                        className="absolute left-0 top-0 h-full w-3 -translate-x-1.5 cursor-col-resize z-40 group"
+                        role="separator"
+                        aria-orientation="vertical"
+                        aria-label="Resize file manager"
+                      >
+                        <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/5 group-hover:bg-sky-400/40 transition-colors" />
+                        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-1.5 py-1 rounded-full bg-slate-900/80 border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="w-1 h-10 rounded-full bg-gradient-to-b from-sky-300/60 via-sky-300/20 to-transparent" />
+                        </div>
+                      </div>
+
                       <div className="flex items-center justify-between p-4 border-b border-white/10 bg-gradient-to-r from-sky-500/10 to-transparent">
                          <span className="text-xs font-bold text-sky-100 tracking-wider flex items-center gap-2 uppercase">
                              <motion.div 

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { CheckCircle2, ListChecks, Loader2, Play, Square, Trash2, Wand2 } from "lucide-react";
@@ -374,6 +374,30 @@ export default function AgentPanel({
     }
   };
 
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const customEvent = event as CustomEvent<{ scope?: string; type?: string; value?: string }>;
+      if (customEvent.detail?.scope !== "agent-batch") {
+        return;
+      }
+
+      if (customEvent.detail.type === "append-input" && customEvent.detail.value) {
+        setQuestionInput((current) => `${current}${current.trim() ? "\n" : ""}${customEvent.detail?.value}`);
+      }
+
+      if (customEvent.detail.type === "clear-input") {
+        setQuestionInput("");
+      }
+
+      if (customEvent.detail.type === "send-input") {
+        void handleStart();
+      }
+    };
+
+    window.addEventListener("fuxi-scope-context-action", handler as EventListener);
+    return () => window.removeEventListener("fuxi-scope-context-action", handler as EventListener);
+  }, [handleStart]);
+
   const handleStop = () => {
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
@@ -439,7 +463,7 @@ export default function AgentPanel({
 
   return (
     <div className="h-full grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="ui-shell h-full rounded-[2rem] overflow-hidden flex flex-col">
+      <div className="ui-shell h-full rounded-[2rem] overflow-hidden flex flex-col" data-context-scope="agent-batch">
       <WorkspaceHeader
         language={language}
         icon={ListChecks}

@@ -44,6 +44,28 @@ export default function FileManager({ sessionId, initialPath = "/" }: { sessionI
         setInputPath(path);
     }, [path, sessionId]);
 
+    useEffect(() => {
+        const handler = (event: Event) => {
+            const customEvent = event as CustomEvent<{ type?: string }>;
+            const actionType = customEvent.detail?.type;
+            if (!actionType) {
+                return;
+            }
+
+            if (actionType === 'refresh') {
+                loadFiles(path);
+                return;
+            }
+
+            if (actionType === 'upload') {
+                handleUploadClick();
+            }
+        };
+
+        window.addEventListener('fuxi-ftp-context-action', handler as EventListener);
+        return () => window.removeEventListener('fuxi-ftp-context-action', handler as EventListener);
+    }, [path, sessionId]);
+
     const handleUp = () => {
         if (path === '/') return;
         const parent = path.substring(0, path.lastIndexOf('/')) || '/';
@@ -259,6 +281,8 @@ export default function FileManager({ sessionId, initialPath = "/" }: { sessionI
     return (
         <div 
             className="flex flex-col h-full text-slate-200 font-mono text-sm bg-transparent relative"
+            data-context-scope="ftp"
+            data-ftp-path={path}
             onClick={() => setContextMenu(null)}
         >
             {/* Context Menu */}
@@ -403,7 +427,7 @@ export default function FileManager({ sessionId, initialPath = "/" }: { sessionI
                                             <File size={14} />
                                         </div>
                                     )}
-                                    <span className="truncate max-w-[140px] text-xs font-medium text-slate-300 group-hover:text-white transition-colors" title={file.name}>{file.name}</span>
+                                    <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-300 group-hover:text-white transition-colors" title={file.name}>{file.name}</span>
                                 </td>
                                 <td className="p-2.5 text-[11px] text-slate-500 font-mono text-right whitespace-nowrap group-hover:text-sky-300/80 transition-colors relative z-10">{file.is_dir ? '-' : formatSize(file.size)}</td>
                                 <td className="p-2.5 pr-4 text-[11px] text-slate-600 font-mono text-right whitespace-nowrap group-hover:text-sky-300/80 transition-colors relative z-10">

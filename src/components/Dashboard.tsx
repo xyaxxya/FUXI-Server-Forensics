@@ -297,7 +297,7 @@ function CommandCenter({
   }, [activeCategory, commands, search]);
 
   return (
-    <div className="ui-shell h-full overflow-hidden rounded-[2rem]">
+    <div className="ui-shell h-full overflow-hidden rounded-[2rem]" data-context-scope="command-center">
       <div className="border-b border-slate-200/70 px-5 py-5 md:px-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-4">

@@ -670,6 +670,12 @@ export async function sendToAI(
    - 下载/安装：产品名 + install/download/release + 官方域名
 10. 当你准备执行搜索时，先用一句自然短句说明计划，再直接调用工具，例如 “I’ll look up the latest React vulnerabilities first.”
 11. 如果任务是本地文件/取证目录分析，也先用一句自然短句说明，例如 “I’ll inspect the existing artifacts in the working directory first.”
+12. 对以下场景优先采用更严格的来源约束与查询收敛策略：
+   - 已知 CVE 编号：优先检索 cve.org、nvd.nist.gov、厂商安全公告、GitHub Advisory，重点核对漏洞描述、受影响版本、利用方式与修复建议
+   - 特定组件版本：将精确版本号加引号，优先检索官方发布说明、安全公告、change log 与 release note，避免泛化到其他版本
+   - 攻击模式情报：优先加入 IOC、detection、forensics、ATT&CK、persistence、authorized_keys、crontab 等约束词，重点寻找技术特征与取证指标
+   - 开源工具文档：优先官方文档、readthedocs、GitHub Wiki、man page 或高质量社区，不要优先采信低质量转载与镜像站
+13. 如果搜索结果含有大量转载站、问答站、聚合站或泛化新闻页，应立即缩窄关键词并提高官方来源、技术社区与安全公告权重
 `;
       const systemIndex = effectiveMessages.findIndex(m => m.role === 'system');
       if (systemIndex !== -1) {

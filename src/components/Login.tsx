@@ -598,12 +598,17 @@ export default function Login({
               )}
             </button>
 
-            <button
+            <motion.button
+              type="button"
               onClick={onLogin}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-[1.1rem] border border-slate-200 bg-white text-slate-600 transition-all hover:-translate-y-0.5 hover:bg-slate-50 hover:text-slate-800"
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.985, y: 0 }}
+              className="mt-3 group relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-[1.2rem] border border-slate-200/90 bg-white/90 px-4 py-3 text-slate-700 shadow-[0_18px_34px_-28px_rgba(15,23,42,0.18)] transition-all duration-200 hover:border-slate-300 hover:bg-white hover:shadow-[0_24px_44px_-30px_rgba(59,130,246,0.16)] active:shadow-[0_16px_28px_-26px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20"
             >
-              <span>直接进入主界面</span>
-            </button>
+              <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-200 to-transparent opacity-80" />
+              <span className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_62%)]" />
+              <span className="relative text-[15px] font-medium tracking-[0.01em]">直接进入主界面</span>
+            </motion.button>
           </div>
           <div className="mt-6 border-t border-slate-100 pt-4 text-center text-xs text-slate-400">
             FUXI Server Forensics 客户端 v{APP_VERSION}

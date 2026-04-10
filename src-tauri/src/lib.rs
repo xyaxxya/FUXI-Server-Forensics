@@ -283,6 +283,378 @@ fn dedupe_search_items(items: Vec<WebSearchItem>) -> Vec<WebSearchItem> {
     deduped
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SearchIntent {
+    Cve,
+    Version,
+    AttackPattern,
+    ToolDocs,
+    General,
+}
+
+fn normalize_search_query(input: &str) -> String {
+    input.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn contains_cjk(input: &str) -> bool {
+    input.chars().any(|ch| ('\u{4e00}'..='\u{9fff}').contains(&ch))
+}
+
+fn extract_cve_identifier(input: &str) -> Option<String> {
+    let upper = input.to_ascii_uppercase();
+    for (start, _) in upper.match_indices("CVE-") {
+        let suffix = &upper[start + 4..];
+        let mut parts = suffix.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '-'));
+        let candidate = parts.next().unwrap_or_default();
+        let mut segments = candidate.split('-');
+        let year = segments.next().unwrap_or_default();
+        let number = segments.next().unwrap_or_default();
+        if year.len() == 4
+            && year.chars().all(|ch| ch.is_ascii_digit())
+            && number.len() >= 4
+            && number.chars().all(|ch| ch.is_ascii_digit())
+        {
+            return Some(format!("CVE-{year}-{number}"));
+        }
+    }
+
+    None
+}
+
+fn contains_version_signature(input: &str) -> bool {
+    input.split(|ch: char| ch.is_whitespace() || ch == ',' || ch == '(' || ch == ')')
+        .any(|token| {
+            let clean = token.trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '.');
+            let dot_count = clean.chars().filter(|ch| *ch == '.').count();
+            dot_count >= 1
+                && clean.chars().any(|ch| ch.is_ascii_digit())
+                && clean
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '.')
+        })
+}
+
+fn detect_search_intent(query: &str) -> SearchIntent {
+    let lower = query.to_ascii_lowercase();
+
+    if extract_cve_identifier(query).is_some() {
+        return SearchIntent::Cve;
+    }
+
+    if [
+        "authorized_keys",
+        "crontab",
+        "ioc",
+        "forensic",
+        "取证",
+        "持久化",
+        "后门",
+        "backdoor",
+        "persistence",
+        "att&ck",
+        "detection",
+        "indicator",
+        "ssh key",
+    ]
+    .iter()
+    .any(|keyword| lower.contains(keyword))
+    {
+        return SearchIntent::AttackPattern;
+    }
+
+    if [
+        "官方文档",
+        "文档",
+        "使用",
+        "教程",
+        "manual",
+        "official documentation",
+        "readme",
+        "usage",
+        "install",
+        "reference",
+        "参数",
+        "how to",
+    ]
+    .iter()
+    .any(|keyword| lower.contains(keyword))
+    {
+        return SearchIntent::ToolDocs;
+    }
+
+    if contains_version_signature(query) {
+        return SearchIntent::Version;
+    }
+
+    SearchIntent::General
+}
+
+fn build_query_variants(query: &str, intent: SearchIntent) -> Vec<String> {
+    let normalized = normalize_search_query(query);
+    if normalized.is_empty() {
+        return Vec::new();
+    }
+
+    let use_cjk = contains_cjk(&normalized);
+    let mut variants = vec![normalized.clone()];
+
+    match intent {
+        SearchIntent::Cve => {
+            let cve = extract_cve_identifier(&normalized).unwrap_or(normalized.clone());
+            variants.push(format!("{cve} NVD"));
+            variants.push(if use_cjk {
+                format!("{cve} 官方通告 受影响版本 修复建议")
+            } else {
+                format!("{cve} vendor advisory affected versions mitigation")
+            });
+        }
+        SearchIntent::Version => {
+            variants.push(if use_cjk {
+                format!("\"{normalized}\" 安全公告")
+            } else {
+                format!("\"{normalized}\" security advisory")
+            });
+            variants.push(if use_cjk {
+                format!("\"{normalized}\" 发布说明 修复公告")
+            } else {
+                format!("\"{normalized}\" release notes security")
+            });
+        }
+        SearchIntent::AttackPattern => {
+            variants.push(if use_cjk {
+                format!("{normalized} IOC 取证")
+            } else {
+                format!("{normalized} IOC forensics")
+            });
+            variants.push(if use_cjk {
+                format!("{normalized} 检测 特征 ATT&CK")
+            } else {
+                format!("{normalized} detection indicators ATT&CK")
+            });
+        }
+        SearchIntent::ToolDocs => {
+            variants.push(if use_cjk {
+                format!("{normalized} 官方文档")
+            } else {
+                format!("{normalized} official documentation")
+            });
+            variants.push(if use_cjk {
+                format!("{normalized} 使用说明 readthedocs")
+            } else {
+                format!("{normalized} usage guide readthedocs")
+            });
+        }
+        SearchIntent::General => {}
+    }
+
+    dedupe_search_queries(variants)
+}
+
+fn dedupe_search_queries(queries: Vec<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut deduped = Vec::new();
+    for query in queries {
+        let normalized = normalize_search_query(&query);
+        let key = normalized.to_ascii_lowercase();
+        if !normalized.is_empty() && seen.insert(key) {
+            deduped.push(normalized);
+        }
+    }
+    deduped.truncate(3);
+    deduped
+}
+
+fn tokenize_search_terms(query: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    for token in query
+        .split(|ch: char| !(ch.is_alphanumeric() || matches!(ch, '-' | '.' | '_' | '/')))
+        .map(|token| token.trim())
+        .filter(|token| token.len() >= 2)
+    {
+        let lowered = token.to_ascii_lowercase();
+        if !tokens.contains(&lowered) {
+            tokens.push(lowered);
+        }
+    }
+    tokens
+}
+
+fn extract_url_domain(url: &str) -> String {
+    url.split("://")
+        .nth(1)
+        .unwrap_or(url)
+        .split('/')
+        .next()
+        .unwrap_or(url)
+        .to_ascii_lowercase()
+}
+
+fn score_domain(domain: &str, intent: SearchIntent) -> i32 {
+    let official_bonus = match intent {
+        SearchIntent::Cve => [
+            ("nvd.nist.gov", 80),
+            ("cve.org", 76),
+            ("mitre.org", 70),
+            ("github.com", 42),
+            ("security.", 34),
+            ("advisory", 24),
+        ]
+        .as_slice(),
+        SearchIntent::Version => [
+            ("apache.org", 70),
+            ("nginx.org", 70),
+            ("mysql.com", 70),
+            ("mariadb.org", 66),
+            ("postgresql.org", 66),
+            ("ubuntu.com", 62),
+            ("redhat.com", 62),
+            ("oracle.com", 62),
+            ("microsoft.com", 62),
+            ("release", 20),
+            ("security.", 28),
+        ]
+        .as_slice(),
+        SearchIntent::AttackPattern => [
+            ("attack.mitre.org", 74),
+            ("microsoft.com", 48),
+            ("crowdstrike.com", 44),
+            ("mandiant.com", 44),
+            ("unit42.paloaltonetworks.com", 44),
+            ("securelist.com", 42),
+            ("talosintelligence.com", 42),
+            ("trendmicro.com", 38),
+        ]
+        .as_slice(),
+        SearchIntent::ToolDocs => [
+            ("readthedocs.io", 72),
+            ("docs.", 64),
+            ("github.com", 38),
+            ("gitlab.com", 32),
+            ("man7.org", 52),
+            ("developer.", 28),
+        ]
+        .as_slice(),
+        SearchIntent::General => [("docs.", 10), ("developer.", 8)].as_slice(),
+    };
+
+    let mut score = 0;
+    for (pattern, value) in official_bonus {
+        if domain.contains(pattern) {
+            score += *value;
+        }
+    }
+
+    for (pattern, penalty) in [
+        ("csdn.net", 40),
+        ("zhihu.com", 22),
+        ("cloud.tencent.com", 18),
+        ("51cto.com", 18),
+        ("cnblogs.com", 16),
+        ("baijiahao.baidu.com", 36),
+        ("jingyan.baidu.com", 34),
+        ("zhidao.baidu.com", 30),
+        ("sohu.com", 16),
+        ("toutiao.com", 14),
+    ] {
+        if domain.contains(pattern) {
+            score -= penalty;
+        }
+    }
+
+    score
+}
+
+fn score_search_item(query: &str, item: &WebSearchItem, intent: SearchIntent) -> i32 {
+    let title = item.title.to_ascii_lowercase();
+    let snippet = item.snippet.to_ascii_lowercase();
+    let url = item.url.to_ascii_lowercase();
+    let domain = extract_url_domain(&item.url);
+    let normalized_query = query.to_ascii_lowercase();
+    let mut score = score_domain(&domain, intent);
+
+    if !normalized_query.is_empty() {
+        if title.contains(&normalized_query) {
+            score += 48;
+        }
+        if snippet.contains(&normalized_query) {
+            score += 18;
+        }
+    }
+
+    for term in tokenize_search_terms(query) {
+        if title.contains(&term) {
+            score += 18;
+        }
+        if url.contains(&term) {
+            score += 14;
+        }
+        if snippet.contains(&term) {
+            score += 9;
+        }
+    }
+
+    if let Some(cve) = extract_cve_identifier(query) {
+        let cve_lower = cve.to_ascii_lowercase();
+        if title.contains(&cve_lower) || url.contains(&cve_lower) {
+            score += 80;
+        }
+        if snippet.contains(&cve_lower) {
+            score += 28;
+        }
+    }
+
+    match intent {
+        SearchIntent::Cve => {
+            for keyword in ["affected", "versions", "exploit", "mitigation", "advisory", "patch"] {
+                if title.contains(keyword) || snippet.contains(keyword) || url.contains(keyword) {
+                    score += 8;
+                }
+            }
+        }
+        SearchIntent::Version => {
+            for keyword in ["release", "security", "advisory", "changelog", "notes"] {
+                if title.contains(keyword) || snippet.contains(keyword) || url.contains(keyword) {
+                    score += 10;
+                }
+            }
+        }
+        SearchIntent::AttackPattern => {
+            for keyword in ["ioc", "indicator", "forensic", "persistence", "authorized_keys", "crontab", "detection", "att&ck"] {
+                if title.contains(keyword) || snippet.contains(keyword) || url.contains(keyword) {
+                    score += 12;
+                }
+            }
+        }
+        SearchIntent::ToolDocs => {
+            for keyword in ["docs", "documentation", "manual", "reference", "usage", "guide", "readme"] {
+                if title.contains(keyword) || snippet.contains(keyword) || url.contains(keyword) {
+                    score += 12;
+                }
+            }
+        }
+        SearchIntent::General => {}
+    }
+
+    if item.engine == "bing" {
+        score += 1;
+    }
+
+    score
+}
+
+fn rerank_search_items(query: &str, intent: SearchIntent, items: Vec<WebSearchItem>) -> Vec<WebSearchItem> {
+    let mut scored = items
+        .into_iter()
+        .map(|item| (score_search_item(query, &item, intent), item))
+        .collect::<Vec<_>>();
+
+    scored.sort_by(|left, right| right.0.cmp(&left.0));
+    scored
+        .into_iter()
+        .map(|(_, item)| item)
+        .collect::<Vec<_>>()
+}
+
 fn parse_bing_results(html: &str) -> Vec<WebSearchItem> {
     let mut items = Vec::new();
     let mut cursor = html;
@@ -409,6 +781,11 @@ fn activate_license(license_content: String) -> Result<license::LicenseInfo, Str
 #[tauri::command]
 fn get_license_status() -> Result<license::LicenseStatus, String> {
     license::get_license_status()
+}
+
+#[tauri::command]
+fn read_local_text_file(file_path: String) -> Result<String, String> {
+    fs::read_to_string(file_path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -2083,36 +2460,47 @@ async fn exec_local_command(cmd: String) -> Result<String, String> {
 async fn web_search(query: String) -> Result<Vec<WebSearchItem>, String> {
     ensure_license_valid()?;
     tauri::async_runtime::spawn_blocking(move || {
+        let normalized_query = normalize_search_query(&query);
+        let intent = detect_search_intent(&normalized_query);
+        let query_variants = build_query_variants(&normalized_query, intent);
+
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(15))
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
             .build()
             .map_err(|e| e.to_string())?;
 
-        let bing_html = client
-            .get("https://www.bing.com/search")
-            .query(&[("q", query.as_str()), ("setlang", "zh-Hans")])
-            .send()
-            .and_then(|response| response.error_for_status())
-            .map_err(|e| e.to_string())?
-            .text()
-            .map_err(|e| e.to_string())?;
+        let mut items = Vec::new();
 
-        let mut items = parse_bing_results(&bing_html);
+        for variant in &query_variants {
+            let bing_html = client
+                .get("https://www.bing.com/search")
+                .query(&[("q", variant.as_str()), ("setlang", "zh-Hans")])
+                .send()
+                .and_then(|response| response.error_for_status())
+                .map_err(|e| e.to_string())?
+                .text()
+                .map_err(|e| e.to_string())?;
 
-        if items.len() < 3 {
+            items.extend(parse_bing_results(&bing_html));
+        }
+
+        items = dedupe_search_items(items);
+
+        if items.len() < 4 {
             let baidu_html = client
                 .get("https://www.baidu.com/s")
-                .query(&[("wd", query.as_str())])
+                .query(&[("wd", normalized_query.as_str())])
                 .send()
                 .and_then(|response| response.error_for_status())
                 .map_err(|e| e.to_string())?
                 .text()
                 .map_err(|e| e.to_string())?;
             items.extend(parse_baidu_results(&baidu_html));
-            items = dedupe_search_items(items);
-            items.truncate(6);
         }
+
+        items = rerank_search_items(&normalized_query, intent, dedupe_search_items(items));
+        items.truncate(8);
 
         Ok(items)
     })
@@ -2174,6 +2562,50 @@ mod tests {
         assert_eq!(items[0].title, "杭州天气预报");
         assert_eq!(items[0].url, "https://www.weather.com.cn/weather/101210101.shtml");
         assert!(items[0].snippet.contains("杭州明天天气预报"));
+    }
+
+    #[test]
+    fn detect_search_intent_prefers_cve_and_attack_patterns() {
+        assert!(matches!(
+            detect_search_intent("CVE-2021-41773 exploit and mitigation"),
+            SearchIntent::Cve
+        ));
+        assert!(matches!(
+            detect_search_intent("Linux crontab持久化后门 IOC"),
+            SearchIntent::AttackPattern
+        ));
+        assert!(matches!(
+            detect_search_intent("Apache 2.4.49 security advisory"),
+            SearchIntent::Version
+        ));
+        assert!(matches!(
+            detect_search_intent("volatility3 官方文档 使用"),
+            SearchIntent::ToolDocs
+        ));
+    }
+
+    #[test]
+    fn rerank_search_items_prefers_official_cve_sources() {
+        let items = vec![
+            WebSearchItem {
+                title: "CVE-2021-41773 漏洞分析".to_string(),
+                url: "https://blog.csdn.net/example/article/details/123".to_string(),
+                snippet: "转载的漏洞分析文章".to_string(),
+                engine: "bing".to_string(),
+            },
+            WebSearchItem {
+                title: "CVE-2021-41773".to_string(),
+                url: "https://nvd.nist.gov/vuln/detail/CVE-2021-41773".to_string(),
+                snippet: "NVD vulnerability detail with affected products and references".to_string(),
+                engine: "bing".to_string(),
+            },
+        ];
+
+        let reranked = rerank_search_items("CVE-2021-41773", SearchIntent::Cve, items);
+        assert_eq!(
+            reranked.first().map(|item| item.url.as_str()),
+            Some("https://nvd.nist.gov/vuln/detail/CVE-2021-41773")
+        );
     }
 }
 
@@ -2294,6 +2726,7 @@ pub fn run() {
             get_machine_code,
             activate_license,
             get_license_status,
+            read_local_text_file,
             get_ai_benefit_config,
             check_client_update,
             perform_client_update,

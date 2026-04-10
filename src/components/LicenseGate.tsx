@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { motion } from "framer-motion";
+import { FileUp, CheckCircle2, Upload } from "lucide-react";
 import tauriLogo from "../assets/tauri.png";
 import { APP_VERSION } from "../config/app";
 
@@ -26,6 +27,10 @@ export default function LicenseGate({ initialLicenseStatus = null, onAuthorized 
   const [licenseContent, setLicenseContent] = useState("");
   const [activating, setActivating] = useState(false);
   const [error, setError] = useState("");
+  const [dragActive, setDragActive] = useState(false);
+  const [loadedFileName, setLoadedFileName] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragCounterRef = useRef(0);
 
   const formatExpires = (ts?: number | null) => {
     if (!ts) return "-";
@@ -131,6 +136,80 @@ export default function LicenseGate({ initialLicenseStatus = null, onAuthorized 
     }
   };
 
+  const loadLicenseText = async (text: string, fileName?: string) => {
+    const normalized = text.trim();
+    if (!normalized) {
+      setError("授权文件内容为空");
+      return;
+    }
+    setLicenseContent(normalized);
+    setLoadedFileName(fileName || "");
+    setError("");
+  };
+
+  const handleLicenseFile = async (file: File | null | undefined) => {
+    if (!file) {
+      return;
+    }
+    try {
+      const text = await file.text();
+      await loadLicenseText(text, file.name);
+    } catch (e: any) {
+      setError(e?.toString?.() || "读取授权文件失败");
+    }
+  };
+
+  const normalizeDroppedPath = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "";
+    }
+    if (trimmed.startsWith("file:///")) {
+      try {
+        return decodeURIComponent(trimmed.replace("file:///", "").replace(/\//g, "\\"));
+      } catch {
+        return trimmed.replace("file:///", "").replace(/\//g, "\\");
+      }
+    }
+    return trimmed.replace(/^"+|"+$/g, "");
+  };
+
+  const readDroppedLicense = async (event: React.DragEvent<HTMLDivElement>) => {
+    const directFile = event.dataTransfer.files?.[0] || event.dataTransfer.items?.[0]?.getAsFile?.();
+    if (directFile) {
+      await handleLicenseFile(directFile);
+      return;
+    }
+
+    const filePath =
+      normalizeDroppedPath(event.dataTransfer.getData("text/uri-list")) ||
+      normalizeDroppedPath(event.dataTransfer.getData("text/plain"));
+
+    if (!filePath) {
+      setError("未识别到可读取的授权文件");
+      return;
+    }
+
+    try {
+      const text = await invoke<string>("read_local_text_file", { filePath });
+      await loadLicenseText(text, filePath.split(/[\\/]/).pop());
+    } catch (e: any) {
+      setError(e?.toString?.() || "读取授权文件失败");
+    }
+  };
+
+  useEffect(() => {
+    const preventDefault = (event: DragEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("dragover", preventDefault);
+    window.addEventListener("drop", preventDefault);
+    return () => {
+      window.removeEventListener("dragover", preventDefault);
+      window.removeEventListener("drop", preventDefault);
+    };
+  }, []);
+
   return (
     <div className="relative w-full h-full p-8 flex items-center justify-center">
       <motion.div
@@ -209,12 +288,97 @@ export default function LicenseGate({ initialLicenseStatus = null, onAuthorized 
                 : `授权状态：未授权（${licenseStatus?.message || "请激活许可证"}）`}
             </div>
 
-            <textarea
-              value={licenseContent}
-              onChange={(e) => setLicenseContent(e.target.value)}
-              placeholder="粘贴 license.json 内容"
-              className="w-full min-h-28 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".license,.txt,.json"
+              className="hidden"
+              onChange={(event) => {
+                void handleLicenseFile(event.target.files?.[0]);
+                event.currentTarget.value = "";
+              }}
             />
+
+            <div
+              onDragEnter={(event) => {
+                event.preventDefault();
+                dragCounterRef.current += 1;
+                setDragActive(true);
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "copy";
+                setDragActive(true);
+              }}
+              onDragLeave={(event) => {
+                event.preventDefault();
+                dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+                if (dragCounterRef.current === 0) {
+                  setDragActive(false);
+                }
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                dragCounterRef.current = 0;
+                setDragActive(false);
+                void readDroppedLicense(event);
+              }}
+              className={`relative rounded-2xl border transition-all ${
+                dragActive
+                  ? "border-blue-400 bg-blue-50/70 shadow-[0_20px_36px_-26px_rgba(59,130,246,0.35)]"
+                  : "border-slate-200 bg-slate-50/70"
+              }`}
+            >
+              {dragActive && (
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl border-2 border-dashed border-blue-400 bg-blue-500/8 backdrop-blur-[1px]">
+                  <div className="rounded-2xl border border-blue-200 bg-white/92 px-5 py-4 text-center shadow-[0_24px_40px_-28px_rgba(59,130,246,0.35)]">
+                    <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                      <FileUp size={22} />
+                    </div>
+                    <div className="text-sm font-semibold text-slate-800">松开导入授权文件</div>
+                    <div className="mt-1 text-xs text-slate-500">导入后会自动读取内容并填充到激活区域</div>
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex w-full items-start gap-3 p-4 text-left"
+              >
+                <div
+                  className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
+                    dragActive ? "border-blue-200 bg-white text-blue-600" : "border-slate-200 bg-white text-slate-500"
+                  }`}
+                >
+                  {loadedFileName ? <CheckCircle2 size={18} /> : dragActive ? <FileUp size={18} /> : <Upload size={18} />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-slate-800">
+                    {loadedFileName ? "已加载授权文件" : "导入授权文件"}
+                  </div>
+                  <div className="mt-1 text-xs leading-5 text-slate-500">
+                    {loadedFileName
+                      ? loadedFileName
+                      : "支持直接粘贴授权内容，或将 .license / .txt / .json 文件拖入此处自动读取。"}
+                  </div>
+                </div>
+              </button>
+
+              <div className="border-t border-slate-200/80 px-4 pb-4 pt-3">
+                <textarea
+                  value={licenseContent}
+                  onChange={(e) => {
+                    setLicenseContent(e.target.value);
+                    if (loadedFileName) {
+                      setLoadedFileName("");
+                    }
+                  }}
+                  placeholder="粘贴 license 内容，或拖入授权文件"
+                  className="w-full min-h-28 rounded-xl bg-white border border-slate-200 px-3 py-2 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
 
             <button
               onClick={handleActivate}
