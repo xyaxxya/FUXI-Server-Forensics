@@ -744,7 +744,7 @@ export default function SettingsModal({
                           }
                           className="w-full appearance-none bg-white border border-slate-200 text-slate-700 py-3.5 px-4 pr-10 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-medium cursor-pointer hover:border-blue-300 shadow-sm"
                         >
-                          {(["fuxi", "zhipu", "openai", "qwen", "claude", "kimi", "gemini", "ollama"] as const).map(
+                          {(["fuxi", "zhipu", "openai", "qwen", "claude", "kimi", "gemini", "ollama", "custom"] as const).map(
                             (provider) => (
                               <option key={provider} value={provider}>
                                 {aiSettings.configs[provider]?.name || provider}

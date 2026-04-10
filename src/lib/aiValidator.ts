@@ -65,6 +65,15 @@ export async function testAIConnection(
         return { success: false, message: errorMsg };
       }
 
+      try {
+        await response.json();
+      } catch (e) {
+        return {
+          success: false,
+          message: 'Claude API 响应不是有效的 JSON 格式。请检查 Base URL 代理节点是否正常。'
+        };
+      }
+
       return {
         success: true,
         message: `连接成功！延迟: ${latency}ms`,
@@ -111,7 +120,15 @@ export async function testAIConnection(
       return { success: false, message: errorMsg };
     }
 
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      return {
+        success: false,
+        message: 'API 响应不是有效的 JSON 格式。请检查 Base URL 是否需要添加 /v1 后缀，或检查中转站地址是否正确。'
+      };
+    }
     
     // 验证响应格式
     if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {

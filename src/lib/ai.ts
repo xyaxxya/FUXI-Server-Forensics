@@ -28,7 +28,7 @@ export interface ToolCall {
   };
 }
 
-export type AIProviderId = "fuxi" | "zhipu" | "openai" | "qwen" | "claude" | "kimi" | "gemini" | "ollama";
+export type AIProviderId = "fuxi" | "zhipu" | "openai" | "qwen" | "claude" | "kimi" | "gemini" | "ollama" | "custom";
 
 export interface AIProviderConfig {
   id: AIProviderId;
@@ -119,6 +119,13 @@ export const DEFAULT_SETTINGS: AISettings = {
       apiKey: "ollama", // Ollama usually doesn't need a key, but we need non-empty string to pass check
       baseUrl: "http://localhost:11434/v1",
       model: "llama3",
+    },
+    custom: {
+      id: "custom",
+      name: "自定义 / 中转站 (Custom)",
+      apiKey: "",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o",
     },
   },
 };
@@ -798,7 +805,12 @@ export async function sendToAI(
         throw new Error(`Claude API Error: ${response.status} - ${err}`);
       }
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        throw new Error(`Claude API 返回了非 JSON 格式的数据。请检查 Base URL 代理节点是否正常。`);
+      }
       const textContent =
         (Array.isArray(data.content) ? (data.content.find((c: any) => c.type === "text")?.text || "") : "") || "";
       const toolUses = Array.isArray(data.content) ? data.content.filter((c: any) => c.type === "tool_use") : [];
@@ -864,8 +876,16 @@ export async function sendToAI(
       throw new Error(`AI API Error: ${response.status} - ${err}`);
     }
 
-    const data = await response.json();
-    const choice = data.choices[0];
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      throw new Error(`API 返回了非 JSON 格式的数据。请检查 Base URL (如是否缺少 /v1) 或确认代理节点正常。`);
+    }
+    const choice = data.choices?.[0];
+    if (!choice || !choice.message) {
+      throw new Error(`API 响应格式异常，缺少 choices 或 message 字段。`);
+    }
     const message = choice.message;
 
     return {
