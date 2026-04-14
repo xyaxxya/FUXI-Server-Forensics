@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import Login from "./components/Login";
 import Sidebar from "./components/Sidebar";
@@ -16,7 +16,6 @@ import StarrySkyBackground from "./components/StarrySkyBackground";
 import LicenseGate from "./components/LicenseGate";
 import { APP_VERSION } from "./config/app";
 import { ToastProvider } from "./components/Toast";
-import GlobalContextMenu from "./components/GlobalContextMenu";
 
 interface LicenseStatus {
   valid: boolean;
@@ -44,19 +43,12 @@ interface UpdateCheckResult {
   message: string;
 }
 
-interface BenefitAIConfig {
-  provider_id: keyof AISettings["configs"];
-  api_key: string;
-  base_url: string;
-  model: string;
-}
-
 function MainApp() {
   const [showIntro, setShowIntro] = useState(true);
   const [introMinElapsed, setIntroMinElapsed] = useState(false);
   const [introMaxElapsed, setIntroMaxElapsed] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [activeTab, setActiveTab] = useState("agent-general");
+  const [activeTab, setActiveTab] = useState("system");
   const [language, setLanguage] = useState<Language>('zh');
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -64,7 +56,6 @@ function MainApp() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [aiSettings, setAiSettings] = useState<AISettings>(DEFAULT_SETTINGS);
   const [isAiSettingsLoaded, setIsAiSettingsLoaded] = useState(false);
-  const [benefitAiConfig, setBenefitAiConfig] = useState<BenefitAIConfig | null>(null);
   const [isLicensed, setIsLicensed] = useState(false);
   const [isLicenseChecked, setIsLicenseChecked] = useState(false);
   const [licenseStatus, setLicenseStatus] = useState<LicenseStatus | null>(null);
@@ -120,11 +111,13 @@ function MainApp() {
               ...parsed,
               configs: {
                 ...prev.configs,
-                ...parsed.configs,
+                ...parsed.configs, // Merge to keep defaults for new providers
+                fuxi: DEFAULT_SETTINGS.configs.fuxi, // Always override fuxi with default config to ensure API key is present
               },
               tokenUsage: parsed.tokenUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
             };
             
+            // If they didn't have fuxi before, make it active by default
             if (!parsed.configs?.fuxi) {
                 merged.activeProvider = "fuxi";
             }
@@ -136,16 +129,6 @@ function MainApp() {
       }
     }
     setIsAiSettingsLoaded(true);
-  }, []);
-
-  useEffect(() => {
-    invoke<BenefitAIConfig | null>("get_ai_benefit_config")
-      .then((config) => {
-        setBenefitAiConfig(config);
-      })
-      .catch(() => {
-        setBenefitAiConfig(null);
-      });
   }, []);
 
   useEffect(() => {
@@ -194,39 +177,6 @@ function MainApp() {
     }
   }, [aiSettings, isAiSettingsLoaded]);
 
-  const resolvedAiSettings = useMemo<AISettings>(() => {
-    if (!benefitAiConfig) {
-      return aiSettings;
-    }
-
-    const providerId = benefitAiConfig.provider_id;
-    const currentProviderConfig = aiSettings.configs[providerId];
-    if (!currentProviderConfig) {
-      return aiSettings;
-    }
-
-    const shouldInjectApiKey = !currentProviderConfig.apiKey?.trim();
-    const shouldInjectBaseUrl = !currentProviderConfig.baseUrl?.trim();
-    const shouldInjectModel = !currentProviderConfig.model?.trim();
-
-    if (!shouldInjectApiKey && !shouldInjectBaseUrl && !shouldInjectModel) {
-      return aiSettings;
-    }
-
-    return {
-      ...aiSettings,
-      configs: {
-        ...aiSettings.configs,
-        [providerId]: {
-          ...currentProviderConfig,
-          apiKey: shouldInjectApiKey ? benefitAiConfig.api_key : currentProviderConfig.apiKey,
-          baseUrl: shouldInjectBaseUrl ? benefitAiConfig.base_url : currentProviderConfig.baseUrl,
-          model: shouldInjectModel ? benefitAiConfig.model : currentProviderConfig.model,
-        },
-      },
-    };
-  }, [aiSettings, benefitAiConfig]);
-
   useEffect(() => {
     invoke<LicenseStatus>("get_license_status")
       .then((status) => {
@@ -266,10 +216,28 @@ function MainApp() {
         if (showLoginModal) setShowLoginModal(false);
       }
       
-      // Ctrl+1 - 回到通用智能体
-      if (isConnected && (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === '1') {
+      // Ctrl+1-9 - Quick tab switching (only when connected)
+      if (isConnected && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        const tabMap: Record<string, string> = {
+          '1': 'system',
+          '2': 'network',
+          '3': 'response',
+          '4': 'docker',
+          '5': 'database',
+          '6': 'agent-general',
+          '7': 'terminal'
+        };
+        
+        if (tabMap[e.key]) {
+          e.preventDefault();
+          setActiveTab(tabMap[e.key]);
+        }
+      }
+      
+      // Ctrl+T - Open terminal
+      if (isConnected && (e.ctrlKey || e.metaKey) && e.key === 't') {
         e.preventDefault();
-        setActiveTab('agent-general');
+        setActiveTab('terminal');
       }
     };
     
@@ -304,10 +272,9 @@ function MainApp() {
   const handleLoginSuccess = () => {
     setIsConnected(true);
     setLanguage('zh');
-    setActiveTab("agent-general");
     setShowServerSidebar(true);
-    // SSH连接成功后不再弹出任务栏
-    setShowTaskModal(false);
+    // Show task modal instead of auto-executing
+    setShowTaskModal(true);
   };
 
   const handleExecuteTasks = (selectedIds: string[]) => {
@@ -424,10 +391,10 @@ function MainApp() {
                   <main className="flex-1 h-full overflow-hidden rounded-2xl relative z-10">
                     <Dashboard 
                       activeTab={activeTab}
+                      onTabChange={setActiveTab}
                       language={language}
                       onAddSession={() => setShowLoginModal(true)}
-                      aiSettings={resolvedAiSettings}
-                      onAiSettingsChange={setAiSettings}
+                      aiSettings={aiSettings}
                       onOpenSettings={() => openSettings("general")}
                       chatUserProfile={{
                         qq: licenseStatus?.qq || null,
@@ -515,7 +482,6 @@ function MainApp() {
               onClose={() => setShowKeyboardShortcuts(false)}
               language={language}
             />
-            <GlobalContextMenu language={language} onOpenSettings={() => openSettings("general")} />
           </motion.div>
         )}
       </AnimatePresence>

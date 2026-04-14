@@ -82,11 +82,10 @@
 
 为了提供无缝的取证体验，项目内置了完整的运维工具栈，替代了传统的 "Navicat + Xshell + Xftp" 多工具组合，实现了工具的闭环：
 
-- **FUXI SQL (数据库管理)**:
-  - 内置 `MySQLManager` 模块，支持多连接管理与 SSH 隧道连接。
-  - 提供可视化的 SQL 编辑器 (基于 `Monaco Editor`)，支持 SQL 语法高亮与智能提示 (Auto-completion)。
-  - **AI 增强**: 集成 "AI SQL Generator"，可根据自然语言生成复杂的 SQL 查询语句。
-  - 支持表数据浏览、分页查询及结果导出。
+- **FUXI SQL (数据库智查与管理)**:
+  - 内置 `DatabaseAgent` 模块，支持多连接管理与 SSH 隧道连接。
+  - 提供可视化的 SQL 编辑器，支持表数据浏览与分页查询。
+  - **AI 增强**: 集成自然语言查询助手，可直接对话执行复杂分析。
 - **FUXI Terminal (终端仿真)**:
   - 基于 `Xterm.js` 和 Rust `ssh2` 实现的高性能 Web 终端。
   - 支持多会话管理、自动重连、自定义主题及字体配置。

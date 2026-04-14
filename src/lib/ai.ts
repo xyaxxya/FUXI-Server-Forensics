@@ -55,9 +55,9 @@ export interface AISettings {
 export const DEFAULT_SETTINGS: AISettings = {
   activeProvider: "fuxi",
   enablePlanning: false,
-  maxLoops: 25, // Default to 25
+  maxLoops: 300, // Default to 300
   maxConcurrentTasks: 3, // Default to 3
-  maxTokens: 32768, // Default max tokens
+  maxTokens: 128000, // Default max tokens (GPT-5.3-Codex max output tokens)
   tokenUsage: {
     prompt_tokens: 0,
     completion_tokens: 0,
@@ -67,7 +67,7 @@ export const DEFAULT_SETTINGS: AISettings = {
     fuxi: {
       id: "fuxi",
       name: "伏羲畅饮",
-      apiKey: "",
+      apiKey: "sk-PHRYmaW8O2NJf5erJVc1DjKoM68M5fuviqw1iaQXtFUYIF8L",
       baseUrl: "https://linkapi.ai/v1",
       model: "gpt-5.3-codex",
     },
@@ -857,6 +857,7 @@ export async function sendToAI(
     model: config.model,
     messages: finalMessages,
     max_tokens: settings.maxTokens || 32768,
+    stream: true,
     ...(tools.length > 0 ? { tools, tool_choice: "auto" } : {}),
   };
 
@@ -874,6 +875,76 @@ export async function sendToAI(
     if (!response.ok) {
       const err = await response.text();
       throw new Error(`AI API Error: ${response.status} - ${err}`);
+    }
+
+    if (response.headers.get("content-type")?.includes("text/event-stream")) {
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let content = "";
+      let reasoning_content = "";
+      let tool_calls: any[] = [];
+      let usage: any = undefined;
+
+      if (reader) {
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith("data: ") && trimmed !== "data: [DONE]") {
+              try {
+                const data = JSON.parse(trimmed.slice(6));
+                const delta = data.choices?.[0]?.delta;
+                if (delta) {
+                  if (delta.content) content += delta.content;
+                  if (delta.reasoning_content) reasoning_content += delta.reasoning_content;
+                  if (delta.tool_calls) {
+                    for (const tc of delta.tool_calls) {
+                      if (!tool_calls[tc.index]) {
+                        tool_calls[tc.index] = { 
+                          id: tc.id, 
+                          type: "function", 
+                          function: { name: tc.function?.name || "", arguments: tc.function?.arguments || "" } 
+                        };
+                      } else {
+                        if (tc.function?.arguments) {
+                          tool_calls[tc.index].function.arguments += tc.function.arguments;
+                        }
+                      }
+                    }
+                  }
+                }
+                if (data.usage) {
+                  usage = data.usage;
+                }
+              } catch (e) {
+                // Ignore parse errors on incomplete chunks
+              }
+            }
+          }
+        }
+      }
+
+      return {
+        role: "assistant",
+        content: reasoning_content ? `<think>\n${reasoning_content}\n</think>\n${content}` : content,
+        tool_calls: tool_calls.length > 0 ? tool_calls.filter(Boolean) : undefined,
+        usage: usage ? {
+          prompt_tokens: usage.prompt_tokens || 0,
+          completion_tokens: usage.completion_tokens || 0,
+          total_tokens: usage.total_tokens || 0,
+        } : undefined,
+        routing_info: {
+          frameworks: autoRouting.frameworks,
+          skill_ids: autoRouting.selectedSkillIds,
+          status_text: autoRouting.statusText,
+          phase: autoRouting.phase,
+        }
+      };
     }
 
     let data;
