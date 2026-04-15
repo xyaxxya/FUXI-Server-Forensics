@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=IBM+Plex+Mono:wght@400;500;700&display=swap");
 @import "tailwindcss";
 
 @theme {
@@ -30,6 +31,219 @@
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--color-surface-base);
   color: var(--color-text-primary);
+}
+
+:root {
+  --neo-bg-ink: #0a0f1d;
+  --neo-bg-layer: #111a2f;
+  --neo-panel: rgba(12, 20, 38, 0.82);
+  --neo-panel-soft: rgba(18, 28, 50, 0.72);
+  --neo-card: rgba(246, 250, 255, 0.9);
+  --neo-card-user: linear-gradient(155deg, rgba(242, 248, 255, 0.96), rgba(224, 237, 255, 0.9));
+  --neo-line: rgba(157, 193, 255, 0.26);
+  --neo-line-strong: rgba(120, 192, 255, 0.4);
+  --neo-cyan: #22d3ee;
+  --neo-sky: #60a5fa;
+  --neo-mint: #2dd4bf;
+}
+
+.neo-chat-layout {
+  position: relative;
+}
+
+.neo-chat-layout::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(1100px 460px at 12% -20%, rgba(125, 211, 252, 0.18), transparent 62%),
+    radial-gradient(820px 380px at 100% 2%, rgba(34, 211, 238, 0.14), transparent 58%),
+    radial-gradient(740px 340px at 46% 100%, rgba(96, 165, 250, 0.1), transparent 58%);
+  z-index: 0;
+}
+
+.neo-chat-shell,
+.neo-side-panel {
+  position: relative;
+  z-index: 1;
+}
+
+.neo-chat-shell {
+  border: 1px solid var(--neo-line);
+  background:
+    linear-gradient(180deg, rgba(250, 253, 255, 0.86), rgba(239, 247, 255, 0.84)),
+    radial-gradient(circle at 85% 0%, rgba(103, 232, 249, 0.1), transparent 34%);
+  box-shadow:
+    0 42px 80px -58px rgba(8, 15, 28, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.neo-chat-stream {
+  background:
+    linear-gradient(180deg, rgba(238, 247, 255, 0.38), rgba(245, 250, 255, 0.22)),
+    repeating-linear-gradient(
+      -18deg,
+      rgba(255, 255, 255, 0.2),
+      rgba(255, 255, 255, 0.2) 1px,
+      transparent 1px,
+      transparent 11px
+    );
+}
+
+.neo-toolbar-button {
+  border: 1px solid rgba(172, 205, 255, 0.62);
+  background: rgba(246, 250, 255, 0.8);
+  color: #334155;
+  box-shadow: 0 12px 30px -24px rgba(30, 64, 175, 0.38);
+}
+
+.neo-toolbar-button:hover {
+  border-color: rgba(125, 211, 252, 0.66);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.neo-toolbar-danger {
+  border-color: rgba(252, 211, 77, 0.5);
+  background: rgba(255, 251, 235, 0.86);
+  color: #b45309;
+}
+
+.neo-chip {
+  border: 1px solid rgba(125, 211, 252, 0.36);
+  color: #35527f;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.92), rgba(236, 245, 255, 0.86));
+  box-shadow: 0 12px 24px -22px rgba(30, 64, 175, 0.35);
+}
+
+.neo-chip:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #0f3d73;
+}
+
+.neo-empty {
+  border-color: rgba(153, 181, 232, 0.44);
+  background: rgba(246, 251, 255, 0.6);
+  color: #5b6f8f;
+}
+
+.neo-live-pill {
+  border: 1px solid rgba(103, 232, 249, 0.34);
+  background: rgba(240, 252, 255, 0.84);
+  color: #25627c;
+  box-shadow: 0 20px 36px -34px rgba(6, 182, 212, 0.5);
+}
+
+.neo-idle-pill {
+  background: rgba(241, 245, 249, 0.8);
+  color: #475569;
+}
+
+.neo-composer-wrap {
+  border-top: 1px solid rgba(168, 197, 240, 0.38);
+  background: linear-gradient(180deg, rgba(245, 250, 255, 0.18), rgba(240, 248, 255, 0.64));
+  backdrop-filter: blur(10px);
+}
+
+.neo-composer {
+  border: 1px solid rgba(173, 208, 255, 0.46);
+  background: linear-gradient(180deg, rgba(247, 252, 255, 0.95), rgba(236, 247, 255, 0.92));
+  box-shadow:
+    0 36px 62px -38px rgba(30, 64, 175, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+.neo-input {
+  border: 1px solid rgba(173, 208, 255, 0.28);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(246, 252, 255, 0.78));
+  color: #1e293b;
+}
+
+.neo-input:focus {
+  outline: none;
+  border-color: rgba(56, 189, 248, 0.5);
+  box-shadow: 0 0 0 4px rgba(125, 211, 252, 0.18);
+}
+
+.neo-input::placeholder {
+  color: #64748b;
+}
+
+.neo-send {
+  border: 1px solid rgba(14, 165, 233, 0.52);
+  background: linear-gradient(140deg, #38bdf8, #0284c7);
+  color: #f8fafc;
+  box-shadow: 0 18px 34px -22px rgba(2, 132, 199, 0.56);
+}
+
+.neo-send:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: linear-gradient(140deg, #22d3ee, #0369a1);
+}
+
+.neo-send:disabled {
+  border-color: rgba(148, 163, 184, 0.5);
+  background: linear-gradient(140deg, #cbd5e1, #94a3b8);
+  color: #f8fafc;
+}
+
+.neo-msg-wrap {
+  animation: neoMessageIn 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.neo-msg-card {
+  border: 1px solid rgba(169, 199, 240, 0.44);
+  box-shadow: 0 20px 40px -36px rgba(30, 64, 175, 0.32);
+}
+
+.neo-msg-user {
+  background: var(--neo-card-user);
+}
+
+.neo-msg-assistant {
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.96), rgba(244, 251, 255, 0.9));
+}
+
+.neo-msg-card:hover {
+  border-color: var(--neo-line-strong);
+  box-shadow: 0 28px 52px -36px rgba(14, 116, 144, 0.3);
+}
+
+.neo-thinking .neo-thinking-head {
+  border-color: rgba(166, 207, 255, 0.44);
+  background: linear-gradient(160deg, rgba(246, 252, 255, 0.92), rgba(233, 245, 255, 0.8));
+}
+
+.neo-thinking .neo-thinking-body {
+  border-left-color: rgba(148, 163, 184, 0.34);
+}
+
+.neo-clue-card {
+  border: 1px solid rgba(174, 204, 240, 0.5);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.95), rgba(241, 249, 255, 0.88));
+  box-shadow: 0 18px 34px -32px rgba(30, 64, 175, 0.3);
+}
+
+.neo-clue-card:hover {
+  border-color: rgba(56, 189, 248, 0.42);
+}
+
+.neo-side-panel > section,
+.neo-side-panel > div.ui-shell {
+  border: 1px solid rgba(171, 202, 240, 0.44);
+  background: linear-gradient(180deg, rgba(249, 253, 255, 0.94), rgba(241, 249, 255, 0.86));
+  box-shadow: 0 24px 46px -38px rgba(30, 64, 175, 0.32);
+}
+
+@keyframes neoMessageIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 body {

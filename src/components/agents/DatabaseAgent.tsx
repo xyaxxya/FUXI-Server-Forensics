@@ -287,11 +287,14 @@ export default function DatabaseAgent({
   const syncTasks = useAIWorkspaceStore((state) => state.syncTasks);
   const finalizeTasks = useAIWorkspaceStore((state) => state.finalizeTasks);
   const updateTaskStatus = useAIWorkspaceStore((state) => state.updateTaskStatus);
+  const addTask = useAIWorkspaceStore((state) => state.addTask);
+  const updateTaskContent = useAIWorkspaceStore((state) => state.updateTaskContent);
   const removeTask = useAIWorkspaceStore((state) => state.removeTask);
   const clearTasks = useAIWorkspaceStore((state) => state.clearTasks);
   const addPromptHistory = useAIWorkspaceStore((state) => state.addPromptHistory);
   const savePromptSnippet = useAIWorkspaceStore((state) => state.savePromptSnippet);
   const removePromptSnippet = useAIWorkspaceStore((state) => state.removePromptSnippet);
+  const updatePromptSnippet = useAIWorkspaceStore((state) => state.updatePromptSnippet);
   const togglePromptSnippetPin = useAIWorkspaceStore((state) => state.togglePromptSnippetPin);
   const {
     connections,
@@ -1459,6 +1462,12 @@ export default function DatabaseAgent({
             onClear={() => clearTasks()}
             onUpdateTaskStatus={updateTaskStatus}
             onRemoveTask={removeTask}
+            onAddTask={(content) => {
+              addTask({ content, source: "manual", status: "pending" });
+            }}
+            onEditTask={(id, content) => {
+              updateTaskContent(id, content);
+            }}
           />
           <PromptDeck
             language={language}
@@ -1474,6 +1483,12 @@ export default function DatabaseAgent({
             onSaveHistoryPrompt={(value) => savePromptSnippet({ content: value, pinned: false })}
             onRemoveSnippet={removePromptSnippet}
             onTogglePin={togglePromptSnippetPin}
+            onCreateSnippet={(title, content, pinned) => {
+              savePromptSnippet({ title, content, pinned: !!pinned });
+            }}
+            onEditSnippet={(id, next) => {
+              updatePromptSnippet(id, next);
+            }}
           />
         </div>
       </div>

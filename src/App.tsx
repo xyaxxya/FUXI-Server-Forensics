@@ -16,6 +16,7 @@ import StarrySkyBackground from "./components/StarrySkyBackground";
 import LicenseGate from "./components/LicenseGate";
 import { APP_VERSION } from "./config/app";
 import { ToastProvider } from "./components/Toast";
+import GlobalContextMenu from "./components/GlobalContextMenu";
 
 interface LicenseStatus {
   valid: boolean;
@@ -482,6 +483,7 @@ function MainApp() {
               onClose={() => setShowKeyboardShortcuts(false)}
               language={language}
             />
+            <GlobalContextMenu language={language} onOpenSettings={() => openSettings("general")} />
           </motion.div>
         )}
       </AnimatePresence>

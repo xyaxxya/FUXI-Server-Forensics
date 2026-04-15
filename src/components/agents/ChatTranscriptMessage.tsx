@@ -114,23 +114,23 @@ export function ChatTranscriptMessage({ message, language }: { message: AIMessag
   const isUser = message.role === "user";
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={isUser ? "pt-1" : "pl-6"}>
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={`neo-msg-wrap ${isUser ? "pt-1" : "pl-6"}`}>
       {isUser ? (
-        <div className="group rounded-[1.25rem] border border-slate-200/80 bg-gradient-to-br from-white to-slate-50/92 px-4 py-3 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.32)] transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_24px_44px_-30px_rgba(59,130,246,0.22)]" data-message-role="user" data-message-content={message.content}>
-          <div className="mb-2 flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-400">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-[11px] text-slate-500">
+        <div className="neo-msg-card neo-msg-user group rounded-[1.25rem] px-4 py-3 transition-all duration-200 hover:-translate-y-0.5" data-message-role="user" data-message-content={message.content}>
+          <div className="mb-2 flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-500">
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/80 text-[11px] text-slate-600">
               &gt;
             </span>
             {translations[language].user_label}
           </div>
-          <div className="whitespace-pre-wrap text-[14px] leading-7 tracking-[0.01em] text-slate-800">{message.content}</div>
+          <div className="whitespace-pre-wrap text-[14px] leading-7 tracking-[0.01em] text-slate-800/95">{message.content}</div>
         </div>
       ) : (
-        <div className="group relative overflow-hidden rounded-[1.3rem] border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/88 px-4 py-3 shadow-[0_24px_50px_-36px_rgba(15,23,42,0.24)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-200 hover:shadow-[0_28px_56px_-32px_rgba(59,130,246,0.18)]" data-message-role="assistant" data-message-content={message.content}>
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sky-200 to-transparent" />
+        <div className="neo-msg-card neo-msg-assistant group relative overflow-hidden rounded-[1.3rem] px-4 py-3 backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5" data-message-role="assistant" data-message-content={message.content}>
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/70 to-transparent" />
           <div className="mb-2 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-400">
-              <span className="h-2 w-2 rounded-full bg-sky-500 shadow-[0_0_0_4px_rgba(59,130,246,0.10)]" />
+            <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-500">
+              <span className="h-2 w-2 rounded-full bg-cyan-500 shadow-[0_0_0_4px_rgba(6,182,212,0.14)]" />
               {translations[language].assistant_label}
             </div>
             <CopyButton
@@ -139,7 +139,7 @@ export function ChatTranscriptMessage({ message, language }: { message: AIMessag
               className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/90 px-2 py-1 text-[10px] font-medium text-slate-500 opacity-0 transition-all hover:border-slate-300 hover:text-slate-700 group-hover:opacity-100"
             />
           </div>
-          <div className="relative pl-3 before:absolute before:bottom-1 before:left-0 before:top-1 before:w-px before:rounded-full before:bg-gradient-to-b before:from-sky-200 before:via-slate-200 before:to-transparent">
+          <div className="relative pl-3 before:absolute before:bottom-1 before:left-0 before:top-1 before:w-px before:rounded-full before:bg-gradient-to-b before:from-cyan-200 before:via-slate-200 before:to-transparent">
             <div className="prose prose-sm max-w-none text-[14px] leading-7 text-slate-700 prose-p:my-2 prose-headings:mb-3 prose-headings:mt-5 prose-pre:my-0 prose-pre:bg-transparent prose-pre:p-0 prose-code:text-slate-700 prose-code:bg-slate-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-strong:text-slate-900">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}

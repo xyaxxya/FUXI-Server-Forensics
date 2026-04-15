@@ -260,13 +260,13 @@ export default function ThinkingProcess({ steps = [], isFinished, language }: Th
   if (steps.length === 0) return null;
 
   return (
-    <div className="my-5 w-full max-w-full">
+    <div className="neo-thinking my-5 w-full max-w-full">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className={`relative w-full overflow-hidden rounded-[1.1rem] border px-4 py-3 text-left transition-all duration-300 ${
+        className={`neo-thinking-head relative w-full overflow-hidden rounded-[1.1rem] border px-4 py-3 text-left transition-all duration-300 ${
           isExpanded
-            ? "border-slate-300 bg-white shadow-[0_24px_48px_-36px_rgba(15,23,42,0.24)]"
-            : "border-slate-200 bg-white/85 shadow-[0_18px_38px_-34px_rgba(15,23,42,0.18)] hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_26px_54px_-34px_rgba(59,130,246,0.18)]"
+            ? "border-slate-300 bg-white/95 shadow-[0_24px_48px_-36px_rgba(15,23,42,0.24)]"
+            : "border-slate-200 bg-white/80 shadow-[0_18px_38px_-34px_rgba(15,23,42,0.18)] hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_26px_54px_-34px_rgba(59,130,246,0.18)]"
         }`}
       >
         <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-200 to-transparent" />
@@ -288,17 +288,17 @@ export default function ThinkingProcess({ steps = [], isFinished, language }: Th
         
         <div className="flex-1 text-left min-w-0">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-sm font-semibold tracking-[0.12em] text-slate-900">
+            <span className="font-mono text-sm font-semibold tracking-[0.12em] text-slate-900/95">
               {isFinished ? t.thinking_done_label : t.thinking_live_label}
             </span>
             {!isFinished && (
               <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-500">
-                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                <span className="h-1.5 w-1.5 rounded-full bg-cyan-500 animate-pulse" />
                 {t.processing_label}
               </span>
             )}
             {hasTable && (
-               <span className="flex items-center gap-1 rounded-full border border-purple-100 bg-purple-50 px-2 py-1 text-[10px] font-medium text-purple-600">
+               <span className="flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700">
                    <Terminal size={10} />
                    {t.data_label}
                </span>
@@ -329,7 +329,7 @@ export default function ThinkingProcess({ steps = [], isFinished, language }: Th
             transition={{ duration: 0.3, ease: "easeInOut" }}
             className="overflow-hidden"
           >
-            <div className="mx-1 mt-2 space-y-3 border-l border-slate-200 px-4 py-3">
+            <div className="neo-thinking-body mx-1 mt-2 space-y-3 border-l border-slate-200 px-4 py-3">
               {!isFinished && latestStepSummary && (
                 <div className="flex items-center gap-2 rounded-[0.95rem] border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 shadow-[0_20px_40px_-38px_rgba(59,130,246,0.45)]">
                   <Loader2 size={14} className="shrink-0 animate-spin text-slate-500" />

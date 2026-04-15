@@ -104,8 +104,14 @@ interface AIWorkspaceState {
     }>,
     source?: AIWorkspaceSource,
   ) => AIPlanTask[];
+  addTask: (input: {
+    content: string;
+    status?: AIPlanStatus;
+    source?: AIWorkspaceSource;
+  }) => AIPlanTask | null;
   finalizeTasks: (mode?: "running_only" | "all") => void;
   updateTaskStatus: (id: string, status: AIPlanStatus) => void;
+  updateTaskContent: (id: string, content: string) => void;
   removeTask: (id: string) => void;
   clearTasks: () => void;
   addPromptHistory: (prompt: string) => void;
@@ -115,6 +121,7 @@ interface AIWorkspaceState {
     pinned?: boolean;
   }) => AIPromptSnippet | null;
   removePromptSnippet: (id: string) => void;
+  updatePromptSnippet: (id: string, input: { title?: string; content?: string; pinned?: boolean }) => void;
   togglePromptSnippetPin: (id: string) => void;
   createSnapshot: (title?: string) => AIWorkspaceSnapshot;
   restoreSnapshot: (id: string) => boolean;
@@ -126,6 +133,7 @@ interface AIWorkspaceState {
     source?: AIWorkspaceEvent["source"];
   }) => AIWorkspaceEvent | null;
   removeRecord: (id: string) => void;
+  updateRecord: (id: string, input: { title?: string; content?: string }) => void;
   clearRecords: () => void;
   clearAll: () => void;
   getCombinedContext: () => string;
@@ -256,6 +264,30 @@ export const useAIWorkspaceStore = create<AIWorkspaceState>()(
 
         return normalizedTasks;
       },
+      addTask: ({ content, status = "pending", source = "manual" }) => {
+        const normalized = sanitizeContextText(content);
+        if (!normalized) {
+          return null;
+        }
+        const now = Date.now();
+        const nextTask: AIPlanTask = {
+          id: crypto.randomUUID(),
+          content: normalized,
+          status,
+          source,
+          updatedAt: now,
+        };
+        set((state) => ({
+          tasks: [nextTask, ...state.tasks].slice(0, 20),
+        }));
+        get().pushEvent({
+          type: "task",
+          title: `新增任务 · ${nextTask.content}`,
+          detail: nextTask.status,
+          source,
+        });
+        return nextTask;
+      },
       finalizeTasks: (mode = "running_only") => {
         const now = Date.now();
         set((state) => ({
@@ -294,6 +326,33 @@ export const useAIWorkspaceStore = create<AIWorkspaceState>()(
             source: current.source,
           });
         }
+      },
+      updateTaskContent: (id, content) => {
+        const normalized = sanitizeContextText(content);
+        if (!normalized) {
+          return;
+        }
+        const current = get().tasks.find((task) => task.id === id);
+        if (!current) {
+          return;
+        }
+        set((state) => ({
+          tasks: state.tasks.map((task) =>
+            task.id === id
+              ? {
+                  ...task,
+                  content: normalized,
+                  updatedAt: Date.now(),
+                }
+              : task,
+          ),
+        }));
+        get().pushEvent({
+          type: "task",
+          title: `编辑任务 · ${normalized.slice(0, 48)}`,
+          detail: normalized,
+          source: current.source,
+        });
       },
       removeTask: (id) => {
         const current = get().tasks.find((task) => task.id === id);
@@ -367,6 +426,38 @@ export const useAIWorkspaceStore = create<AIWorkspaceState>()(
         set((state) => ({
           promptSnippets: state.promptSnippets.filter((item) => item.id !== id),
         }));
+      },
+      updatePromptSnippet: (id, input) => {
+        const current = get().promptSnippets.find((item) => item.id === id);
+        if (!current) {
+          return;
+        }
+        const nextTitle = typeof input.title === "string" ? input.title.trim() : current.title;
+        const nextContent =
+          typeof input.content === "string" ? normalizePrompt(input.content) : current.content;
+        if (!nextContent) {
+          return;
+        }
+        const nextPinned = typeof input.pinned === "boolean" ? input.pinned : current.pinned;
+        set((state) => ({
+          promptSnippets: state.promptSnippets.map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  title: nextTitle || deriveRecordTitle(nextContent),
+                  content: nextContent,
+                  pinned: nextPinned,
+                  updatedAt: Date.now(),
+                }
+              : item,
+          ),
+        }));
+        get().pushEvent({
+          type: "snippet",
+          title: `编辑模板 · ${(nextTitle || deriveRecordTitle(nextContent)).slice(0, 48)}`,
+          detail: nextContent,
+          source: "manual",
+        });
       },
       togglePromptSnippetPin: (id) => {
         set((state) => ({
@@ -472,6 +563,36 @@ export const useAIWorkspaceStore = create<AIWorkspaceState>()(
             source: record.source,
           });
         }
+      },
+      updateRecord: (id, input) => {
+        const current = get().records.find((item) => item.id === id);
+        if (!current) {
+          return;
+        }
+        const nextTitle = typeof input.title === "string" ? input.title.trim() : current.title;
+        const nextContent =
+          typeof input.content === "string" ? sanitizeContextText(input.content) : current.content;
+        if (!nextContent) {
+          return;
+        }
+        set((state) => ({
+          records: state.records.map((record) =>
+            record.id === id
+              ? {
+                  ...record,
+                  title: nextTitle || deriveRecordTitle(nextContent),
+                  content: nextContent,
+                  updatedAt: Date.now(),
+                }
+              : record,
+          ),
+        }));
+        get().pushEvent({
+          type: "record",
+          title: `编辑线索 · ${(nextTitle || deriveRecordTitle(nextContent)).slice(0, 48)}`,
+          detail: nextContent,
+          source: current.source,
+        });
       },
       clearRecords: () => {
         set({ records: [] });

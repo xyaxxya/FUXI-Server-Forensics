@@ -11,13 +11,11 @@ import {
   Globe,
   Hash,
   History,
-  Pin,
   Plus,
   RotateCcw,
   SquareTerminal,
   Sparkles,
   Star,
-  Trash2,
 } from "lucide-react";
 import { AISettings } from "../../lib/ai";
 import { AIPlanStatus, AIPlanTask, AIPromptSnippet, AIWorkspaceEvent, AIWorkspaceSnapshot } from "../../lib/aiWorkspaceStore";
@@ -119,6 +117,92 @@ export function PreviewDialog({
         </div>
         <div className="custom-scrollbar mt-4 max-h-[68vh] overflow-auto whitespace-pre-wrap rounded-[1.4rem] bg-slate-50/70 p-4 text-sm leading-7 text-slate-700">
           {content}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function EditDialog({
+  title,
+  nameLabel,
+  contentLabel,
+  initialName = "",
+  initialContent = "",
+  namePlaceholder,
+  contentPlaceholder,
+  saveLabel,
+  cancelLabel,
+  onSave,
+  onClose,
+}: {
+  title: string;
+  nameLabel?: string;
+  contentLabel: string;
+  initialName?: string;
+  initialContent?: string;
+  namePlaceholder?: string;
+  contentPlaceholder?: string;
+  saveLabel: string;
+  cancelLabel: string;
+  onSave: (input: { name: string; content: string }) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(initialName);
+  const [content, setContent] = useState(initialContent);
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[145] flex items-center justify-center bg-slate-900/35 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="ui-shell w-full max-w-2xl rounded-[1.8rem] p-5" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200/70 pb-4">
+          <div className="text-base font-semibold text-slate-900">{title}</div>
+          <button onClick={onClose} className="ui-button ui-pressable rounded-xl px-3 py-2 text-sm text-slate-600">
+            {cancelLabel}
+          </button>
+        </div>
+        <div className="mt-4 space-y-4">
+          {nameLabel && (
+            <label className="block">
+              <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">{nameLabel}</div>
+              <input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder={namePlaceholder}
+                className="ui-input-base w-full rounded-xl px-3 py-2.5 text-sm text-slate-700"
+              />
+            </label>
+          )}
+          <label className="block">
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">{contentLabel}</div>
+            <textarea
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              placeholder={contentPlaceholder}
+              className="ui-input-base min-h-[160px] w-full resize-y rounded-xl px-3 py-2.5 text-sm text-slate-700"
+            />
+          </label>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="ui-button ui-pressable rounded-xl px-4 py-2 text-sm text-slate-600">
+            {cancelLabel}
+          </button>
+          <button
+            onClick={() => onSave({ name, content })}
+            disabled={!content.trim()}
+            className="ui-button-primary ui-pressable rounded-xl px-4 py-2 text-sm text-white disabled:bg-slate-300 disabled:border-slate-300"
+          >
+            {saveLabel}
+          </button>
         </div>
       </div>
     </div>
@@ -305,133 +389,159 @@ export function PlannerPanel({
   onClear,
   onUpdateTaskStatus,
   onRemoveTask,
+  onAddTask,
+  onEditTask,
 }: {
   language: Language;
   tasks: AIPlanTask[];
   onClear?: () => void;
   onUpdateTaskStatus?: (id: string, status: AIPlanStatus) => void;
   onRemoveTask?: (id: string) => void;
+  onAddTask?: (content: string) => void;
+  onEditTask?: (id: string, content: string) => void;
 }) {
   const completed = tasks.filter((task) => task.status === "completed").length;
   const inProgress = tasks.filter((task) => task.status === "in_progress").length;
   const [preview, setPreview] = useState<{ title: string; content: string } | null>(null);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const [taskEditor, setTaskEditor] = useState<{ mode: "create" | "edit"; id?: string; content: string } | null>(null);
 
   return (
     <>
-    <section className="ui-shell flex min-h-0 flex-col overflow-hidden rounded-[1.7rem]">
-      <div className="border-b border-slate-200/70 px-5 py-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 text-base font-semibold text-slate-900">
-              <ClipboardList size={17} />
-              {byLanguage(language, "执行计划", "Execution Plan")}
+      <section className="ui-shell flex min-h-0 flex-col overflow-hidden rounded-[1.7rem]">
+        <div className="border-b border-slate-200/70 px-5 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-base font-semibold text-slate-900">
+                <ClipboardList size={17} />
+                {byLanguage(language, "执行计划", "Execution Plan")}
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                {byLanguage(language, "任务清单与当前状态", "Task list with explicit status")}
+              </div>
             </div>
-            <div className="mt-1 text-xs text-slate-500">
-              {byLanguage(language, "借鉴任务清单模式，把 AI 当前步骤显式化。", "Task list mode with explicit AI steps.")}
+            <div className="flex items-center gap-2">
+              {onAddTask && (
+                <button
+                  onClick={() => setTaskEditor({ mode: "create", content: "" })}
+                  className="ui-button ui-pressable rounded-xl px-3 py-2 text-xs text-slate-600"
+                >
+                  {byLanguage(language, "新增", "Add")}
+                </button>
+              )}
+              {onClear && tasks.length > 0 && (
+                <button onClick={onClear} className="ui-button ui-pressable rounded-xl px-3 py-2 text-xs text-slate-600">
+                  {byLanguage(language, "清空", "Clear")}
+                </button>
+              )}
             </div>
           </div>
-          {onClear && tasks.length > 0 && (
-            <button onClick={onClear} className="ui-button ui-pressable rounded-xl px-3 py-2 text-xs text-slate-600">
-              {byLanguage(language, "清空", "Clear")}
-            </button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <div className="ui-chip rounded-2xl px-3 py-2 text-xs text-slate-600">
+              {byLanguage(language, "任务", "Tasks")} · <span className="font-semibold text-slate-900">{tasks.length}</span>
+            </div>
+            <div className="ui-chip rounded-2xl px-3 py-2 text-xs text-slate-600">
+              {byLanguage(language, "进行中", "Running")} · <span className="font-semibold text-slate-900">{inProgress}</span>
+            </div>
+            <div className="ui-chip rounded-2xl px-3 py-2 text-xs text-slate-600">
+              {byLanguage(language, "完成", "Done")} · <span className="font-semibold text-slate-900">{completed}</span>
+            </div>
+          </div>
+        </div>
+        <div className="custom-scrollbar max-h-[24rem] space-y-3 overflow-auto p-4">
+          {tasks.length === 0 && (
+            <div className="rounded-[1.4rem] border border-dashed border-slate-300 bg-white/80 p-5 text-sm text-slate-500">
+              {byLanguage(language, "暂无任务", "No tasks yet")}
+            </div>
           )}
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <div className="ui-chip rounded-2xl px-3 py-2 text-xs text-slate-600">
-            {byLanguage(language, "总任务", "Tasks")} · <span className="font-semibold text-slate-900">{tasks.length}</span>
-          </div>
-          <div className="ui-chip rounded-2xl px-3 py-2 text-xs text-slate-600">
-            {byLanguage(language, "进行中", "Running")} · <span className="font-semibold text-slate-900">{inProgress}</span>
-          </div>
-          <div className="ui-chip rounded-2xl px-3 py-2 text-xs text-slate-600">
-            {byLanguage(language, "已完成", "Done")} · <span className="font-semibold text-slate-900">{completed}</span>
-          </div>
-        </div>
-      </div>
-      <div className="custom-scrollbar max-h-[24rem] space-y-3 overflow-auto p-4">
-        {tasks.length === 0 && (
-          <div className="rounded-[1.4rem] border border-dashed border-slate-300 bg-white/80 p-5 text-sm text-slate-500">
-            {byLanguage(language, "当智能体进入计划模式后，这里会显示阶段性任务。", "Tasks appear here when the agent enters planning mode.")}
-          </div>
-        )}
-        {tasks.map((task, index) => {
-          const done = task.status === "completed";
-          const running = task.status === "in_progress";
-          return (
-            <motion.div
-              key={`${task.id}-${task.updatedAt}`}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              onDoubleClick={() => setPreview({ title: buildPreviewTitle(language, task.content), content: task.content })}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                setMenu({
-                  x: event.clientX,
-                  y: event.clientY,
-                  actions: [
-                    {
-                      label: byLanguage(language, "查看详情", "Preview"),
-                      onClick: () => setPreview({ title: buildPreviewTitle(language, task.content), content: task.content }),
-                    },
-                    {
-                      label: byLanguage(language, "复制内容", "Copy"),
-                      onClick: () => void navigator.clipboard.writeText(task.content),
-                    },
-                    ...(onUpdateTaskStatus
-                      ? [
-                          {
-                            label: byLanguage(language, "标记待处理", "Mark Pending"),
-                            onClick: () => onUpdateTaskStatus(task.id, "pending"),
-                          },
-                          {
-                            label: byLanguage(language, "标记进行中", "Mark In Progress"),
-                            onClick: () => onUpdateTaskStatus(task.id, "in_progress"),
-                          },
-                          {
-                            label: byLanguage(language, "标记已完成", "Mark Completed"),
-                            onClick: () => onUpdateTaskStatus(task.id, "completed"),
-                          },
-                        ]
-                      : []),
-                    ...(onRemoveTask
-                      ? [
-                          {
-                            label: byLanguage(language, "删除任务", "Delete Task"),
-                            onClick: () => onRemoveTask(task.id),
-                            danger: true,
-                          },
-                        ]
-                      : []),
-                  ],
-                });
-              }}
-              className={`rounded-[1.35rem] px-4 py-3 ${
-                done ? "bg-emerald-50 border border-emerald-200" : running ? "bg-blue-50 border border-blue-200" : "ui-subtle-surface"
-              }`}
-            >
-              <div className="flex items-start gap-3">
-                <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${done ? "bg-emerald-100 text-emerald-700" : running ? "bg-blue-100 text-blue-700" : "bg-slate-200 text-slate-600"}`}>
-                  {done ? <CheckCircle2 size={14} /> : running ? <Clock3 size={14} /> : <span className="text-xs font-semibold">{index + 1}</span>}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-slate-800">{task.content}</div>
-                  <div className="mt-1 text-xs text-slate-500">
-                    {task.status === "completed"
-                      ? byLanguage(language, "已完成", "Completed")
-                      : task.status === "in_progress"
-                        ? byLanguage(language, "进行中", "In Progress")
-                        : byLanguage(language, "待处理", "Pending")}
+          {tasks.map((task, index) => {
+            const done = task.status === "completed";
+            const running = task.status === "in_progress";
+            return (
+              <motion.div
+                key={`${task.id}-${task.updatedAt}`}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                onDoubleClick={() => setPreview({ title: buildPreviewTitle(language, task.content), content: task.content })}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  setMenu({
+                    x: event.clientX,
+                    y: event.clientY,
+                    actions: [
+                      {
+                        label: byLanguage(language, "查看详情", "Preview"),
+                        onClick: () => setPreview({ title: buildPreviewTitle(language, task.content), content: task.content }),
+                      },
+                      {
+                        label: byLanguage(language, "复制内容", "Copy"),
+                        onClick: () => void navigator.clipboard.writeText(task.content),
+                      },
+                      ...(onEditTask
+                        ? [
+                            {
+                              label: byLanguage(language, "编辑任务", "Edit Task"),
+                              onClick: () => setTaskEditor({ mode: "edit", id: task.id, content: task.content }),
+                            },
+                          ]
+                        : []),
+                      ...(onUpdateTaskStatus
+                        ? [
+                            { label: byLanguage(language, "标记待处理", "Mark Pending"), onClick: () => onUpdateTaskStatus(task.id, "pending") },
+                            { label: byLanguage(language, "标记进行中", "Mark In Progress"), onClick: () => onUpdateTaskStatus(task.id, "in_progress") },
+                            { label: byLanguage(language, "标记已完成", "Mark Completed"), onClick: () => onUpdateTaskStatus(task.id, "completed") },
+                          ]
+                        : []),
+                      ...(onRemoveTask
+                        ? [
+                            {
+                              label: byLanguage(language, "删除任务", "Delete Task"),
+                              onClick: () => onRemoveTask(task.id),
+                              danger: true,
+                            },
+                          ]
+                        : []),
+                    ],
+                  });
+                }}
+                className={`rounded-[1.35rem] px-4 py-3 ${
+                  done ? "bg-emerald-50 border border-emerald-200" : running ? "bg-blue-50 border border-blue-200" : "ui-subtle-surface"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${done ? "bg-emerald-100 text-emerald-700" : running ? "bg-blue-100 text-blue-700" : "bg-slate-200 text-slate-600"}`}>
+                    {done ? <CheckCircle2 size={14} /> : running ? <Clock3 size={14} /> : <span className="text-xs font-semibold">{index + 1}</span>}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-slate-800">{task.content}</div>
                   </div>
                 </div>
-              </div>
-            </motion.div>
-          );
-        })}
-      </div>
-    </section>
-    <FloatingContextMenu menu={menu} onClose={() => setMenu(null)} />
-    {preview && <PreviewDialog title={preview.title} content={preview.content} onClose={() => setPreview(null)} />}
+              </motion.div>
+            );
+          })}
+        </div>
+      </section>
+      <FloatingContextMenu menu={menu} onClose={() => setMenu(null)} />
+      {preview && <PreviewDialog title={preview.title} content={preview.content} onClose={() => setPreview(null)} />}
+      {taskEditor && (
+        <EditDialog
+          title={taskEditor.mode === "create" ? byLanguage(language, "新增任务", "Add Task") : byLanguage(language, "编辑任务", "Edit Task")}
+          contentLabel={byLanguage(language, "任务内容", "Task Content")}
+          initialContent={taskEditor.content}
+          contentPlaceholder={byLanguage(language, "输入任务内容", "Enter task content")}
+          saveLabel={taskEditor.mode === "create" ? byLanguage(language, "创建", "Create") : byLanguage(language, "保存", "Save")}
+          cancelLabel={byLanguage(language, "取消", "Cancel")}
+          onClose={() => setTaskEditor(null)}
+          onSave={({ content }) => {
+            if (taskEditor.mode === "create") {
+              onAddTask?.(content);
+            } else if (taskEditor.id) {
+              onEditTask?.(taskEditor.id, content);
+            }
+            setTaskEditor(null);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -446,6 +556,8 @@ export function PromptDeck({
   onRemoveSnippet,
   onTogglePin,
   onSaveHistoryPrompt,
+  onCreateSnippet,
+  onEditSnippet,
   currentInput,
 }: {
   language: Language;
@@ -457,69 +569,77 @@ export function PromptDeck({
   onRemoveSnippet?: (id: string) => void;
   onTogglePin?: (id: string) => void;
   onSaveHistoryPrompt?: (value: string) => void;
+  onCreateSnippet?: (title: string, content: string, pinned?: boolean) => void;
+  onEditSnippet?: (id: string, input: { title?: string; content?: string; pinned?: boolean }) => void;
   currentInput?: string;
 }) {
   const orderedSnippets = [...promptSnippets].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt);
   const [preview, setPreview] = useState<{ title: string; content: string } | null>(null);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const [snippetEditor, setSnippetEditor] = useState<{ mode: "create" | "edit"; id?: string; title: string; content: string } | null>(null);
 
   return (
     <>
-    <section className="ui-shell flex min-h-0 flex-col overflow-hidden rounded-[1.7rem]">
-      <div className="border-b border-slate-200/70 px-5 py-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 text-base font-semibold text-slate-900">
-              <BookOpenText size={17} />
-              {title}
+      <section className="ui-shell flex min-h-0 flex-col overflow-hidden rounded-[1.7rem]">
+        <div className="border-b border-slate-200/70 px-5 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-base font-semibold text-slate-900">
+                <BookOpenText size={17} />
+                {title}
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                {byLanguage(language, "可复用提示词与历史输入", "Reusable snippets and recent prompts")}
+              </div>
             </div>
-            <div className="mt-1 text-xs text-slate-500">
-              {byLanguage(language, "借鉴命令/提示词记忆与快捷调用方式。", "Reusable prompts and recent history inspired by command memory.")}
-            </div>
+            {(onSaveCurrent && currentInput?.trim()) || onCreateSnippet ? (
+              <button
+                onClick={() => {
+                  if (onCreateSnippet) {
+                    setSnippetEditor({ mode: "create", title: "", content: currentInput || "" });
+                    return;
+                  }
+                  onSaveCurrent?.();
+                }}
+                className="ui-button ui-pressable rounded-xl px-3 py-2 text-xs text-slate-600"
+              >
+                <span className="inline-flex items-center gap-1">
+                  <Plus size={13} />
+                  {byLanguage(language, "新增模板", "New Snippet")}
+                </span>
+              </button>
+            ) : null}
           </div>
-          {onSaveCurrent && currentInput?.trim() && (
-            <button onClick={onSaveCurrent} className="ui-button ui-pressable rounded-xl px-3 py-2 text-xs text-slate-600">
-              <span className="inline-flex items-center gap-1">
-                <Plus size={13} />
-                {byLanguage(language, "存为模板", "Save")}
-              </span>
-            </button>
-          )}
         </div>
-      </div>
 
-      <div className="custom-scrollbar max-h-[30rem] space-y-4 overflow-auto p-4">
-        <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-            {byLanguage(language, "置顶模板", "Pinned Snippets")}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {orderedSnippets.filter((item) => item.pinned).length === 0 && (
-              <div className="text-sm text-slate-400">{byLanguage(language, "暂无置顶模板", "No pinned snippets")}</div>
-            )}
-            {orderedSnippets
-              .filter((item) => item.pinned)
-              .map((snippet) => (
+        <div className="custom-scrollbar max-h-[30rem] space-y-4 overflow-auto p-4">
+          <div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+              {byLanguage(language, "置顶模板", "Pinned Snippets")}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {orderedSnippets.filter((item) => item.pinned).map((snippet) => (
                 <motion.button
                   key={snippet.id}
                   whileHover={{ y: -1 }}
                   whileTap={{ scale: 0.985 }}
                   onClick={() => onUsePrompt(snippet.content)}
-                  onDoubleClick={() => setPreview({ title: snippet.title, content: snippet.content })}
                   onContextMenu={(event) => {
                     event.preventDefault();
                     setMenu({
                       x: event.clientX,
                       y: event.clientY,
                       actions: [
-                        {
-                          label: byLanguage(language, "查看详情", "Preview"),
-                          onClick: () => setPreview({ title: snippet.title, content: snippet.content }),
-                        },
-                        {
-                          label: byLanguage(language, "复制内容", "Copy"),
-                          onClick: () => void navigator.clipboard.writeText(snippet.content),
-                        },
+                        { label: byLanguage(language, "查看详情", "Preview"), onClick: () => setPreview({ title: snippet.title, content: snippet.content }) },
+                        { label: byLanguage(language, "复制内容", "Copy"), onClick: () => void navigator.clipboard.writeText(snippet.content) },
+                        ...(onEditSnippet
+                          ? [
+                              {
+                                label: byLanguage(language, "编辑模板", "Edit Snippet"),
+                                onClick: () => setSnippetEditor({ mode: "edit", id: snippet.id, title: snippet.title, content: snippet.content }),
+                              },
+                            ]
+                          : []),
                       ],
                     });
                   }}
@@ -528,131 +648,132 @@ export function PromptDeck({
                   {snippet.title}
                 </motion.button>
               ))}
+            </div>
           </div>
-        </div>
 
-        <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-            {byLanguage(language, "最近输入", "Recent Prompts")}
-          </div>
-          <div className="space-y-2">
-            {promptHistory.length === 0 && (
-              <div className="text-sm text-slate-400">{byLanguage(language, "暂无历史输入", "No prompt history yet")}</div>
-            )}
-            {promptHistory.slice(0, 5).map((prompt) => (
-              <button
-                key={prompt}
-                onClick={() => onUsePrompt(prompt)}
-                onDoubleClick={() => setPreview({ title: buildPreviewTitle(language, prompt), content: prompt })}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  setMenu({
-                    x: event.clientX,
-                    y: event.clientY,
-                    actions: [
-                      {
-                        label: byLanguage(language, "查看详情", "Preview"),
-                        onClick: () => setPreview({ title: buildPreviewTitle(language, prompt), content: prompt }),
-                      },
-                      {
-                        label: byLanguage(language, "复制内容", "Copy"),
-                        onClick: () => void navigator.clipboard.writeText(prompt),
-                      },
-                      ...(onSaveHistoryPrompt
-                        ? [
-                            {
-                              label: byLanguage(language, "存为模板", "Save as Snippet"),
-                              onClick: () => onSaveHistoryPrompt(prompt),
-                            },
-                          ]
-                        : []),
-                    ],
-                  });
-                }}
-                className="ui-subtle-surface block w-full rounded-[1.2rem] px-3.5 py-3 text-left text-sm text-slate-600 transition hover:text-slate-900"
-              >
-                {prompt}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {orderedSnippets.filter((item) => !item.pinned).length > 0 && (
           <div>
             <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-              {byLanguage(language, "模板库", "Snippet Library")}
+              {byLanguage(language, "最近输入", "Recent Prompts")}
             </div>
             <div className="space-y-2">
-              {orderedSnippets
-                .filter((item) => !item.pinned)
-                .slice(0, 6)
-                .map((snippet) => (
-                  <div
-                    key={snippet.id}
-                    className="ui-subtle-surface rounded-[1.2rem] p-3"
-                    onDoubleClick={() => setPreview({ title: snippet.title, content: snippet.content })}
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      setMenu({
-                        x: event.clientX,
-                        y: event.clientY,
-                        actions: [
-                          {
-                            label: byLanguage(language, "查看详情", "Preview"),
-                            onClick: () => setPreview({ title: snippet.title, content: snippet.content }),
-                          },
-                          {
-                            label: byLanguage(language, "复制内容", "Copy"),
-                            onClick: () => void navigator.clipboard.writeText(snippet.content),
-                          },
-                          ...(onTogglePin
-                            ? [
-                                {
-                                  label: snippet.pinned ? byLanguage(language, "取消置顶", "Unpin") : byLanguage(language, "置顶模板", "Pin"),
-                                  onClick: () => onTogglePin(snippet.id),
-                                },
-                              ]
-                            : []),
-                          ...(onRemoveSnippet
-                            ? [
-                                {
-                                  label: byLanguage(language, "删除模板", "Delete"),
-                                  onClick: () => onRemoveSnippet(snippet.id),
-                                  danger: true,
-                                },
-                              ]
-                            : []),
-                        ],
-                      });
-                    }}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <button onClick={() => onUsePrompt(snippet.content)} className="min-w-0 flex-1 text-left">
-                        <div className="text-sm font-medium text-slate-800">{snippet.title}</div>
-                        <div className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{snippet.content}</div>
-                      </button>
-                      <div className="flex items-center gap-1">
-                        {onTogglePin && (
-                          <button onClick={() => onTogglePin(snippet.id)} className="ui-button ui-pressable rounded-lg p-2 text-slate-500">
-                            <Pin size={13} />
-                          </button>
-                        )}
-                        {onRemoveSnippet && (
-                          <button onClick={() => onRemoveSnippet(snippet.id)} className="ui-button-danger ui-pressable rounded-lg p-2 text-rose-600">
-                            <Trash2 size={13} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              {promptHistory.slice(0, 5).map((prompt) => (
+                <button
+                  key={prompt}
+                  onClick={() => onUsePrompt(prompt)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setMenu({
+                      x: event.clientX,
+                      y: event.clientY,
+                      actions: [
+                        { label: byLanguage(language, "查看详情", "Preview"), onClick: () => setPreview({ title: buildPreviewTitle(language, prompt), content: prompt }) },
+                        { label: byLanguage(language, "复制内容", "Copy"), onClick: () => void navigator.clipboard.writeText(prompt) },
+                        ...(onSaveHistoryPrompt
+                          ? [
+                              {
+                                label: byLanguage(language, "保存为模板", "Save as Snippet"),
+                                onClick: () => onSaveHistoryPrompt(prompt),
+                              },
+                            ]
+                          : []),
+                      ],
+                    });
+                  }}
+                  className="ui-subtle-surface block w-full rounded-[1.2rem] px-3.5 py-3 text-left text-sm text-slate-600 transition hover:text-slate-900"
+                >
+                  {prompt}
+                </button>
+              ))}
             </div>
           </div>
-        )}
-      </div>
-    </section>
-    <FloatingContextMenu menu={menu} onClose={() => setMenu(null)} />
-    {preview && <PreviewDialog title={preview.title} content={preview.content} onClose={() => setPreview(null)} />}
+
+          {orderedSnippets.filter((item) => !item.pinned).length > 0 && (
+            <div>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                {byLanguage(language, "模板库", "Snippet Library")}
+              </div>
+              <div className="space-y-2">
+                {orderedSnippets
+                  .filter((item) => !item.pinned)
+                  .slice(0, 6)
+                  .map((snippet) => (
+                    <div
+                      key={snippet.id}
+                      className="ui-subtle-surface rounded-[1.2rem] p-3"
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        setMenu({
+                          x: event.clientX,
+                          y: event.clientY,
+                          actions: [
+                            { label: byLanguage(language, "查看详情", "Preview"), onClick: () => setPreview({ title: snippet.title, content: snippet.content }) },
+                            { label: byLanguage(language, "复制内容", "Copy"), onClick: () => void navigator.clipboard.writeText(snippet.content) },
+                            ...(onEditSnippet
+                              ? [
+                                  {
+                                    label: byLanguage(language, "编辑模板", "Edit Snippet"),
+                                    onClick: () => setSnippetEditor({ mode: "edit", id: snippet.id, title: snippet.title, content: snippet.content }),
+                                  },
+                                ]
+                              : []),
+                            ...(onTogglePin
+                              ? [
+                                  {
+                                    label: snippet.pinned ? byLanguage(language, "取消置顶", "Unpin") : byLanguage(language, "置顶模板", "Pin"),
+                                    onClick: () => onTogglePin(snippet.id),
+                                  },
+                                ]
+                              : []),
+                            ...(onRemoveSnippet
+                              ? [
+                                  {
+                                    label: byLanguage(language, "删除模板", "Delete"),
+                                    onClick: () => onRemoveSnippet(snippet.id),
+                                    danger: true,
+                                  },
+                                ]
+                              : []),
+                          ],
+                        });
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <button onClick={() => onUsePrompt(snippet.content)} className="min-w-0 flex-1 text-left">
+                          <div className="text-sm font-medium text-slate-800">{snippet.title}</div>
+                          <div className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{snippet.content}</div>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+      <FloatingContextMenu menu={menu} onClose={() => setMenu(null)} />
+      {preview && <PreviewDialog title={preview.title} content={preview.content} onClose={() => setPreview(null)} />}
+      {snippetEditor && (
+        <EditDialog
+          title={snippetEditor.mode === "create" ? byLanguage(language, "新增模板", "New Snippet") : byLanguage(language, "编辑模板", "Edit Snippet")}
+          nameLabel={byLanguage(language, "标题", "Title")}
+          contentLabel={byLanguage(language, "内容", "Content")}
+          initialName={snippetEditor.title}
+          initialContent={snippetEditor.content}
+          namePlaceholder={byLanguage(language, "输入标题", "Enter title")}
+          contentPlaceholder={byLanguage(language, "输入模板内容", "Enter snippet content")}
+          saveLabel={snippetEditor.mode === "create" ? byLanguage(language, "创建", "Create") : byLanguage(language, "保存", "Save")}
+          cancelLabel={byLanguage(language, "取消", "Cancel")}
+          onClose={() => setSnippetEditor(null)}
+          onSave={({ name, content }) => {
+            if (snippetEditor.mode === "create") {
+              onCreateSnippet?.(name, content, false);
+            } else if (snippetEditor.id) {
+              onEditSnippet?.(snippetEditor.id, { title: name, content });
+            }
+            setSnippetEditor(null);
+          }}
+        />
+      )}
     </>
   );
 }
