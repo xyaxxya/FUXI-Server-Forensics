@@ -2,35 +2,88 @@
 @import "tailwindcss";
 
 @theme {
-  /* Colors - Cold White System */
-  --color-surface-base: #F1F5F9; /* Slate 100 */
-  --color-surface-glass: rgba(255, 255, 255, 0.65);
-  --color-surface-glass-heavy: rgba(255, 255, 255, 0.85);
-  --color-surface-glass-dark: rgba(15, 23, 42, 0.75); /* Slate 900 */
+  /* Trae Solo 3 Design System */
   
-  --color-border-glass: rgba(255, 255, 255, 0.5);
-  --color-border-glass-subtle: rgba(255, 255, 255, 0.3);
-  --color-border-glass-dark: rgba(255, 255, 255, 0.08);
+  /* Colors */
+  --bg-bg-base-default: #ffffff;
+  --bg-bg-base-secondary: #f8fafc;
+  --bg-bg-base-tertiary: #f1f5f9;
+  --bg-bg-base-hover: #e2e8f0;
+  --bg-bg-base-active: #cbd5e1;
+  --bg-bg-overlay-l1: #f1f5f9;
+  --bg-bg-overlay-l2: #e2e8f0;
+  --bg-bg-overlay-l3: #cbd5e1;
+  --bg-bg-overlay-l4: #94a3b8;
+  --bg-bg-invert: #1e293b;
+  --bg-bg-invert-hover: #334155;
+  --bg-bg-invert-active: #475569;
+  --bg-bg-invert-disabled: #64748b;
+  --bg-bg-brand: #3b82f6;
+  --bg-bg-brand-hover: #2563eb;
+  --bg-bg-brand-disabled: #93c5fd;
   
-  --color-text-primary: #1E293B; /* Slate 800 */
-  --color-text-secondary: #64748B; /* Slate 500 */
-  --color-text-muted: #94A3B8; /* Slate 400 */
+  --text-text-default: #1e293b;
+  --text-text-default-hover: #334155;
+  --text-text-default-active: #475569;
+  --text-text-secondary: #64748b;
+  --text-text-secondary-hover: #475569;
+  --text-text-tertiary: #94a3b8;
+  --text-text-quaternary: #cbd5e1;
+  --text-text-disabled: #94a3b8;
+  --text-text-onaccent: #ffffff;
+  --text-text-link-hover: #2563eb;
   
-  --color-accent: #0EA5E9; /* Sky 500 */
-  --color-accent-hover: #0284C7; /* Sky 600 */
-  --color-accent-subtle: rgba(14, 165, 233, 0.08);
-
+  --border-border-neutral-l1: #e2e8f0;
+  --border-border-neutral-l2: #cbd5e1;
+  --border-border-neutral-l3: #94a3b8;
+  --border-border-brand: #3b82f6;
+  
+  --icon-icon-default: #64748b;
+  --icon-icon-default-hover: #475569;
+  --icon-icon-default-active: #334155;
+  --icon-icon-secondary: #94a3b8;
+  --icon-icon-secondary-hover: #64748b;
+  --icon-icon-tertiary: #cbd5e1;
+  --icon-icon-disabled: #94a3b8;
+  
+  --status-primary-default: #3b82f6;
+  --status-primary-hover: #2563eb;
+  --status-primary-surface-l2: #dbeafe;
+  --status-success-hover: #10b981;
+  --status-error-default: #ef4444;
+  --status-error-hover: #dc2626;
+  --status-error-active: #b91c1c;
+  --status-error-surface-l1: #fee2e2;
+  --status-error-surface-l2: #fecaca;
+  --status-error-surface-l3: #fca5a5;
+  --status-warning-hover: #f59e0b;
+  --status-warning-active: #d97706;
+  --status-warning-surface-l1: #fef3c7;
+  
+  --accent-accent-blue: #3b82f6;
+  
   /* Typography */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  --font-family-default: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --code-terminal-fontFamily: 'JetBrains Mono', 'SF Mono', "Monaco", "Inconsolata", "Fira Code", "Fira Mono", "Roboto Mono", "Courier New", monospace;
+  
+  --body-sm-fontSize: 11px;
+  --body-sm-lineHeight: 16px;
+  --body-base-lineHeight: 20px;
+  --code-terminal-fontSize: 12px;
+  --code-terminal-lineHeight: 18px;
+  --code-editor-fontWeight: 450;
+  
+  /* Animations and Transitions */
+  --transition-fast: 0.2s ease;
+  --z-above: 10;
 }
 
 :root {
-  font-family: var(--font-sans);
+  font-family: var(--font-family-default);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: var(--color-surface-base);
-  color: var(--color-text-primary);
+  background-color: var(--bg-bg-base-default);
+  color: var(--text-text-default);
 }
 
 :root {
@@ -251,6 +304,9 @@ body {
   overflow: hidden;
   height: 100vh;
   width: 100vw;
+  font-family: var(--font-family-default);
+  background-color: var(--bg-bg-base-default);
+  color: var(--text-text-default);
 }
 
 :root {

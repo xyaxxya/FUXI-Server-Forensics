@@ -466,7 +466,7 @@ export default function AgentPanel({
 
   return (
     <div className="h-full grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="ui-shell h-full rounded-[2rem] overflow-hidden flex flex-col" data-context-scope="agent-batch">
+      <div className="h-full rounded-lg overflow-hidden flex flex-col border border-border-neutral-l1 shadow-sm" data-context-scope="agent-batch">
       <WorkspaceHeader
         language={language}
         icon={ListChecks}
@@ -497,7 +497,7 @@ export default function AgentPanel({
                 onClick={handleStop}
                 whileHover={{ y: -1 }}
                 whileTap={{ scale: 0.985 }}
-                className="ui-button-danger ui-pressable rounded-2xl px-4 py-2.5 text-sm font-medium text-amber-700"
+                className="button-utcdjo default-CtLNyG errorstrong-Gt2O8a inline-flex items-center gap-2"
               >
                 <Square size={16} />
                 {language === "zh" ? "停止" : "Stop"}
@@ -511,7 +511,7 @@ export default function AgentPanel({
               }}
               whileHover={{ y: -1 }}
               whileTap={{ scale: 0.985 }}
-              className="ui-button ui-pressable rounded-2xl px-4 py-2.5 text-sm font-medium text-slate-600"
+              className="button-utcdjo default-CtLNyG secondary-VjbVC0 inline-flex items-center gap-2"
             >
               <Trash2 size={16} />
               {language === "zh" ? "清空" : "Clear"}
@@ -519,7 +519,7 @@ export default function AgentPanel({
           </>
         }
       />
-      <div className="px-5 py-4 md:px-6">
+      <div className="px-4 py-4">
         <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_220px]">
           <textarea
             value={questionInput}
@@ -550,19 +550,19 @@ export default function AgentPanel({
                 ? "每行一个问题，或输入 / 打开命令面板，例如：\n当前服务器主要业务是什么？\n网站配置文件在哪里？\n数据库管理员账号有哪些？"
                 : "One question per line, or type / to open the command palette."
             }
-            className="ui-input-base min-h-[132px] resize-none rounded-[1.7rem] px-4 py-3 text-sm text-slate-700"
+            className="inputWrapper-hfKNtE min-h-[132px] resize-none rounded-md px-4 py-3 text-sm text-text-default"
           />
-          <div className="ui-subtle-surface rounded-[1.7rem] p-4 flex flex-col justify-between">
+          <div className="bg-bg-overlay-l1 rounded-md p-4 flex flex-col justify-between border border-border-neutral-l1">
             <div>
-              <div className="text-sm font-semibold text-slate-900">{summaryText}</div>
-              <div className="mt-2 text-sm text-slate-500">{status || (language === "zh" ? "等待开始" : "Waiting")}</div>
+              <div className="text-sm font-semibold text-text-default">{summaryText}</div>
+              <div className="mt-2 text-sm text-text-secondary">{status || (language === "zh" ? "等待开始" : "Waiting")}</div>
             </div>
             <motion.button
               onClick={() => void handleStart()}
               disabled={running || !questionInput.trim() || questionInput.trim().startsWith("/")}
               whileHover={{ y: -1 }}
               whileTap={{ scale: 0.985 }}
-              className="ui-button-primary ui-pressable mt-4 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-medium text-white disabled:bg-slate-300 disabled:border-slate-300"
+              className="button-utcdjo default-CtLNyG primary-lgGD6H mt-4 inline-flex items-center justify-center gap-2 disabled:bg-bg-invert-disabled disabled:text-text-disabled"
             >
               {running ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
               {language === "zh" ? "开始批量问答" : "Start Batch"}
@@ -576,12 +576,10 @@ export default function AgentPanel({
               whileHover={{ y: -1 }}
               whileTap={{ scale: 0.985 }}
               onClick={() => setQuestionInput((prev) => (prev ? `${prev}\n${prompt}` : prompt))}
-              className="ui-chip ui-pressable rounded-2xl px-3 py-2 text-sm text-slate-600"
+              className="tag-hL8tsj clickable-EpOp02 inline-flex items-center gap-2 px-3 py-2 text-sm text-text-default"
             >
-              <span className="inline-flex items-center gap-2">
-                <Wand2 size={14} />
-                {prompt}
-              </span>
+              <Wand2 size={14} />
+              {prompt}
             </motion.button>
           ))}
         </div>
@@ -599,9 +597,9 @@ export default function AgentPanel({
         />
       </div>
 
-      <div className="flex-1 overflow-auto bg-slate-50/40 px-4 py-4 md:px-6 md:py-5 space-y-4">
+      <div className="flex-1 overflow-auto bg-bg-base-secondary px-4 py-4 space-y-4">
         {items.length === 0 && (
-          <div className="ui-surface rounded-[1.7rem] border-dashed px-6 py-10 text-center text-slate-500">
+          <div className="bg-bg-base-default rounded-md border border-border-neutral-l1 border-dashed px-6 py-10 text-center text-text-secondary">
             {language === "zh"
               ? "批量问题会在这里展示答案。每一题都能看到执行过程与最终结果。"
               : "Batch answers will appear here with their visible process."}
@@ -640,24 +638,24 @@ export default function AgentPanel({
                   ],
                 });
               }}
-              className="ui-surface rounded-[1.7rem] p-5"
+              className="bg-bg-base-default rounded-md p-5 border border-border-neutral-l1 shadow-sm"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-tertiary">
                     {language === "zh" ? "问题" : "Question"}
                   </div>
-                  <div className="mt-2 text-base font-semibold text-slate-900">{item.question}</div>
+                  <div className="mt-2 text-base font-semibold text-text-default">{item.question}</div>
                 </div>
                 <div
-                  className={`rounded-2xl px-3 py-2 text-sm font-medium ${
+                  className={`rounded-md px-3 py-2 text-sm font-medium ${
                     item.status === "completed"
-                      ? "bg-emerald-50 text-emerald-700"
+                      ? "bg-status-success-surface-l1 text-status-success-hover"
                       : item.status === "error"
-                        ? "bg-rose-50 text-rose-700"
+                        ? "bg-status-error-surface-l1 text-status-error-default"
                         : item.status === "running"
-                          ? "bg-blue-50 text-blue-700"
-                          : "bg-slate-100 text-slate-600"
+                          ? "bg-status-primary-surface-l2 text-status-primary-default"
+                          : "bg-bg-overlay-l1 text-text-secondary"
                   }`}
                 >
                   {item.status === "completed"
@@ -694,17 +692,17 @@ export default function AgentPanel({
                   ),
                 )}
                 {item.answer && (
-                  <div className="rounded-[1.35rem] border border-emerald-200 bg-emerald-50/95 px-4 py-3 shadow-[0_18px_30px_-24px_rgba(16,185,129,0.35)]">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
+                  <div className="rounded-md border border-status-success-hover bg-status-success-surface-l1 px-4 py-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-status-success-hover">
                       <CheckCircle2 size={16} />
                       {language === "zh" ? "最终答案" : "Final Answer"}
                     </div>
-                    <div className="mt-2 prose prose-sm max-w-none text-slate-700">
+                    <div className="mt-2 prose prose-sm max-w-none text-text-default">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.answer}</ReactMarkdown>
                     </div>
                   </div>
                 )}
-                {item.error && <div className="text-sm text-rose-600">{item.error}</div>}
+                {item.error && <div className="text-sm text-status-error-default">{item.error}</div>}
               </div>
             </motion.div>
           );
