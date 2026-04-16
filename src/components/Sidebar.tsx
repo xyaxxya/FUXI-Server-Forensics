@@ -105,32 +105,32 @@ export default function Sidebar({
       : "Collapse";
 
   return (
-    <div className={`h-full ui-shell flex flex-col transition-all duration-300 ${isCollapsed ? "w-[88px]" : "w-[292px]"}`}>
-      <div className="border-b border-slate-200/70 p-4">
+    <div className={`h-full flex flex-col transition-all duration-300 border-r border-gray-200 ${isCollapsed ? "w-16" : "w-60"} bg-white`}>
+      <div className="border-b border-gray-200 p-4">
         <div className="flex items-center gap-3">
           <motion.button
             onClick={onToggleServerSidebar}
-            whileHover={{ y: -2, scale: 1.02 }}
-            whileTap={{ scale: 0.97 }}
-            className="ui-button ui-pressable ui-focus-ring flex h-12 w-12 items-center justify-center rounded-[1.35rem]"
+            whileHover={{ y: -1, scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className="flex h-12 w-12 items-center justify-center rounded-md border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
           >
             <img src={tauriLogo} alt="FUXI" className="h-8 w-8 object-contain" />
           </motion.button>
           {!isCollapsed && (
             <div className="min-w-0 flex-1">
-              <div className="text-lg font-bold text-slate-900">FUXI AI Workbench</div>
-              <div className="mt-1 text-xs text-slate-500">
+              <div className="text-lg font-bold text-gray-900">FUXI AI Workbench</div>
+              <div className="mt-1 text-xs text-gray-500">
                 {language === "zh" ? "服务器取证与智能分析工作台" : "Server forensics and AI investigation workspace"}
               </div>
-              <div className="mt-3 h-px ui-divider" />
+              <div className="mt-3 h-px bg-gradient-to-r from-gray-200 to-transparent" />
             </div>
           )}
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-3 pt-4 pb-3">
+      <div className="flex-1 overflow-y-auto px-3 pt-4 pb-3">
         {!isCollapsed && (
-          <div className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+          <div className="px-2 pb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
             {language === "zh" ? "核心工作区" : "Core Workspace"}
           </div>
         )}
@@ -143,83 +143,60 @@ export default function Sidebar({
                 key={item.id}
                 onClick={() => onTabChange(item.id)}
                 title={isCollapsed ? textByLanguage(language, item.title) : undefined}
-                whileHover={{ y: -2 }}
-                whileTap={{ scale: 0.985 }}
-                className={`ui-hover-lift ui-pressable ui-focus-ring relative w-full overflow-hidden text-left ${
-                  isActive ? "ui-chip-active rounded-[1.5rem]" : "ui-button rounded-[1.5rem]"
-                } ${isCollapsed ? "flex justify-center p-3.5" : "p-4"}`}
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.98 }}
+                className={`w-full transition-all duration-200 ${isCollapsed ? "flex justify-center p-3" : "flex items-center gap-3 px-3 py-3"} ${isActive ? "bg-blue-600 text-white rounded-md" : "hover:bg-gray-50 rounded-md"}`}
               >
-                {isActive && (
-                  <motion.div
-                    layoutId="sidebar-active-item"
-                    className="absolute inset-0 rounded-[1.5rem] bg-gradient-to-br from-blue-50 via-white to-indigo-50"
-                    transition={{ type: "spring", stiffness: 420, damping: 34 }}
-                  />
-                )}
-                <div className={`relative z-10 ${isCollapsed ? "flex items-center justify-center" : "flex items-start gap-3.5"}`}>
-                  <div
-                    className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition-all ${
-                      isActive
-                        ? "bg-white text-blue-700 shadow-[0_12px_24px_-18px_rgba(37,99,235,0.6)]"
-                        : "bg-slate-100/90 text-slate-500"
-                    }`}
-                  >
-                    <Icon size={18} />
-                  </div>
-                  {!isCollapsed && (
-                    <div className="min-w-0 flex-1">
-                      <div className={`text-sm font-semibold ${isActive ? "text-slate-900" : "text-slate-700"}`}>
-                        {textByLanguage(language, item.title)}
-                      </div>
-                      <div className={`mt-1 text-xs leading-5 ${isActive ? "text-blue-700/80" : "text-slate-500"}`}>
-                        {textByLanguage(language, item.description)}
-                      </div>
-                    </div>
-                  )}
+                <div className={`flex h-10 w-10 items-center justify-center rounded-md ${isActive ? "bg-white/20" : "bg-gray-100 text-gray-500"}`}>
+                  <Icon size={16} />
                 </div>
+                {!isCollapsed && (
+                  <div className="min-w-0 flex-1">
+                    <div className={`text-sm font-medium ${isActive ? "text-white" : "text-gray-700"}`}>
+                      {textByLanguage(language, item.title)}
+                    </div>
+                    <div className={`mt-1 text-xs ${isActive ? "text-white/80" : "text-gray-500"}`}>
+                      {textByLanguage(language, item.description)}
+                    </div>
+                  </div>
+                )}
               </motion.button>
             );
           })}
         </nav>
       </div>
 
-      <div className="mt-auto border-t border-slate-200/70 p-3 space-y-2">
+      <div className="mt-auto border-t border-gray-200 p-3 space-y-2">
         {onToggleCollapse && (
           <motion.button
             onClick={onToggleCollapse}
             whileHover={{ y: -1 }}
-            whileTap={{ scale: 0.985 }}
-            className={`ui-button ui-hover-lift ui-pressable ui-focus-ring w-full rounded-[1.35rem] text-slate-600 ${
-              isCollapsed ? "flex justify-center p-3.5" : "flex items-center gap-3 px-4 py-3"
-            }`}
+            whileTap={{ scale: 0.98 }}
+            className={`w-full transition-colors ${isCollapsed ? "flex justify-center p-3" : "flex items-center gap-3 px-3 py-2"} hover:bg-gray-50 rounded-md`}
             title={collapseLabel}
           >
-            <ChevronRight className={`transition-transform ${isCollapsed ? "" : "rotate-180"}`} size={18} />
-            {!isCollapsed && <span className="text-sm font-medium">{collapseLabel}</span>}
+            <ChevronRight className={`transition-transform ${isCollapsed ? "" : "rotate-180"}`} size={16} />
+            {!isCollapsed && <span className="text-sm font-medium text-gray-700">{collapseLabel}</span>}
           </motion.button>
         )}
         <motion.button
           onClick={onOpenSettings}
           whileHover={{ y: -1 }}
-          whileTap={{ scale: 0.985 }}
-          className={`ui-button ui-hover-lift ui-pressable ui-focus-ring w-full rounded-[1.35rem] text-slate-600 ${
-            isCollapsed ? "flex justify-center p-3.5" : "flex items-center gap-3 px-4 py-3"
-          }`}
+          whileTap={{ scale: 0.98 }}
+          className={`w-full transition-colors ${isCollapsed ? "flex justify-center p-3" : "flex items-center gap-3 px-3 py-2"} hover:bg-gray-50 rounded-md`}
           title={settingsLabel}
         >
-          <Settings size={18} />
-          {!isCollapsed && <span className="text-sm font-medium">{settingsLabel}</span>}
+          <Settings size={16} className="text-gray-500" />
+          {!isCollapsed && <span className="text-sm font-medium text-gray-700">{settingsLabel}</span>}
         </motion.button>
         <motion.button
           onClick={onDisconnect}
           whileHover={{ y: -1 }}
-          whileTap={{ scale: 0.985 }}
-          className={`ui-button-danger ui-hover-lift ui-pressable ui-focus-ring w-full rounded-[1.35rem] ${
-            isCollapsed ? "flex justify-center p-3.5" : "flex items-center gap-3 px-4 py-3"
-          }`}
+          whileTap={{ scale: 0.98 }}
+          className={`w-full transition-colors ${isCollapsed ? "flex justify-center p-3" : "flex items-center gap-3 px-3 py-2"} bg-red-50 hover:bg-red-100 text-red-600 rounded-md`}
           title={disconnectLabel}
         >
-          <LogOut size={18} />
+          <LogOut size={16} />
           {!isCollapsed && <span className="text-sm font-medium">{disconnectLabel}</span>}
         </motion.button>
       </div>
