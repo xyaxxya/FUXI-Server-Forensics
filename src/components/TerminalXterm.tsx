@@ -358,10 +358,10 @@ export default function TerminalXterm({ onClose, sessionId, language, isActive =
       initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className={`flex flex-col h-full rounded-2xl overflow-hidden border transition-all duration-500 relative ${
+      className={`flex flex-col h-full rounded-lg overflow-hidden border transition-all duration-500 relative ${
         isFocused 
-          ? 'shadow-[0_0_40px_rgba(56,189,248,0.15)] border-sky-500/30' 
-          : 'shadow-2xl border-white/10'
+          ? 'shadow-[0_0_40px_rgba(56,189,248,0.15)] border-border-brand/30' 
+          : 'shadow-sm border-border-neutral-l1'
       }`}
       style={{
         background: 'linear-gradient(145deg, rgba(15, 23, 42, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)',
@@ -369,23 +369,23 @@ export default function TerminalXterm({ onClose, sessionId, language, isActive =
       }}
     >
       {/* Header Bar */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-slate-900/50 to-slate-800/50 border-b border-white/5 relative z-20 select-none">
+      <div className="flex items-center justify-between px-4 py-3 bg-bg-base-secondary border-b border-border-neutral-l1 relative z-20 select-none">
         <div className="flex items-center gap-4">
             {/* Session Info */}
             <motion.div 
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
-              className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 transition-colors cursor-default"
+              className="flex items-center gap-2.5 px-3 py-1.5 rounded-md bg-bg-overlay-l1 border border-border-neutral-l1 hover:bg-bg-overlay-l2 transition-colors cursor-default"
             >
                 <div className={`relative flex h-2 w-2`}>
-                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${connecting ? 'bg-amber-400' : error ? 'bg-red-400' : 'bg-emerald-400'}`}></span>
-                  <span className={`relative inline-flex rounded-full h-2 w-2 ${connecting ? 'bg-amber-500' : error ? 'bg-red-500' : 'bg-emerald-500'}`}></span>
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${connecting ? 'bg-status-warning-hover' : error ? 'bg-status-error-default' : 'bg-status-success-hover'}`}></span>
+                  <span className={`relative inline-flex rounded-full h-2 w-2 ${connecting ? 'bg-status-warning-hover' : error ? 'bg-status-error-default' : 'bg-status-success-hover'}`}></span>
                 </div>
                 <div className="flex flex-col">
-                    <span className="text-xs font-bold text-slate-200 tracking-wide font-mono flex items-center gap-2">
+                    <span className="text-xs font-bold text-text-default tracking-wide font-mono flex items-center gap-2">
                         {targetSession ? `${targetSession.user}` : t.no_session}
-                        <span className="text-slate-500 font-sans">at</span>
-                        <span className="text-sky-400">{targetSession?.ip}</span>
+                        <span className="text-text-tertiary font-sans">at</span>
+                        <span className="text-status-primary-default">{targetSession?.ip}</span>
                     </span>
                 </div>
             </motion.div>
@@ -394,7 +394,7 @@ export default function TerminalXterm({ onClose, sessionId, language, isActive =
         {/* Action Buttons */}
         <div className="flex items-center gap-1">
             {/* Font Size Controls */}
-            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/5 border border-white/5">
+            <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-bg-overlay-l1 border border-border-neutral-l1">
               <button
                 onClick={() => {
                   const newSize = Math.max(10, fontSize - 1);
@@ -405,12 +405,12 @@ export default function TerminalXterm({ onClose, sessionId, language, isActive =
                     fitAddonRef.current?.fit();
                   }
                 }}
-                className="p-1 text-slate-400 hover:text-slate-200 transition-colors text-xs font-bold"
+                className="p-1 text-text-tertiary hover:text-text-default transition-colors text-xs font-bold"
                 title="Decrease font size (Ctrl+-)"
               >
                 A-
               </button>
-              <span className="text-xs text-slate-400 font-mono px-1">{fontSize}</span>
+              <span className="text-xs text-text-tertiary font-mono px-1">{fontSize}</span>
               <button
                 onClick={() => {
                   const newSize = Math.min(24, fontSize + 1);
@@ -421,48 +421,45 @@ export default function TerminalXterm({ onClose, sessionId, language, isActive =
                     fitAddonRef.current?.fit();
                   }
                 }}
-                className="p-1 text-slate-400 hover:text-slate-200 transition-colors text-xs font-bold"
+                className="p-1 text-text-tertiary hover:text-text-default transition-colors text-xs font-bold"
                 title="Increase font size (Ctrl++)"
               >
                 A+
               </button>
             </div>
 
-            <div className="h-4 w-[1px] bg-white/10 mx-1" />
+            <div className="h-4 w-[1px] bg-border-neutral-l1 mx-1" />
             
             <motion.button 
                 whileHover={{ scale: 1.05, backgroundColor: "rgba(255,255,255,0.1)" }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setRetryCount(c => c + 1)}
-                className="p-2 text-slate-400 hover:text-emerald-300 rounded-lg transition-colors relative group"
+                className="iconButton-OFomgs default-G7Xo6q secondary-uN5qVk"
                 title="Reconnect SSH Session"
             >
                 <RefreshCw size={18} />
-                <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-slate-800 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-white/10">Reconnect</span>
             </motion.button>
             
             <motion.button 
                 whileHover={{ scale: 1.05, backgroundColor: "rgba(255,255,255,0.1)" }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowFileManager(!showFileManager)} 
-                className={`p-2 rounded-lg transition-colors relative group ${showFileManager ? 'bg-sky-500/20 text-sky-300' : 'text-slate-400 hover:text-sky-300'}`}
+                className={`iconButton-OFomgs default-G7Xo6q ${showFileManager ? 'primary-xuhWVc' : 'secondary-uN5qVk'}`}
                 title="Toggle File Manager"
             >
                 <FolderOpen size={18} />
-                <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-slate-800 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-white/10">Files</span>
             </motion.button>
 
-            <div className="h-4 w-[1px] bg-white/10 mx-1" />
+            <div className="h-4 w-[1px] bg-border-neutral-l1 mx-1" />
 
             <motion.button 
                 whileHover={{ scale: 1.05, backgroundColor: "rgba(239, 68, 68, 0.15)" }}
                 whileTap={{ scale: 0.95 }}
                 onClick={onClose} 
-                className="p-2 text-slate-400 hover:text-red-400 rounded-lg transition-colors relative group"
+                className="iconButton-OFomgs default-G7Xo6q errorstrong-Gt2O8a"
                 title={t.terminal_close}
             >
                 <X size={18} />
-                <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-slate-800 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-white/10">Close</span>
             </motion.button>
         </div>
       </div>
@@ -486,7 +483,7 @@ export default function TerminalXterm({ onClose, sessionId, language, isActive =
                      animate={{ x: 0, opacity: 1 }}
                      exit={{ x: "100%", opacity: 0 }}
                      transition={{ type: "spring", damping: 30, stiffness: 300 }}
-                     className="border-l border-white/10 bg-[#0f172a]/95 flex flex-col backdrop-blur-3xl shadow-[-10px_0_40px_rgba(0,0,0,0.3)] z-30 relative"
+                     className="border-l border-border-neutral-l1 bg-bg-base-secondary flex flex-col shadow-[-10px_0_40px_rgba(0,0,0,0.3)] z-30 relative"
                      style={{ width: fileManagerWidth }}
                  >
                       <div
@@ -505,18 +502,18 @@ export default function TerminalXterm({ onClose, sessionId, language, isActive =
                         aria-orientation="vertical"
                         aria-label="Resize file manager"
                       >
-                        <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/5 group-hover:bg-sky-400/40 transition-colors" />
-                        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-1.5 py-1 rounded-full bg-slate-900/80 border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <div className="w-1 h-10 rounded-full bg-gradient-to-b from-sky-300/60 via-sky-300/20 to-transparent" />
+                        <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-border-neutral-l1 group-hover:bg-status-primary-default/40 transition-colors" />
+                        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-1.5 py-1 rounded-full bg-bg-base-secondary border border-border-neutral-l1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="w-1 h-10 rounded-full bg-gradient-to-b from-status-primary-default/60 via-status-primary-default/20 to-transparent" />
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between p-4 border-b border-white/10 bg-gradient-to-r from-sky-500/10 to-transparent">
-                         <span className="text-xs font-bold text-sky-100 tracking-wider flex items-center gap-2 uppercase">
+                      <div className="flex items-center justify-between p-4 border-b border-border-neutral-l1 bg-bg-overlay-l1">
+                         <span className="text-xs font-bold text-status-primary-default tracking-wider flex items-center gap-2 uppercase">
                              <motion.div 
                                 whileHover={{ rotate: 180 }}
                                 transition={{ duration: 0.3 }}
-                                className="p-1 rounded bg-sky-500/20 text-sky-400"
+                                className="p-1 rounded bg-status-primary-surface-l2 text-status-primary-default"
                               >
                                   <FolderOpen size={14} />
                               </motion.div>
@@ -526,7 +523,7 @@ export default function TerminalXterm({ onClose, sessionId, language, isActive =
                              whileHover={{ rotate: 90, scale: 1.1 }}
                              whileTap={{ scale: 0.9 }}
                              onClick={() => setShowFileManager(false)} 
-                             className="text-slate-400 hover:text-white p-1.5 rounded-md hover:bg-white/10 transition-colors"
+                             className="iconButton-OFomgs small-DdtJ7f secondary-uN5qVk"
                          >
                              <X size={14} />
                          </motion.button>
@@ -540,19 +537,19 @@ export default function TerminalXterm({ onClose, sessionId, language, isActive =
       </div>
       
       {/* Bottom Status Bar */}
-      <div className="h-6 bg-slate-900/80 border-t border-white/5 flex items-center px-4 justify-between text-[10px] text-slate-500 select-none">
+      <div className="h-6 bg-bg-overlay-l1 border-t border-border-neutral-l1 flex items-center px-4 justify-between text-[10px] text-text-tertiary select-none">
           <div className="flex items-center gap-4">
               <span className="flex items-center gap-1.5">
                   <TerminalIcon size={10} />
                   SSH-2.0-OpenSSH
               </span>
-              <span className="flex items-center gap-1.5 hover:text-sky-400 transition-colors cursor-help">
+              <span className="flex items-center gap-1.5 hover:text-status-primary-default transition-colors cursor-help">
                   <Cpu size={10} />
                   UTF-8
               </span>
           </div>
           <div className="flex items-center gap-2">
-              <span className={`w-1.5 h-1.5 rounded-full ${isFocused ? 'bg-sky-500' : 'bg-slate-600'}`} />
+              <span className={`w-1.5 h-1.5 rounded-full ${isFocused ? 'bg-status-primary-default' : 'bg-text-tertiary'}`} />
               {isFocused ? 'FOCUSED' : 'IDLE'}
           </div>
       </div>
