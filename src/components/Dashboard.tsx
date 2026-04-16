@@ -1009,22 +1009,22 @@ function StatusBadge({ status, language }: { status: "ok" | "error" | "loading",
   const t = translations[language];
   if (status === "loading") {
     return (
-      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-500/10 text-sky-600 text-xs font-medium border border-sky-500/20">
-        <div className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
+      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-100 text-blue-600 text-xs font-medium border border-blue-200">
+        <div className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />
         {t.processing_status}
       </div>
     );
   }
   if (status === "error") {
     return (
-      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 text-red-600 text-xs font-medium border border-red-500/20">
-        <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
+      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-100 text-red-600 text-xs font-medium border border-red-200">
+        <div className="w-1.5 h-1.5 rounded-full bg-red-600" />
         {t.error_status}
       </div>
     );
   }
   return (
-    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 text-xs font-medium border border-emerald-500/20">
+    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-100 text-green-600 text-xs font-medium border border-green-200">
       <Check size={12} />
       {t.ok_status}
     </div>
@@ -1236,13 +1236,13 @@ function CommandCard({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       whileHover={{ y: -2 }}
-      className={`bg-white/85 backdrop-blur-xl rounded-3xl shadow-[0_8px_30px_rgba(15,23,42,0.06)] border border-slate-200/70 overflow-visible relative z-0 hover:z-30 hover:shadow-[0_12px_36px_rgba(14,165,233,0.12)] hover:border-sky-200/80 transition-all duration-300 flex flex-col group ${
+      className={`bg-white rounded-3xl shadow-sm shadow-gray-100 border border-gray-200 overflow-visible relative z-0 hover:z-30 hover:shadow-md hover:border-blue-200 transition-all duration-300 flex flex-col group ${
         className || ""
       }`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <div className="h-1 w-full bg-gradient-to-r from-sky-500/70 via-indigo-500/40 to-transparent" />
+      <div className="h-1 w-full bg-gradient-to-r from-blue-600/70 via-blue-400/40 to-transparent" />
 
       {/* Tooltip */}
       <AnimatePresence>
@@ -1251,28 +1251,28 @@ function CommandCard({
             initial={{ opacity: 0, y: 10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            className="absolute z-50 left-0 right-0 -top-16 mx-4 p-3 bg-slate-800 text-white text-xs rounded-xl shadow-xl border border-slate-700 pointer-events-none"
+            className="absolute z-50 left-0 right-0 -top-16 mx-4 p-3 bg-gray-800 text-white text-xs rounded-xl shadow-xl border border-gray-700 pointer-events-none"
           >
             <div className="font-semibold mb-0.5 flex items-center gap-2">
               <Info size={12} className="text-blue-400" />
               {t.function_description}
             </div>
-            <p className="text-slate-300 leading-relaxed">{description}</p>
+            <p className="text-gray-300 leading-relaxed">{description}</p>
             {/* Arrow */}
-            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-800 rotate-45 border-b border-r border-slate-700" />
+            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-800 rotate-45 border-b border-r border-gray-700" />
           </motion.div>
         )}
       </AnimatePresence>
 
-      <div className="px-6 py-4 border-b border-slate-100/90 flex items-center justify-between bg-white/60">
+      <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-white">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-50 to-indigo-50 flex items-center justify-center text-sky-600 group-hover:scale-105 transition-transform duration-300 shadow-sm border border-sky-100/60">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center text-blue-600 group-hover:scale-105 transition-transform duration-300 shadow-sm border border-blue-100">
             <CardIcon size={16} />
           </div>
           <div className="flex flex-col leading-tight">
-            <span className="font-semibold text-slate-800">{title}</span>
+            <span className="font-semibold text-gray-900">{title}</span>
             {data?.ts && (
-              <span className="text-[10px] text-slate-400">
+              <span className="text-[10px] text-gray-400">
                 Updated {new Date(data.ts).toLocaleTimeString()}
               </span>
             )}
@@ -1411,7 +1411,7 @@ export default function Dashboard({
   return (
     <>
       {/* General Agent View */}
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isGeneralAgent ? 'hidden' : ''}`}>
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col bg-gray-50 overflow-hidden relative ${!isGeneralAgent ? 'hidden' : ''}`}>
         <GeneralAgent 
           language={language} 
           aiSettings={aiSettings} 
@@ -1424,7 +1424,7 @@ export default function Dashboard({
       </div>
 
       {/* Agent Panel View */}
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isAgentPanel ? 'hidden' : ''}`}>
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col bg-gray-50 overflow-hidden relative ${!isAgentPanel ? 'hidden' : ''}`}>
         <AgentPanel
           language={language}
           aiSettings={aiSettings}
@@ -1435,8 +1435,8 @@ export default function Dashboard({
       </div>
 
       {/* General Info Context Panel */}
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isContextPanel ? 'hidden' : ''}`}>
-          <div className="h-full bg-white/90 backdrop-blur-xl rounded-2xl shadow-sm border border-slate-200/60 overflow-y-auto custom-scrollbar">
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col bg-gray-50 overflow-hidden relative ${!isContextPanel ? 'hidden' : ''}`}>
+          <div className="h-full bg-white rounded-2xl shadow-sm border border-gray-200 overflow-y-auto custom-scrollbar">
              <GeneralInfoPanel
                 language={language}
                 generalInfo={generalInfo}
@@ -1448,7 +1448,7 @@ export default function Dashboard({
       </div>
 
       {/* Database Agent View */}
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isDatabaseAgent ? 'hidden' : ''}`}>
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col bg-gray-50 overflow-hidden relative ${!isDatabaseAgent ? 'hidden' : ''}`}>
         <DatabaseAgent 
           language={language} 
           aiSettings={aiSettings} 
@@ -1458,52 +1458,52 @@ export default function Dashboard({
         />
       </div>
 
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isResponsePanel ? 'hidden' : ''}`}>
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col bg-gray-50 overflow-hidden relative ${!isResponsePanel ? 'hidden' : ''}`}>
         <ResponsePanel language={language} active={isResponsePanel} />
       </div>
 
       {/* Terminal View */}
-      <div className={`flex-1 h-full p-6 flex flex-col glass-dark overflow-hidden relative ${!isTerminal ? 'hidden' : ''}`}>
-        <div className="flex-1 bg-black/80 backdrop-blur-md rounded-xl overflow-hidden border border-white/10 shadow-2xl relative z-10 ring-1 ring-white/5">
+      <div className={`flex-1 h-full p-6 flex flex-col bg-gray-50 overflow-hidden relative ${!isTerminal ? 'hidden' : ''}`}>
+        <div className="flex-1 bg-black rounded-xl overflow-hidden border border-gray-800 shadow-2xl relative z-10">
           <TerminalXterm onClose={() => {}} language={language} />
         </div>
       </div>
 
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isPentest ? 'hidden' : ''}`}>
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col bg-gray-50 overflow-hidden relative ${!isPentest ? 'hidden' : ''}`}>
         <PentestPanel language={language} />
       </div>
 
       {/* Main Dashboard Metrics View */}
-      <div className={`flex-1 flex flex-col h-screen overflow-hidden glass relative ${!isMetrics ? 'hidden' : ''}`}>
+      <div className={`flex-1 flex flex-col h-screen overflow-hidden bg-gray-50 relative ${!isMetrics ? 'hidden' : ''}`}>
       
       {/* Top Bar */}
-      <div className="px-8 md:px-10 py-8 flex items-center justify-between relative z-20">
+      <div className="px-8 md:px-10 py-8 flex items-center justify-between relative z-20 bg-white border-b border-gray-200">
         <div>
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <h1 className="text-3xl md:text-4xl font-black text-slate-800 tracking-tight capitalize flex items-center gap-3">
-              {activeTab === 'system' && <Cpu className="text-sky-500" size={36} />}
-              {activeTab === 'network' && <Globe className="text-sky-500" size={36} />}
-              {activeTab === 'services' && <Server className="text-sky-500" size={36} />}
-              {activeTab === 'docker' && <Layout className="text-sky-500" size={36} />}
+            <h1 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight capitalize flex items-center gap-3">
+              {activeTab === 'system' && <Cpu className="text-blue-600" size={36} />}
+              {activeTab === 'network' && <Globe className="text-blue-600" size={36} />}
+              {activeTab === 'services' && <Server className="text-blue-600" size={36} />}
+              {activeTab === 'docker' && <Layout className="text-blue-600" size={36} />}
               {t[activeTab as keyof typeof t] || activeTab}
             </h1>
-            <div className="h-1 w-20 bg-gradient-to-r from-sky-500 to-indigo-500 mt-2 rounded-full" />
-            <p className="mt-3 text-sm text-slate-500 max-w-xl">
+            <div className="h-1 w-20 bg-gradient-to-r from-blue-600 to-blue-400 mt-2 rounded-full" />
+            <p className="mt-3 text-sm text-gray-500 max-w-xl">
               {language === "zh" ? "实时查看核心指标与取证结果，支持快速检索与聚焦分析。" : "Realtime metrics and forensic outputs with fast search and focused analysis."}
             </p>
           </motion.div>
           
           {/* Connection Status Indicator */}
           {currentSession && (
-            <div className="flex items-center gap-2 mt-4 bg-white/70 backdrop-blur px-3 py-1.5 rounded-full border border-sky-100/60 w-fit shadow-sm">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-              <span className="text-xs font-semibold text-slate-600">
+            <div className="flex items-center gap-2 mt-4 bg-white px-3 py-1.5 rounded-full border border-blue-100 w-fit shadow-sm">
+              <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-xs font-semibold text-gray-700">
                 {t.connected_to}{" "}
-                <span className="text-sky-600 font-mono">
+                <span className="text-blue-600 font-mono">
                   {currentSession.user}@{currentSession.ip}
                 </span>
               </span>
@@ -1516,14 +1516,14 @@ export default function Dashboard({
           {progress < 100 && progress > 0 && (
             <div className="flex flex-col items-end mr-4">
               <div className="flex items-center gap-2 mb-1">
-                <div className="w-3 h-3 rounded-full border-2 border-sky-500 border-t-transparent animate-spin" />
-                <span className="text-xs font-semibold text-sky-600">
+                <div className="w-3 h-3 rounded-full border-2 border-blue-600 border-t-transparent animate-spin" />
+                <span className="text-xs font-semibold text-blue-600">
                   {t.running}: {currentTaskTitle}
                 </span>
               </div>
-              <div className="w-32 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div className="w-32 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                 <motion.div
-                  className="h-full bg-sky-500 rounded-full"
+                  className="h-full bg-blue-600 rounded-full"
                   initial={{ width: 0 }}
                   animate={{ width: `${progress}%` }}
                 />
@@ -1533,9 +1533,9 @@ export default function Dashboard({
 
           {/* Monitoring Status */}
           {isMonitoring && (
-            <div className="hidden md:flex items-center gap-2 mr-2 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
-              <Activity size={14} className="text-emerald-500 animate-pulse" />
-              <span className="text-xs font-bold text-emerald-600">
+            <div className="hidden md:flex items-center gap-2 mr-2 bg-green-50 px-3 py-1 rounded-full border border-green-100">
+              <Activity size={14} className="text-green-600 animate-pulse" />
+              <span className="text-xs font-bold text-green-600">
                 {t.monitoring_metrics.replace('{0}', monitoredCommandIds.length.toString())}
               </span>
             </div>
@@ -1543,7 +1543,7 @@ export default function Dashboard({
 
           <div className="relative group">
             <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-sky-500 transition-colors"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors"
               size={18}
             />
             <input
@@ -1551,13 +1551,13 @@ export default function Dashboard({
               placeholder={t.search_metrics}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2.5 bg-white/85 backdrop-blur-sm border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 transition-all w-52 md:w-64 shadow-sm hover:shadow-md"
+              className="pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-gray-700 text-sm focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 transition-all w-52 md:w-64 shadow-sm hover:shadow-md"
             />
           </div>
 
           <button
             onClick={() => setShowAbout(true)}
-            className="w-10 h-10 rounded-xl bg-white/80 backdrop-blur-sm border border-slate-200 flex items-center justify-center text-slate-500 hover:text-sky-600 hover:border-sky-200 hover:bg-sky-50 transition-all shadow-sm hover:shadow-md"
+            className="w-10 h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 transition-all shadow-sm hover:shadow-md"
           >
             <HelpCircle size={20} />
           </button>
@@ -1652,12 +1652,12 @@ export default function Dashboard({
       </AnimatePresence>
 
       {/* Content Area */}
-      <div className="flex-1 overflow-y-auto px-6 md:px-8 pb-8 custom-scrollbar relative z-10">
+      <div className="flex-1 overflow-y-auto px-6 md:px-8 pb-8 custom-scrollbar relative z-10 bg-gray-50">
         {activeTab === "database" && (
           <div className="mb-6 flex justify-end">
             <button
               onClick={() => onTabChange("agent-database")}
-              className="flex items-center gap-2 px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg shadow-lg shadow-sky-500/20 transition-all font-medium text-sm transform hover:scale-105 active:scale-95"
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm shadow-blue-600/20 transition-all font-medium text-sm transform hover:scale-105 active:scale-95"
             >
               <Database size={16} />
               <span>{language === 'zh' ? '数据库智查与管理' : 'Database AI & Management'}</span>
@@ -1668,16 +1668,16 @@ export default function Dashboard({
         {/* Command Cards */}
         {visibleCommands.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-            <div className="w-24 h-24 rounded-3xl bg-white/50 backdrop-blur shadow-xl shadow-sky-500/10 flex items-center justify-center mb-6 border border-white">
-              <Cloud className="text-sky-400" size={48} />
+            <div className="w-24 h-24 rounded-3xl bg-white shadow-lg shadow-blue-100 flex items-center justify-center mb-6 border border-gray-200">
+              <Cloud className="text-blue-500" size={48} />
             </div>
-            <h3 className="text-2xl font-bold text-slate-800 mb-2">
+            <h3 className="text-2xl font-bold text-gray-900 mb-2">
               {t.no_metrics_title}
             </h3>
-            <p className="text-slate-500 max-w-md mx-auto mb-8 text-lg">
+            <p className="text-gray-500 max-w-md mx-auto mb-8 text-lg">
               {t.no_metrics_desc}
             </p>
-            <button className="px-8 py-4 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white rounded-2xl font-bold shadow-lg shadow-sky-500/30 transition-all flex items-center gap-3 transform hover:scale-105 active:scale-95">
+            <button className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold shadow-sm shadow-blue-600/20 transition-all flex items-center gap-3 transform hover:scale-105 active:scale-95">
               <RefreshCw size={20} />
               <span>{t.reload_system}</span>
             </button>

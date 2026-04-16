@@ -349,7 +349,7 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={onAddSession}
-              className="p-2 rounded-md border border-gray-200 bg-white text-blue-600 hover:bg-blue-50 transition-colors"
+              className="p-2 rounded-md border border-gray-200 bg-white text-blue-600 hover:bg-blue-50 transition-colors shadow-sm"
               title={t.new_connection}
             >
               <Plus size={16} />
@@ -357,7 +357,7 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
           </div>
 
           {/* Bulk Actions Bar */}
-          <div className="flex items-center justify-between px-3 py-2 rounded-md bg-gray-50 border border-gray-200">
+          <div className="flex items-center justify-between px-3 py-2 rounded-md bg-gray-50 border border-gray-200 shadow-sm">
              <button 
               onClick={toggleSelectAll}
               className="flex items-center gap-2 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors"

@@ -145,7 +145,7 @@ export default function Sidebar({
                 title={isCollapsed ? textByLanguage(language, item.title) : undefined}
                 whileHover={{ y: -1 }}
                 whileTap={{ scale: 0.98 }}
-                className={`w-full transition-all duration-200 ${isCollapsed ? "flex justify-center p-3" : "flex items-center gap-3 px-3 py-3"} ${isActive ? "bg-blue-600 text-white rounded-md" : "hover:bg-gray-50 rounded-md"}`}
+                className={`w-full transition-all duration-200 ${isCollapsed ? "flex justify-center p-3" : "flex items-center gap-3 px-3 py-3"} ${isActive ? "bg-blue-600 text-white rounded-md shadow-sm" : "hover:bg-gray-50 rounded-md"}`}
               >
                 <div className={`flex h-10 w-10 items-center justify-center rounded-md ${isActive ? "bg-white/20" : "bg-gray-100 text-gray-500"}`}>
                   <Icon size={16} />
