@@ -4,6 +4,7 @@ import { researchTools } from "./aiResearchTools";
 export interface AIMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
+  uiContent?: string;
   tool_call_id?: string; // For tool responses
   tool_calls?: ToolCall[]; // For assistant requests
   usage?: {

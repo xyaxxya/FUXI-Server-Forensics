@@ -11,7 +11,16 @@ import { useAIWorkspaceStore } from "../../lib/aiWorkspaceStore";
 import { Language } from "../../translations";
 import { ChatTranscriptMessage } from "./ChatTranscriptMessage";
 import ThinkingProcess, { ThinkingStep } from "./ThinkingProcess";
-import { FloatingContextMenu, PlannerPanel, PreviewDialog, PromptDeck, SlashCommandMenu, WorkspaceHeader, getExactSlashCommand, getSlashCommandCompletion } from "./WorkbenchWidgets";
+import {
+  FloatingContextMenu,
+  PlannerPanel,
+  PreviewDialog,
+  PromptDeck,
+  SlashCommandMenu,
+  WorkspaceHeader,
+  getSlashCommandCompletion,
+  resolveSlashCommandInput,
+} from "./WorkbenchWidgets";
 
 interface GeneralAgentProps {
   language: Language;
@@ -312,11 +321,11 @@ export default function GeneralAgent({
         insertText: language === "zh" ? "请先给出一份清晰的调查计划，再按计划逐步执行分析。" : "Create a clear investigation plan first, then execute it step by step.",
       },
       {
-        id: "web",
-        command: "/web",
-        title: language === "zh" ? "联网查询资料" : "Search the web",
-        description: language === "zh" ? "主动搜索公开资料、文档或漏洞说明" : "Search public docs, references or vulnerability information",
-        insertText: language === "zh" ? "请联网搜索相关公开资料，并基于搜索结果给我结论。" : "Search the public web for relevant references and answer from those results.",
+        id: "search",
+        command: "/search",
+        title: language === "zh" ? "搜索网页资料" : "Search the web",
+        description: language === "zh" ? "主动搜索公开网页、文档、公告或漏洞说明" : "Search public pages, docs, advisories or vulnerability references",
+        insertText: language === "zh" ? "请先搜索相关网页资料，并基于搜索结果给我结论。" : "Search relevant web pages first and answer from those results.",
       },
       {
         id: "context",
@@ -338,9 +347,12 @@ export default function GeneralAgent({
     ],
     [handleClear, language],
   );
+  const resolvedSlashInput = useMemo(() => resolveSlashCommandInput(input, slashCommands), [input, slashCommands]);
+  const canSend = !!input.trim() && !loading && (!input.trim().startsWith("/") || !!resolvedSlashInput.matchedCommand);
 
-  const handleSend = async () => {
-    if (!input.trim() || loading) {
+  const handleSend = async (rawInput = input) => {
+    const trimmedInput = rawInput.trim();
+    if (!trimmedInput || loading) {
       return;
     }
     if (!config.apiKey.trim()) {
@@ -348,11 +360,23 @@ export default function GeneralAgent({
       return;
     }
 
+    const resolvedSlash = resolveSlashCommandInput(trimmedInput, slashCommands);
+    if (trimmedInput.startsWith("/") && !resolvedSlash.matchedCommand) {
+      return;
+    }
+    if (resolvedSlash.shouldExecuteImmediately && resolvedSlash.matchedCommand?.onSelect) {
+      resolvedSlash.matchedCommand.onSelect();
+      return;
+    }
+
+    const prompt = resolvedSlash.sendText ?? trimmedInput;
+
     const nextUserMessage: AIMessage = {
       role: "user",
-      content: input.trim(),
+      content: prompt,
+      uiContent: resolvedSlash.displayText ?? trimmedInput,
     };
-    addPromptHistory(input);
+    addPromptHistory(trimmedInput);
     const nextHistory = [...messages, nextUserMessage];
     setMessages(nextHistory);
     setInput("");
@@ -557,18 +581,7 @@ export default function GeneralAgent({
                   }
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
-                    if (input.trim().startsWith("/")) {
-                      const exactCommand = getExactSlashCommand(input, slashCommands);
-                      if (exactCommand) {
-                        if (exactCommand.onSelect) {
-                          exactCommand.onSelect();
-                        } else {
-                          setInput(exactCommand.insertText || exactCommand.command);
-                        }
-                      }
-                    } else {
-                      void handleSend();
-                    }
+                    void handleSend();
                   }
                 }}
                 placeholder={
@@ -580,7 +593,7 @@ export default function GeneralAgent({
               />
               <motion.button
                 onClick={() => void handleSend()}
-                disabled={loading || !input.trim() || input.trim().startsWith("/")}
+                disabled={!canSend}
                 whileHover={{ y: -1 }}
                 whileTap={{ scale: 0.985 }}
                 className="ui-button-primary ui-pressable rounded-[1.35rem] inline-flex h-12 w-12 items-center justify-center disabled:bg-slate-300 disabled:border-slate-300"
@@ -597,7 +610,7 @@ export default function GeneralAgent({
                   command.onSelect();
                   return;
                 }
-                setInput(command.insertText || "");
+                setInput(command.command);
               }}
             />
           </div>

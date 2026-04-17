@@ -59,6 +59,48 @@ interface ServerGroup {
 
 type ProxyType = 'direct' | 'socks5' | 'http';
 
+const COMMAND_CENTER_CACHE_KEY = 'fuxi_command_center_cache_v1';
+
+function loadCommandCenterCache(): {
+  dataBySession: Record<string, Record<string, CachedCommandResult>>;
+  chartBySession: Record<string, Record<string, ChartDataPoint[]>>;
+} {
+  if (typeof window === 'undefined') {
+    return { dataBySession: {}, chartBySession: {} };
+  }
+  try {
+    const raw = localStorage.getItem(COMMAND_CENTER_CACHE_KEY);
+    if (!raw) {
+      return { dataBySession: {}, chartBySession: {} };
+    }
+    const parsed = JSON.parse(raw) as {
+      dataBySession?: Record<string, Record<string, CachedCommandResult>>;
+      chartBySession?: Record<string, Record<string, ChartDataPoint[]>>;
+    };
+    return {
+      dataBySession: parsed.dataBySession || {},
+      chartBySession: parsed.chartBySession || {},
+    };
+  } catch (error) {
+    console.error('Failed to load command center cache:', error);
+    return { dataBySession: {}, chartBySession: {} };
+  }
+}
+
+function saveCommandCenterCache(payload: {
+  dataBySession: Record<string, Record<string, CachedCommandResult>>;
+  chartBySession: Record<string, Record<string, ChartDataPoint[]>>;
+}) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    localStorage.setItem(COMMAND_CENTER_CACHE_KEY, JSON.stringify(payload));
+  } catch (error) {
+    console.error('Failed to save command center cache:', error);
+  }
+}
+
 interface ProxyConfig {
   type: ProxyType;
   host: string;
@@ -113,11 +155,11 @@ interface CommandContextType {
 const CommandContext = createContext<CommandContextType | undefined>(undefined);
 
 export function CommandProvider({ children }: { children: React.ReactNode }) {
-  const [dataBySession, setDataBySession] = useState<Record<string, Record<string, CachedCommandResult>>>({});
+  const [dataBySession, setDataBySession] = useState<Record<string, Record<string, CachedCommandResult>>>(() => loadCommandCenterCache().dataBySession);
   const [loadingBySession, setLoadingBySession] = useState<Record<string, Record<string, boolean>>>({});
   const [progress, setProgress] = useState(0);
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
-  const [chartBySession, setChartBySession] = useState<Record<string, Record<string, ChartDataPoint[]>>>({});
+  const [chartBySession, setChartBySession] = useState<Record<string, Record<string, ChartDataPoint[]>>>(() => loadCommandCenterCache().chartBySession);
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [monitorInterval, setMonitorInterval] = useState(3000); // Default 3 seconds
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -128,6 +170,10 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
   const [serverGroups, setServerGroups] = useState<ServerGroup[]>([]);
   const monitorTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const monitoredCommandsRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    saveCommandCenterCache({ dataBySession, chartBySession });
+  }, [dataBySession, chartBySession]);
   
   // Previous network bytes for rate calculation
   const prevNetworkBytesBySession = useRef<Record<string, {rx: number, tx: number, time: number} | null>>({});
@@ -437,6 +483,15 @@ export function CommandProvider({ children }: { children: React.ReactNode }) {
     // Set current session
     const current = sessionList.find(s => s.is_current) || null;
     setCurrentSession(current);
+    const validSessionIds = new Set(sessionList.map((session) => session.id));
+    setDataBySession(prev => Object.fromEntries(Object.entries(prev).filter(([sessionId]) => validSessionIds.has(sessionId))));
+    setLoadingBySession(prev => Object.fromEntries(Object.entries(prev).filter(([sessionId]) => validSessionIds.has(sessionId))));
+    setChartBySession(prev => Object.fromEntries(Object.entries(prev).filter(([sessionId]) => validSessionIds.has(sessionId))));
+    Object.keys(prevNetworkBytesBySession.current).forEach((sessionId) => {
+      if (!validSessionIds.has(sessionId)) {
+        delete prevNetworkBytesBySession.current[sessionId];
+      }
+    });
   };
 
   const updateSessionNote = async (sessionId: string, note: string): Promise<void> => {

@@ -22,6 +22,9 @@ export const forensicsCommands: PluginCommand[] = [
   { 
     id: 'sys_info', 
     category: 'system', 
+    subCategory: 'base',
+    subCategoryLabel: '基础信息',
+    subCategoryLabelEn: 'Base Info',
     name: 'System Info', 
     cn_name: '系统基础信息', 
     description: 'OS kernel, release and architecture details', 
@@ -33,6 +36,9 @@ export const forensicsCommands: PluginCommand[] = [
   { 
     id: 'user_info', 
     category: 'system', 
+    subCategory: 'base',
+    subCategoryLabel: '基础信息',
+    subCategoryLabelEn: 'Base Info',
     name: 'User Accounts', 
     cn_name: '用户账户审查', 
     description: 'List all users and current logged in users', 
@@ -44,6 +50,9 @@ export const forensicsCommands: PluginCommand[] = [
   { 
     id: 'disk_usage', 
     category: 'system', 
+    subCategory: 'base',
+    subCategoryLabel: '基础信息',
+    subCategoryLabelEn: 'Base Info',
     name: 'Disk Usage', 
     cn_name: '磁盘挂载分析', 
     description: 'Disk space and mount point analysis', 
@@ -55,6 +64,9 @@ export const forensicsCommands: PluginCommand[] = [
   { 
     id: 'service_status', 
     category: 'system', 
+    subCategory: 'base',
+    subCategoryLabel: '基础信息',
+    subCategoryLabelEn: 'Base Info',
     name: 'Core Service Status', 
     cn_name: '核心服务状态', 
     description: 'Quick snapshot of key service states', 
@@ -68,6 +80,9 @@ export const forensicsCommands: PluginCommand[] = [
   { 
     id: 'net_ports', 
     category: 'network', 
+    subCategory: 'ports',
+    subCategoryLabel: '端口与连接',
+    subCategoryLabelEn: 'Ports & Connections',
     name: 'Listening Ports', 
     cn_name: '监听端口取证', 
     description: 'Active listening ports and associated processes', 
@@ -79,6 +94,9 @@ export const forensicsCommands: PluginCommand[] = [
   { 
     id: 'net_conns', 
     category: 'network', 
+    subCategory: 'ports',
+    subCategoryLabel: '端口与连接',
+    subCategoryLabelEn: 'Ports & Connections',
     name: 'Established Connections', 
     cn_name: '已建立连接', 
     description: 'Active network connections to/from this server', 
@@ -90,6 +108,9 @@ export const forensicsCommands: PluginCommand[] = [
   {
     id: 'net_route_dns',
     category: 'network',
+    subCategory: 'routing',
+    subCategoryLabel: '路由与 DNS',
+    subCategoryLabelEn: 'Routing & DNS',
     name: 'Routes and DNS',
     cn_name: '路由与 DNS 配置',
     description: 'Inspect routing table and DNS resolver settings',
@@ -103,6 +124,9 @@ export const forensicsCommands: PluginCommand[] = [
   { 
     id: 'proc_list', 
     category: 'system', 
+    subCategory: 'process',
+    subCategoryLabel: '进程资源',
+    subCategoryLabelEn: 'Process & Resources',
     name: 'Process List', 
     cn_name: '进程列表快照', 
     description: 'Snapshot of all running processes', 
@@ -114,6 +138,9 @@ export const forensicsCommands: PluginCommand[] = [
   { 
     id: 'proc_resource', 
     category: 'system', 
+    subCategory: 'process',
+    subCategoryLabel: '进程资源',
+    subCategoryLabelEn: 'Process & Resources',
     name: 'Resource Usage', 
     cn_name: '资源占用 Top', 
     description: 'Top processes by CPU and Memory usage', 
@@ -127,6 +154,9 @@ export const forensicsCommands: PluginCommand[] = [
   { 
     id: 'persistence_cron', 
     category: 'security', 
+    subCategory: 'persistence',
+    subCategoryLabel: '持久化',
+    subCategoryLabelEn: 'Persistence',
     name: 'Cron Persistence', 
     cn_name: '定时任务审计', 
     description: 'Check all users crontabs and system cron directories', 
@@ -138,6 +168,9 @@ export const forensicsCommands: PluginCommand[] = [
   { 
     id: 'persistence_service', 
     category: 'security', 
+    subCategory: 'persistence',
+    subCategoryLabel: '持久化',
+    subCategoryLabelEn: 'Persistence',
     name: 'System Services', 
     cn_name: '系统服务审计', 
     description: 'Enabled systemd services and init scripts', 
@@ -151,6 +184,9 @@ export const forensicsCommands: PluginCommand[] = [
   { 
     id: 'log_auth', 
     category: 'security', 
+    subCategory: 'auth',
+    subCategoryLabel: '认证日志',
+    subCategoryLabelEn: 'Auth Logs',
     name: 'Auth Logs', 
     cn_name: '身份认证日志', 
     description: 'Recent successful and failed login attempts', 
@@ -162,6 +198,9 @@ export const forensicsCommands: PluginCommand[] = [
   { 
     id: 'log_history', 
     category: 'security', 
+    subCategory: 'history',
+    subCategoryLabel: '历史审计',
+    subCategoryLabelEn: 'History Audit',
     name: 'Command History', 
     cn_name: '命令执行历史', 
     description: 'Recent commands executed by root and current user', 
@@ -175,6 +214,9 @@ export const forensicsCommands: PluginCommand[] = [
   {
     id: 'bt_panel_status',
     category: 'web',
+    subCategory: 'bt',
+    subCategoryLabel: '宝塔',
+    subCategoryLabelEn: 'BT Panel',
     name: 'BT Panel Status',
     cn_name: '宝塔面板状态',
     description: 'Check BT panel process, ports and service state',
@@ -186,6 +228,9 @@ export const forensicsCommands: PluginCommand[] = [
   {
     id: 'bt_panel_logs',
     category: 'web',
+    subCategory: 'bt',
+    subCategoryLabel: '宝塔',
+    subCategoryLabelEn: 'BT Panel',
     name: 'BT Panel Logs',
     cn_name: '宝塔日志审计',
     description: 'Inspect recent BT panel logs for suspicious access',
@@ -197,6 +242,9 @@ export const forensicsCommands: PluginCommand[] = [
   {
     id: 'nginx_conf',
     category: 'web',
+    subCategory: 'nginx',
+    subCategoryLabel: 'Nginx',
+    subCategoryLabelEn: 'Nginx',
     name: 'Nginx Config Snapshot',
     cn_name: 'Nginx 配置快照',
     description: 'Version, main config and enabled site configs',
@@ -208,6 +256,9 @@ export const forensicsCommands: PluginCommand[] = [
   {
     id: 'nginx_access_error',
     category: 'web',
+    subCategory: 'nginx',
+    subCategoryLabel: 'Nginx',
+    subCategoryLabelEn: 'Nginx',
     name: 'Nginx Access/Error Logs',
     cn_name: 'Nginx 访问/错误日志',
     description: 'Latest access and error logs for attack traces',
@@ -219,6 +270,9 @@ export const forensicsCommands: PluginCommand[] = [
   {
     id: 'apache_conf',
     category: 'web',
+    subCategory: 'apache',
+    subCategoryLabel: 'Apache',
+    subCategoryLabelEn: 'Apache',
     name: 'Apache Config Snapshot',
     cn_name: 'Apache 配置快照',
     description: 'Apache version, loaded modules and vhost files',
@@ -230,6 +284,9 @@ export const forensicsCommands: PluginCommand[] = [
   {
     id: 'apache_logs',
     category: 'web',
+    subCategory: 'apache',
+    subCategoryLabel: 'Apache',
+    subCategoryLabelEn: 'Apache',
     name: 'Apache Access/Error Logs',
     cn_name: 'Apache 访问/错误日志',
     description: 'Review latest Apache access/error logs',
@@ -243,6 +300,9 @@ export const forensicsCommands: PluginCommand[] = [
   {
     id: 'mysql_status',
     category: 'database',
+    subCategory: 'mysql',
+    subCategoryLabel: 'MySQL',
+    subCategoryLabelEn: 'MySQL',
     name: 'MySQL Process and Accounts',
     cn_name: 'MySQL 进程与账户审计',
     description: 'MySQL process, listening port and account summary',
@@ -254,6 +314,9 @@ export const forensicsCommands: PluginCommand[] = [
   {
     id: 'mysql_logs',
     category: 'database',
+    subCategory: 'mysql',
+    subCategoryLabel: 'MySQL',
+    subCategoryLabelEn: 'MySQL',
     name: 'MySQL Error/General Logs',
     cn_name: 'MySQL 错误/通用日志',
     description: 'Review mysql and mariadb logs for intrusion traces',
@@ -265,6 +328,9 @@ export const forensicsCommands: PluginCommand[] = [
   {
     id: 'postgres_status',
     category: 'database',
+    subCategory: 'postgres',
+    subCategoryLabel: 'PostgreSQL',
+    subCategoryLabelEn: 'PostgreSQL',
     name: 'PostgreSQL Status',
     cn_name: 'PostgreSQL 状态取证',
     description: 'PostgreSQL process, port and role audit',
@@ -276,6 +342,9 @@ export const forensicsCommands: PluginCommand[] = [
   {
     id: 'redis_status',
     category: 'database',
+    subCategory: 'redis',
+    subCategoryLabel: 'Redis',
+    subCategoryLabelEn: 'Redis',
     name: 'Redis Status',
     cn_name: 'Redis 状态取证',
     description: 'Redis process, bind/protected mode and key security settings',

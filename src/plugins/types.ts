@@ -50,6 +50,9 @@ export type ParserType =
 export interface PluginCommand {
   id: string;
   category: CommandCategory;
+  subCategory?: string;
+  subCategoryLabel?: string;
+  subCategoryLabelEn?: string;
   name: string;
   cn_name: string;
   description: string;

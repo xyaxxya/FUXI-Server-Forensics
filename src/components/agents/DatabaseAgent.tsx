@@ -29,7 +29,16 @@ import ConnectionForm from "../database/ConnectionForm";
 import DataTable from "../DataTable";
 import ThinkingProcess, { ThinkingStep } from "./ThinkingProcess";
 import { ChatTranscriptMessage } from "./ChatTranscriptMessage";
-import { FloatingContextMenu, PlannerPanel, PreviewDialog, PromptDeck, SlashCommandMenu, WorkspaceHeader, getExactSlashCommand, getSlashCommandCompletion } from "./WorkbenchWidgets";
+import {
+  FloatingContextMenu,
+  PlannerPanel,
+  PreviewDialog,
+  PromptDeck,
+  SlashCommandMenu,
+  WorkspaceHeader,
+  getSlashCommandCompletion,
+  resolveSlashCommandInput,
+} from "./WorkbenchWidgets";
 
 interface DbQueryResult {
   headers: string[];
@@ -356,14 +365,14 @@ export default function DatabaseAgent({
             : "Inspect the current schema and key fields first, then suggest the next read-only SQL to run.",
       },
       {
-        id: "web",
-        command: "/web",
-        title: language === "zh" ? "联网查业务资料" : "Search the web",
-        description: language === "zh" ? "结合公开资料理解库表含义或漏洞背景" : "Use public references to understand the database context",
+        id: "search",
+        command: "/search",
+        title: language === "zh" ? "搜索业务资料" : "Search the web",
+        description: language === "zh" ? "结合公开网页资料理解库表含义或漏洞背景" : "Use public pages to understand the database context",
         insertText:
           language === "zh"
-            ? "请先联网搜索与当前数据库业务、字段命名或相关漏洞有关的公开资料，再结合数据库内容分析。"
-            : "Search the public web for references about this database, naming conventions or related vulnerabilities before analyzing.",
+            ? "请先搜索与当前数据库业务、字段命名或相关漏洞有关的网页资料，再结合数据库内容分析。"
+            : "Search the web for references about this database, naming conventions or related vulnerabilities before analyzing.",
       },
       {
         id: "clear",
@@ -380,6 +389,8 @@ export default function DatabaseAgent({
     ],
     [language],
   );
+  const resolvedAiSlashInput = useMemo(() => resolveSlashCommandInput(aiInput, slashCommands), [aiInput, slashCommands]);
+  const canSendAi = !!aiInput.trim() && !aiLoading && (!aiInput.trim().startsWith("/") || !!resolvedAiSlashInput.matchedCommand);
 
   useEffect(() => {
     aiListEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -742,8 +753,9 @@ export default function DatabaseAgent({
     setStatus(language === "zh" ? "已停止" : "Stopped");
   };
 
-  const handleSendAi = async () => {
-    if (!aiInput.trim() || aiLoading) return;
+  const handleSendAi = async (rawInput = aiInput) => {
+    const trimmedInput = rawInput.trim();
+    if (!trimmedInput || aiLoading) return;
     if (!activeConnection) {
       setStatus(language === "zh" ? "请先连接数据库。" : "Connect a database first.");
       return;
@@ -753,8 +765,19 @@ export default function DatabaseAgent({
       return;
     }
 
-    addPromptHistory(aiInput);
-    const nextUserMessage: AIMessage = { role: "user", content: aiInput.trim() };
+    const resolvedSlash = resolveSlashCommandInput(trimmedInput, slashCommands);
+    if (trimmedInput.startsWith("/") && !resolvedSlash.matchedCommand) {
+      return;
+    }
+    if (resolvedSlash.shouldExecuteImmediately && resolvedSlash.matchedCommand?.onSelect) {
+      resolvedSlash.matchedCommand.onSelect();
+      return;
+    }
+
+    const prompt = resolvedSlash.sendText ?? trimmedInput;
+
+    addPromptHistory(trimmedInput);
+    const nextUserMessage: AIMessage = { role: "user", content: prompt, uiContent: resolvedSlash.displayText ?? trimmedInput };
     const nextHistory = [...messages, nextUserMessage];
     setMessages(nextHistory);
     setAiInput("");
@@ -1203,7 +1226,7 @@ export default function DatabaseAgent({
                     whileHover={{ y: -1 }}
                     whileTap={{ scale: 0.985 }}
                     onClick={() => void handleSendAi()}
-                    disabled={aiLoading || !aiInput.trim() || aiInput.trim().startsWith("/")}
+                    disabled={!canSendAi}
                     className="ui-button-primary ui-pressable inline-flex items-center justify-center gap-2 rounded-[1.2rem] px-4 py-2.5 text-sm font-medium disabled:bg-slate-300 disabled:border-slate-300 sm:self-start"
                   >
                     {aiLoading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
@@ -1224,18 +1247,7 @@ export default function DatabaseAgent({
                     }
                     if (event.key === "Enter" && !event.shiftKey) {
                       event.preventDefault();
-                      if (aiInput.trim().startsWith("/")) {
-                        const exactCommand = getExactSlashCommand(aiInput, slashCommands);
-                        if (exactCommand) {
-                          if (exactCommand.onSelect) {
-                            exactCommand.onSelect();
-                          } else {
-                            setAiInput(exactCommand.insertText || exactCommand.command);
-                          }
-                        }
-                      } else {
-                        void handleSendAi();
-                      }
+                      void handleSendAi();
                     }
                   }}
                   placeholder={
@@ -1255,7 +1267,7 @@ export default function DatabaseAgent({
                       command.onSelect();
                       return;
                     }
-                    setAiInput(command.insertText || "");
+                    setAiInput(command.command);
                   }}
                 />
               </div>

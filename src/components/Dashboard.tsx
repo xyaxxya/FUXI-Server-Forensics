@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity,
@@ -1323,6 +1323,7 @@ export default function Dashboard({
 }: DashboardProps) {
   const [showAbout, setShowAbout] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [activeSubcategories, setActiveSubcategories] = useState<Record<string, string>>({});
   const {
     loading,
     runCommand,
@@ -1351,29 +1352,56 @@ export default function Dashboard({
   const isPentest = activeTab === "pentest";
   const isMetrics = !isGeneralAgent && !isAgentPanel && !isContextPanel && !isDatabaseAgent && !isResponsePanel && !isTerminal && !isPentest;
 
+  const subcategoryOptions = useMemo(() => {
+    const scoped = commands.filter((command) => command.category === activeTab && command.subCategory);
+    const unique = new Map<string, { key: string; label: string }>();
+    scoped.forEach((command) => {
+      if (!command.subCategory || unique.has(command.subCategory)) {
+        return;
+      }
+      unique.set(command.subCategory, {
+        key: command.subCategory,
+        label:
+          language === "zh"
+            ? command.subCategoryLabel || command.subCategory
+            : command.subCategoryLabelEn || command.subCategory,
+      });
+    });
+    return [
+      { key: "all", label: language === "zh" ? "全部" : "All" },
+      ...Array.from(unique.values()),
+    ];
+  }, [activeTab, language]);
+  const activeSubcategory = activeSubcategories[activeTab] || "all";
+
+  useEffect(() => {
+    if (!subcategoryOptions.some((option) => option.key === activeSubcategory)) {
+      setActiveSubcategories((prev) => ({ ...prev, [activeTab]: "all" }));
+    }
+  }, [activeSubcategory, activeTab, subcategoryOptions]);
+
   // Filter commands
-  const tabCommands = commands.filter((c) => c.category === activeTab);
-  const filteredCommands = (searchTerm ? commands : tabCommands).filter((c) => {
+  const tabCommands = commands.filter((command) => {
+    if (command.category !== activeTab) {
+      return false;
+    }
+    if (activeSubcategory === "all") {
+      return true;
+    }
+    return command.subCategory === activeSubcategory;
+  });
+  const filteredCommands = tabCommands.filter((c) => {
     const title = language === "zh" ? c.cn_name : c.name;
     return (
       title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.id.toLowerCase().includes(searchTerm.toLowerCase())
+      c.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.cn_description.toLowerCase().includes(searchTerm.toLowerCase())
     );
   });
-
-  // Filter out commands with errors
-  const visibleCommands = filteredCommands.filter((cmd) => {
-    const data = getCommandData(cmd.id);
-    const isLoading = loading[cmd.id] || false;
-    
-    // If we have data and it's not loading, check for errors
-    if (data && !isLoading) {
-      // If there is stderr output, consider it an error and hide it
-      if (data.stderr) return false;
-    }
-    
-    return true;
-  });
+  const visibleCommands = filteredCommands;
+  const hasDefinitionsInScope = tabCommands.length > 0;
+  const hasAnyResultsInScope = tabCommands.some((command) => !!getCommandData(command.id) || !!loading[command.id]);
 
   const currentTaskCmd = commands.find((c) => c.id === currentTaskId);
   const currentTaskTitle = currentTaskCmd
@@ -1406,7 +1434,7 @@ export default function Dashboard({
     } else if (!currentSession) {
       clearData();
     }
-  }, [currentSession?.id, activeTab]);
+  }, [currentSession?.id, activeTab, activeSubcategory]);
 
   return (
     <>
@@ -1495,6 +1523,34 @@ export default function Dashboard({
             <p className="mt-3 text-sm text-slate-500 max-w-xl">
               {language === "zh" ? "实时查看核心指标与取证结果，支持快速检索与聚焦分析。" : "Realtime metrics and forensic outputs with fast search and focused analysis."}
             </p>
+            {isMetrics && subcategoryOptions.length > 1 && (
+              <div className="mt-5 flex flex-wrap gap-2">
+                {subcategoryOptions.map((option) => {
+                  const isActive = option.key === activeSubcategory;
+                  return (
+                    <motion.button
+                      key={option.key}
+                      layout
+                      whileHover={{ y: -1 }}
+                      whileTap={{ scale: 0.985 }}
+                      onClick={() => setActiveSubcategories((prev) => ({ ...prev, [activeTab]: option.key }))}
+                      className={`relative overflow-hidden rounded-2xl px-4 py-2.5 text-sm font-medium transition-all ${
+                        isActive ? "text-slate-900 shadow-[0_16px_32px_-24px_rgba(37,99,235,0.4)]" : "ui-chip text-slate-600"
+                      }`}
+                    >
+                      {isActive && (
+                        <motion.span
+                          layoutId="dashboard-subcategory-active-pill"
+                          className="absolute inset-0 rounded-2xl bg-gradient-to-br from-blue-50 via-white to-indigo-50"
+                          transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                        />
+                      )}
+                      <span className="relative z-10">{option.label}</span>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            )}
           </motion.div>
           
           {/* Connection Status Indicator */}
@@ -1672,12 +1728,33 @@ export default function Dashboard({
               <Cloud className="text-sky-400" size={48} />
             </div>
             <h3 className="text-2xl font-bold text-slate-800 mb-2">
-              {t.no_metrics_title}
+              {searchTerm
+                ? (language === "zh" ? "没有匹配结果" : "No Matching Results")
+                : !hasDefinitionsInScope
+                  ? (language === "zh" ? "暂无命令" : "No Commands")
+                  : !hasAnyResultsInScope
+                    ? (language === "zh" ? "等待采集" : "Waiting For Collection")
+                    : t.no_metrics_title}
             </h3>
             <p className="text-slate-500 max-w-md mx-auto mb-8 text-lg">
-              {t.no_metrics_desc}
+              {searchTerm
+                ? (language === "zh" ? "当前筛选条件下没有匹配的命令，请尝试更换关键词。" : "No commands match the current search. Try a different keyword.")
+                : !hasDefinitionsInScope
+                  ? (language === "zh" ? "当前分类或二级目录下还没有可展示的命令。" : "There are no commands available in the current category or subcategory.")
+                  : !hasAnyResultsInScope
+                    ? (language === "zh" ? "当前分组还没有采集结果，点击下方按钮开始加载。" : "This scope has not collected any results yet. Use the button below to start loading data.")
+                    : t.no_metrics_desc}
             </p>
-            <button className="px-8 py-4 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white rounded-2xl font-bold shadow-lg shadow-sky-500/30 transition-all flex items-center gap-3 transform hover:scale-105 active:scale-95">
+            <button
+              onClick={() => {
+                const ids = tabCommands.map((command) => command.id);
+                if (ids.length > 0) {
+                  void fetchAll(ids, true);
+                }
+              }}
+              className="px-8 py-4 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white rounded-2xl font-bold shadow-lg shadow-sky-500/30 transition-all flex items-center gap-3 transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!hasDefinitionsInScope}
+            >
               <RefreshCw size={20} />
               <span>{t.reload_system}</span>
             </button>

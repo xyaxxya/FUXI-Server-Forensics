@@ -43,12 +43,49 @@ export interface SlashCommandItem {
   onSelect?: () => void;
 }
 
-export function getSlashCommandMatches(input: string, commands: SlashCommandItem[]) {
+export interface ResolvedSlashCommand {
+  matchedCommand: SlashCommandItem | null;
+  commandToken: string | null;
+  bodyText: string;
+  sendText: string | null;
+  displayText: string | null;
+  shouldExecuteImmediately: boolean;
+}
+
+function buildSlashDisplayText(commandToken: string, bodyText: string) {
+  const normalizedBody = bodyText.trim();
+  return normalizedBody ? `已使用 ${commandToken}：${normalizedBody}` : `已使用 ${commandToken}`;
+}
+
+function splitSlashCommandInput(input: string) {
   const trimmed = input.trim();
   if (!trimmed.startsWith("/")) {
+    return {
+      commandToken: null,
+      bodyText: "",
+    };
+  }
+
+  const firstWhitespace = trimmed.search(/\s/);
+  if (firstWhitespace === -1) {
+    return {
+      commandToken: trimmed,
+      bodyText: "",
+    };
+  }
+
+  return {
+    commandToken: trimmed.slice(0, firstWhitespace),
+    bodyText: trimmed.slice(firstWhitespace).trim(),
+  };
+}
+
+export function getSlashCommandMatches(input: string, commands: SlashCommandItem[]) {
+  const { commandToken } = splitSlashCommandInput(input);
+  if (!commandToken) {
     return [];
   }
-  const query = trimmed.slice(1).toLowerCase();
+  const query = commandToken.slice(1).toLowerCase();
   return commands.filter((item) => {
     if (!query) {
       return true;
@@ -63,8 +100,52 @@ export function getSlashCommandCompletion(input: string, commands: SlashCommandI
 }
 
 export function getExactSlashCommand(input: string, commands: SlashCommandItem[]) {
-  const trimmed = input.trim();
-  return commands.find((item) => item.command.toLowerCase() === trimmed.toLowerCase()) || null;
+  const { commandToken } = splitSlashCommandInput(input);
+  if (!commandToken) {
+    return null;
+  }
+  return commands.find((item) => item.command.toLowerCase() === commandToken.toLowerCase()) || null;
+}
+
+export function resolveSlashCommandInput(input: string, commands: SlashCommandItem[]): ResolvedSlashCommand {
+  const { commandToken, bodyText } = splitSlashCommandInput(input);
+  const matchedCommand = commandToken
+    ? commands.find((item) => item.command.toLowerCase() === commandToken.toLowerCase()) || null
+    : null;
+
+  if (!matchedCommand) {
+    return {
+      matchedCommand: null,
+      commandToken,
+      bodyText,
+      sendText: null,
+      displayText: null,
+      shouldExecuteImmediately: false,
+    };
+  }
+
+  if (matchedCommand.onSelect) {
+    return {
+      matchedCommand,
+      commandToken,
+      bodyText,
+      sendText: null,
+      displayText: null,
+      shouldExecuteImmediately: true,
+    };
+  }
+
+  const preset = matchedCommand.insertText || matchedCommand.command;
+  const sendText = bodyText ? `${preset}\n\n${bodyText}` : preset;
+
+  return {
+    matchedCommand,
+    commandToken,
+    bodyText,
+    sendText,
+    displayText: buildSlashDisplayText(matchedCommand.command, bodyText),
+    shouldExecuteImmediately: false,
+  };
 }
 
 function formatLargeNumber(value: number) {

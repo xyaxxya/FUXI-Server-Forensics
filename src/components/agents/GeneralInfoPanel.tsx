@@ -11,7 +11,16 @@ import { useAIWorkspaceStore } from "../../lib/aiWorkspaceStore";
 import { useCommandStore } from "../../store/CommandContext";
 import ThinkingProcess, { ThinkingStep } from "./ThinkingProcess";
 import { ChatTranscriptMessage } from "./ChatTranscriptMessage";
-import { FloatingContextMenu, PlannerPanel, PreviewDialog, PromptDeck, SlashCommandMenu, WorkspaceHeader, getExactSlashCommand, getSlashCommandCompletion } from "./WorkbenchWidgets";
+import {
+  FloatingContextMenu,
+  PlannerPanel,
+  PreviewDialog,
+  PromptDeck,
+  SlashCommandMenu,
+  WorkspaceHeader,
+  getSlashCommandCompletion,
+  resolveSlashCommandInput,
+} from "./WorkbenchWidgets";
 
 interface GeneralInfoPanelProps {
   language: Language;
@@ -291,7 +300,7 @@ export default function GeneralInfoPanel({
     } as AIMessage;
   };
 
-  const runCollectionPrompt = async (prompt: string, actionId?: string) => {
+  const runCollectionPrompt = async (prompt: string, actionId?: string, displayText?: string, historyText?: string) => {
     if (loading) {
       return;
     }
@@ -307,9 +316,10 @@ export default function GeneralInfoPanel({
     const baseMessage: AIMessage = {
       role: "user",
       content: normalizedPrompt,
+      uiContent: displayText,
     };
     const nextHistory = [baseMessage];
-    addPromptHistory(normalizedPrompt);
+    addPromptHistory((historyText || normalizedPrompt).trim());
     setMessages(nextHistory);
     setLoading(true);
     setActiveActionId(actionId || "manual");
@@ -378,26 +388,6 @@ export default function GeneralInfoPanel({
   const slashCommands = useMemo(
     () => [
       {
-        id: "system",
-        command: "/system",
-        title: language === "zh" ? "采集系统信息" : "Collect system info",
-        description: language === "zh" ? "读取系统版本、用户、进程、网络等关键信息" : "Read OS, users, processes and network information",
-        onSelect: () => {
-          void runQuickAction(quickActions[0]);
-          setInput("");
-        },
-      },
-      {
-        id: "web",
-        command: "/web",
-        title: language === "zh" ? "采集网站配置" : "Collect web config",
-        description: language === "zh" ? "定位中间件、配置文件、站点目录与入口" : "Locate middleware, configs, site paths and entry points",
-        onSelect: () => {
-          void runQuickAction(quickActions[1]);
-          setInput("");
-        },
-      },
-      {
         id: "database",
         command: "/database",
         title: language === "zh" ? "采集数据库账号" : "Collect DB credentials",
@@ -406,6 +396,16 @@ export default function GeneralInfoPanel({
           void runQuickAction(quickActions[2]);
           setInput("");
         },
+      },
+      {
+        id: "search",
+        command: "/search",
+        title: language === "zh" ? "搜索网页资料" : "Search the web",
+        description: language === "zh" ? "搜索公开网页、文档或公告后再继续采集" : "Search public pages before continuing collection",
+        insertText:
+          language === "zh"
+            ? "请先搜索与当前服务器、网站组件或数据库配置有关的网页资料，再结合采集结果分析。"
+            : "Search public pages related to this server, web stack or database configuration before analyzing the collected evidence.",
       },
       {
         id: "plan",
@@ -431,14 +431,27 @@ export default function GeneralInfoPanel({
     ],
     [language],
   );
+  const resolvedSlashInput = useMemo(() => resolveSlashCommandInput(input, slashCommands), [input, slashCommands]);
+  const canSend = !!input.trim() && !loading && (!input.trim().startsWith("/") || !!resolvedSlashInput.matchedCommand);
 
-  const handleSend = async () => {
-    if (loading || !input.trim() || input.trim().startsWith("/")) {
+  const handleSend = async (rawInput = input) => {
+    const trimmedInput = rawInput.trim();
+    if (loading || !trimmedInput) {
       return;
     }
-    const prompt = input.trim();
+
+    const resolvedSlash = resolveSlashCommandInput(trimmedInput, slashCommands);
+    if (trimmedInput.startsWith("/") && !resolvedSlash.matchedCommand) {
+      return;
+    }
+    if (resolvedSlash.shouldExecuteImmediately && resolvedSlash.matchedCommand?.onSelect) {
+      resolvedSlash.matchedCommand.onSelect();
+      return;
+    }
+
+    const prompt = resolvedSlash.sendText ?? trimmedInput;
     setInput("");
-    await runCollectionPrompt(prompt);
+    await runCollectionPrompt(prompt, undefined, resolvedSlash.displayText ?? trimmedInput, trimmedInput);
   };
 
   useEffect(() => {
@@ -594,7 +607,7 @@ export default function GeneralInfoPanel({
                 whileHover={{ y: -1 }}
                 whileTap={{ scale: 0.985 }}
                 onClick={() => void handleSend()}
-                disabled={loading || !input.trim() || input.trim().startsWith("/")}
+                disabled={!canSend}
                 className="ui-button-primary ui-pressable inline-flex items-center justify-center gap-2 rounded-[1.2rem] px-4 py-2.5 text-sm font-medium disabled:bg-slate-300 disabled:border-slate-300 sm:self-start"
               >
                 {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
@@ -615,18 +628,7 @@ export default function GeneralInfoPanel({
                 }
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
-                  if (input.trim().startsWith("/")) {
-                    const exactCommand = getExactSlashCommand(input, slashCommands);
-                    if (exactCommand) {
-                      if (exactCommand.onSelect) {
-                        exactCommand.onSelect();
-                      } else {
-                        setInput(exactCommand.insertText || exactCommand.command);
-                      }
-                    }
-                  } else {
-                    void handleSend();
-                  }
+                  void handleSend();
                 }
               }}
               placeholder={
@@ -645,7 +647,7 @@ export default function GeneralInfoPanel({
                   command.onSelect();
                   return;
                 }
-                setInput(command.insertText || "");
+                setInput(command.command);
               }}
             />
           </div>

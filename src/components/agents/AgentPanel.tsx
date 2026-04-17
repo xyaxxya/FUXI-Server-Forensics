@@ -13,7 +13,16 @@ import { useAIWorkspaceStore } from "../../lib/aiWorkspaceStore";
 import { useCommandStore } from "../../store/CommandContext";
 import ThinkingProcess, { ThinkingStep } from "./ThinkingProcess";
 import { ChatTranscriptMessage } from "./ChatTranscriptMessage";
-import { FloatingContextMenu, PlannerPanel, PreviewDialog, PromptDeck, SlashCommandMenu, WorkspaceHeader, getExactSlashCommand, getSlashCommandCompletion } from "./WorkbenchWidgets";
+import {
+  FloatingContextMenu,
+  PlannerPanel,
+  PreviewDialog,
+  PromptDeck,
+  SlashCommandMenu,
+  WorkspaceHeader,
+  getSlashCommandCompletion,
+  resolveSlashCommandInput,
+} from "./WorkbenchWidgets";
 
 interface AgentPanelProps {
   language?: Language;
@@ -276,10 +285,13 @@ export default function AgentPanel({
       return;
     }
 
-    const questions = questionInput
-      .split("\n")
-      .map((item) => item.trim())
-      .filter(Boolean);
+    const resolvedSlash = resolveSlashCommandInput(questionInput, slashCommands);
+    const questions = questionInput.trim().startsWith("/") && resolvedSlash.matchedCommand && !resolvedSlash.shouldExecuteImmediately
+      ? [resolvedSlash.displayText || questionInput.trim()]
+      : questionInput
+          .split("\n")
+          .map((item) => item.trim())
+          .filter(Boolean);
     if (questions.length === 0) {
       setStatus(language === "zh" ? "请先输入至少一个问题。" : "Enter at least one question.");
       return;
@@ -290,7 +302,7 @@ export default function AgentPanel({
       id: crypto.randomUUID(),
       question,
       status: "pending",
-      messages: [{ role: "user", content: question }],
+      messages: [{ role: "user", content: resolvedSlash.sendText ?? question, uiContent: resolvedSlash.displayText || undefined }],
       answer: "",
       error: "",
     }));
@@ -335,7 +347,7 @@ export default function AgentPanel({
 
           try {
             const finalHistory = await runConversationLoop({
-              initialHistory: [{ role: "user", content: batchItem.question }],
+              initialHistory: batchItem.messages,
               settings: aiSettings,
               generalInfo: batchContext,
               signal: abortController.signal,
@@ -430,14 +442,14 @@ export default function AgentPanel({
             : "Create a shared plan for all questions first, then answer each question step by step.",
       },
       {
-        id: "web",
-        command: "/web",
-        title: language === "zh" ? "联网补充资料" : "Search the web",
-        description: language === "zh" ? "为整批问题补充公开资料、文档或漏洞说明" : "Gather public references for the batch",
+        id: "search",
+        command: "/search",
+        title: language === "zh" ? "搜索网页资料" : "Search the web",
+        description: language === "zh" ? "为整批问题补充公开网页、文档或漏洞说明" : "Gather public web references for the batch",
         insertText:
           language === "zh"
-            ? "请先联网搜索与这些问题相关的公开资料，再结合搜索结果统一回答。"
-            : "Search the public web for references related to these questions before answering them.",
+            ? "请先搜索与这些问题相关的网页资料，再结合搜索结果统一回答。"
+            : "Search the web for references related to these questions before answering them.",
       },
       {
         id: "context",
@@ -535,12 +547,12 @@ export default function AgentPanel({
               }
               if (event.key === "Enter" && !event.shiftKey && questionInput.trim().startsWith("/")) {
                 event.preventDefault();
-                const exactCommand = getExactSlashCommand(questionInput, slashCommands);
-                if (exactCommand) {
-                  if (exactCommand.onSelect) {
-                    exactCommand.onSelect();
+                const resolvedSlash = resolveSlashCommandInput(questionInput, slashCommands);
+                if (resolvedSlash.matchedCommand) {
+                  if (resolvedSlash.shouldExecuteImmediately && resolvedSlash.matchedCommand.onSelect) {
+                    resolvedSlash.matchedCommand.onSelect();
                   } else {
-                    setQuestionInput(exactCommand.insertText || exactCommand.command);
+                    setQuestionInput(resolvedSlash.sendText || resolvedSlash.matchedCommand.insertText || resolvedSlash.matchedCommand.command);
                   }
                 }
               }
@@ -594,7 +606,7 @@ export default function AgentPanel({
               command.onSelect();
               return;
             }
-            setQuestionInput(command.insertText || "");
+            setQuestionInput(command.command);
           }}
         />
       </div>

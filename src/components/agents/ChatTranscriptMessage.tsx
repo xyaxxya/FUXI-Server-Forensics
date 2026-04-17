@@ -112,18 +112,19 @@ function CodeBlock({ code, language, uiLanguage }: { code: string; language: str
 
 export function ChatTranscriptMessage({ message, language }: { message: AIMessage; language: Language }) {
   const isUser = message.role === "user";
+  const displayContent = isUser ? (message.uiContent || message.content) : message.content;
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={`neo-msg-wrap ${isUser ? "pt-1" : "pl-6"}`}>
       {isUser ? (
-        <div className="neo-msg-card neo-msg-user group rounded-[1.25rem] px-4 py-3 transition-all duration-200 hover:-translate-y-0.5" data-message-role="user" data-message-content={message.content}>
+        <div className="neo-msg-card neo-msg-user group rounded-[1.25rem] px-4 py-3 transition-all duration-200 hover:-translate-y-0.5" data-message-role="user" data-message-content={displayContent}>
           <div className="mb-2 flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-500">
             <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/80 text-[11px] text-slate-600">
               &gt;
             </span>
             {translations[language].user_label}
           </div>
-          <div className="whitespace-pre-wrap text-[14px] leading-7 tracking-[0.01em] text-slate-800/95">{message.content}</div>
+          <div className="whitespace-pre-wrap text-[14px] leading-7 tracking-[0.01em] text-slate-800/95">{displayContent}</div>
         </div>
       ) : (
         <div className="neo-msg-card neo-msg-assistant group relative overflow-hidden rounded-[1.3rem] px-4 py-3 backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5" data-message-role="assistant" data-message-content={message.content}>
