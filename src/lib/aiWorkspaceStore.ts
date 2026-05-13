@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { normalizeSkillIds } from "../skills/registry";
 
 export type AIWorkspaceSource =
   | "manual"
@@ -51,7 +52,7 @@ export interface AIWorkspaceSnapshot {
 
 export interface AIWorkspaceEvent {
   id: string;
-  type: "record" | "task" | "snippet" | "snapshot" | "system";
+  type: "record" | "task" | "snippet" | "snapshot" | "skill" | "system";
   title: string;
   detail: string;
   source: AIWorkspaceSource | "workspace";
@@ -88,6 +89,9 @@ interface AIWorkspaceState {
   snapshots: AIWorkspaceSnapshot[];
   events: AIWorkspaceEvent[];
   sessionTitle: string;
+  manualSkillIds: string[];
+  autoSkillIds: string[];
+  activeSkillIds: string[];
   setManualContext: (value: string | ((prev: string) => string)) => void;
   setSessionTitle: (value: string) => void;
   appendRecord: (input: {
@@ -132,6 +136,11 @@ interface AIWorkspaceState {
     detail: string;
     source?: AIWorkspaceEvent["source"];
   }) => AIWorkspaceEvent | null;
+  setAutoSkillIds: (ids: string[]) => void;
+  enableSkill: (id: string) => void;
+  disableSkill: (id: string) => void;
+  toggleSkill: (id: string) => void;
+  clearManualSkills: () => void;
   removeRecord: (id: string) => void;
   updateRecord: (id: string, input: { title?: string; content?: string }) => void;
   clearRecords: () => void;
@@ -167,6 +176,9 @@ export const useAIWorkspaceStore = create<AIWorkspaceState>()(
       snapshots: [],
       events: [],
       sessionTitle: "取证工作台",
+      manualSkillIds: [],
+      autoSkillIds: [],
+      activeSkillIds: [],
       setManualContext: (value) => {
         set((state) => ({
           manualContext: typeof value === "function" ? value(state.manualContext) : value,
@@ -550,6 +562,73 @@ export const useAIWorkspaceStore = create<AIWorkspaceState>()(
         }));
         return event;
       },
+      setAutoSkillIds: (ids) => {
+        const normalized = normalizeSkillIds(ids);
+        set((state) => {
+          const activeSkillIds = normalizeSkillIds([...normalized, ...state.manualSkillIds]);
+          return {
+            autoSkillIds: normalized,
+            activeSkillIds,
+          };
+        });
+      },
+      enableSkill: (id) => {
+        const [normalizedId] = normalizeSkillIds([id]);
+        if (!normalizedId) {
+          return;
+        }
+        set((state) => {
+          const manualSkillIds = normalizeSkillIds([...state.manualSkillIds, normalizedId]);
+          return {
+            manualSkillIds,
+            activeSkillIds: normalizeSkillIds([...state.autoSkillIds, ...manualSkillIds]),
+          };
+        });
+        get().pushEvent({
+          type: "skill",
+          title: `启用技能 · ${normalizedId}`,
+          detail: normalizedId,
+          source: "workspace",
+        });
+      },
+      disableSkill: (id) => {
+        const [normalizedId] = normalizeSkillIds([id]);
+        if (!normalizedId) {
+          return;
+        }
+        set((state) => {
+          const manualSkillIds = state.manualSkillIds.filter((skillId) => skillId !== normalizedId);
+          return {
+            manualSkillIds,
+            activeSkillIds: normalizeSkillIds([...state.autoSkillIds, ...manualSkillIds]),
+          };
+        });
+        get().pushEvent({
+          type: "skill",
+          title: `停用手动技能 · ${normalizedId}`,
+          detail: normalizedId,
+          source: "workspace",
+        });
+      },
+      toggleSkill: (id) => {
+        if (get().manualSkillIds.includes(id)) {
+          get().disableSkill(id);
+          return;
+        }
+        get().enableSkill(id);
+      },
+      clearManualSkills: () => {
+        set((state) => ({
+          manualSkillIds: [],
+          activeSkillIds: normalizeSkillIds(state.autoSkillIds),
+        }));
+        get().pushEvent({
+          type: "skill",
+          title: "清空手动技能",
+          detail: "manual skills cleared",
+          source: "workspace",
+        });
+      },
       removeRecord: (id) => {
         const record = get().records.find((item) => item.id === id);
         set((state) => ({
@@ -598,7 +677,19 @@ export const useAIWorkspaceStore = create<AIWorkspaceState>()(
         set({ records: [] });
       },
       clearAll: () => {
-        set({ manualContext: "", records: [], tasks: [], promptHistory: [], promptSnippets: [], snapshots: [], events: [], sessionTitle: "取证工作台" });
+        set({
+          manualContext: "",
+          records: [],
+          tasks: [],
+          promptHistory: [],
+          promptSnippets: [],
+          snapshots: [],
+          events: [],
+          sessionTitle: "取证工作台",
+          manualSkillIds: [],
+          autoSkillIds: [],
+          activeSkillIds: [],
+        });
       },
       getCombinedContext: () => buildWorkspaceContext(get().manualContext, get().records),
     }),
@@ -614,6 +705,9 @@ export const useAIWorkspaceStore = create<AIWorkspaceState>()(
         snapshots: state.snapshots,
         events: state.events,
         sessionTitle: state.sessionTitle,
+        manualSkillIds: state.manualSkillIds,
+        autoSkillIds: state.autoSkillIds,
+        activeSkillIds: state.activeSkillIds,
       }),
     },
   ),

@@ -757,13 +757,13 @@ function TableDisplay({ data, language }: { data: TableData; language: Language 
         <table className="w-full text-left border-collapse">
           <thead>
             <tr>
-              <th className="p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 w-10 text-center bg-slate-50/80 sticky top-0 z-10 backdrop-blur-md">
+              <th className="p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200/50 w-10 text-center bg-white/40 sticky top-0 z-10 backdrop-blur-md">
                 #
               </th>
               {data.headers.map((h, i) => (
                 <th
                   key={i}
-                  className="p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 whitespace-nowrap bg-slate-50/80 sticky top-0 z-10 backdrop-blur-md"
+                  className="p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200/50 whitespace-nowrap bg-white/40 sticky top-0 z-10 backdrop-blur-md"
                 >
                   {t[h as keyof typeof t] || h}
                 </th>
@@ -777,11 +777,11 @@ function TableDisplay({ data, language }: { data: TableData; language: Language 
                 <tr
                   key={originalIndex}
                   onClick={() => setSelectedRowIndex(originalIndex)}
-                  className={`transition-colors group border-b border-slate-100 last:border-0 cursor-pointer ${
-                    selectedRowIndex === originalIndex ? "bg-blue-100/50" : "hover:bg-blue-50/30"
+                  className={`transition-colors group border-b border-slate-100/50 last:border-0 cursor-pointer ${
+                    selectedRowIndex === originalIndex ? "bg-blue-500/10 backdrop-blur-sm" : "hover:bg-white/40"
                   }`}
                 >
-                  <td className="p-3 text-xs text-slate-400 font-mono border-b border-slate-100 text-center align-top">
+                  <td className="p-3 text-xs text-slate-400 font-mono border-b border-slate-100/50 text-center align-top">
                     {originalIndex + 1}
                   </td>
                   {row.map((cell, j) => {
@@ -872,8 +872,8 @@ function RawOutputDisplay({ value, language }: { value: string; language: Langua
   };
 
   return (
-    <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50">
-      <div className="px-3 py-2 border-b border-slate-200 bg-white flex items-center justify-between">
+    <div className="border border-slate-200/60 rounded-xl overflow-hidden bg-white/40 backdrop-blur-sm">
+      <div className="px-3 py-2 border-b border-slate-200/60 bg-white/50 flex items-center justify-between">
         <span className="text-xs text-slate-500">
           {language === "zh" ? "原始输出" : "Raw Output"}
         </span>
@@ -949,8 +949,8 @@ function SecurityLogDisplay({ data, language }: { data: SecurityLogData; languag
   };
 
   return (
-    <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50">
-      <div className="px-3 py-2 border-b border-slate-200 bg-white flex items-center justify-between">
+    <div className="border border-slate-200/60 rounded-xl overflow-hidden bg-white/40 backdrop-blur-sm">
+      <div className="px-3 py-2 border-b border-slate-200/60 bg-white/50 flex items-center justify-between">
         <span className="text-xs text-slate-500">
           {language === "zh" ? data.title : "Security Audit Summary"}
         </span>
@@ -966,7 +966,7 @@ function SecurityLogDisplay({ data, language }: { data: SecurityLogData; languag
           {language === "zh" ? "细节换行" : "Wrap Detail"}
         </button>
       </div>
-      <div className="p-3 grid grid-cols-2 lg:grid-cols-5 gap-2 border-b border-slate-200 bg-white">
+      <div className="p-3 grid grid-cols-2 lg:grid-cols-5 gap-2 border-b border-slate-200/60 bg-transparent">
         {statCards.map((card, index) => (
           <div key={index} className={`rounded-lg border px-3 py-2 ${card.style}`}>
             <div className="text-[10px] opacity-90">{language === "zh" ? card.labelZh : card.labelEn}</div>
@@ -981,7 +981,7 @@ function SecurityLogDisplay({ data, language }: { data: SecurityLogData; languag
           </div>
         )}
         {data.rows.map((row, index) => (
-          <div key={`${row.time}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3">
+          <div key={`${row.time}-${index}`} className="rounded-lg border border-slate-200/60 bg-white/60 p-3 backdrop-blur-md">
             <div className="flex flex-wrap items-center gap-2 mb-1">
               <span className="text-xs text-slate-500 font-mono">{row.time}</span>
               <span className={`px-2 py-0.5 rounded-full border text-[10px] ${statusStyle[row.status]}`}>
@@ -1236,7 +1236,7 @@ function CommandCard({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       whileHover={{ y: -2 }}
-      className={`bg-white/85 backdrop-blur-xl rounded-3xl shadow-[0_8px_30px_rgba(15,23,42,0.06)] border border-slate-200/70 overflow-visible relative z-0 hover:z-30 hover:shadow-[0_12px_36px_rgba(14,165,233,0.12)] hover:border-sky-200/80 transition-all duration-300 flex flex-col group ${
+      className={`ui-surface overflow-visible relative z-0 hover:z-30 transition-all duration-300 flex flex-col group ${
         className || ""
       }`}
       onMouseEnter={handleMouseEnter}
@@ -1264,13 +1264,13 @@ function CommandCard({
         )}
       </AnimatePresence>
 
-      <div className="px-6 py-4 border-b border-slate-100/90 flex items-center justify-between bg-white/60">
+      <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-transparent">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-50 to-indigo-50 flex items-center justify-center text-sky-600 group-hover:scale-105 transition-transform duration-300 shadow-sm border border-sky-100/60">
+          <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-800 border border-slate-200">
             <CardIcon size={16} />
           </div>
           <div className="flex flex-col leading-tight">
-            <span className="font-semibold text-slate-800">{title}</span>
+            <span className="font-medium text-slate-800 tracking-tight">{title}</span>
             {data?.ts && (
               <span className="text-[10px] text-slate-400">
                 Updated {new Date(data.ts).toLocaleTimeString()}
@@ -1285,7 +1285,7 @@ function CommandCard({
           />
           <button
             onClick={onRefresh}
-            className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-all"
+            className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-all"
           >
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           </button>
@@ -1439,7 +1439,7 @@ export default function Dashboard({
   return (
     <>
       {/* General Agent View */}
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isGeneralAgent ? 'hidden' : ''}`}>
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col ui-shell overflow-hidden relative ${!isGeneralAgent ? 'hidden' : ''}`}>
         <GeneralAgent 
           language={language} 
           aiSettings={aiSettings} 
@@ -1452,7 +1452,7 @@ export default function Dashboard({
       </div>
 
       {/* Agent Panel View */}
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isAgentPanel ? 'hidden' : ''}`}>
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col ui-shell overflow-hidden relative ${!isAgentPanel ? 'hidden' : ''}`}>
         <AgentPanel
           language={language}
           aiSettings={aiSettings}
@@ -1463,8 +1463,8 @@ export default function Dashboard({
       </div>
 
       {/* General Info Context Panel */}
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isContextPanel ? 'hidden' : ''}`}>
-          <div className="h-full bg-white/90 backdrop-blur-xl rounded-2xl shadow-sm border border-slate-200/60 overflow-y-auto custom-scrollbar">
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col ui-shell overflow-hidden relative ${!isContextPanel ? 'hidden' : ''}`}>
+          <div className="h-full ui-surface overflow-y-auto custom-scrollbar">
              <GeneralInfoPanel
                 language={language}
                 generalInfo={generalInfo}
@@ -1476,7 +1476,7 @@ export default function Dashboard({
       </div>
 
       {/* Database Agent View */}
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isDatabaseAgent ? 'hidden' : ''}`}>
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col ui-shell overflow-hidden relative ${!isDatabaseAgent ? 'hidden' : ''}`}>
         <DatabaseAgent 
           language={language} 
           aiSettings={aiSettings} 
@@ -1486,7 +1486,7 @@ export default function Dashboard({
         />
       </div>
 
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isResponsePanel ? 'hidden' : ''}`}>
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col ui-shell overflow-hidden relative ${!isResponsePanel ? 'hidden' : ''}`}>
         <ResponsePanel language={language} active={isResponsePanel} />
       </div>
 
@@ -1497,12 +1497,12 @@ export default function Dashboard({
         </div>
       </div>
 
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col glass overflow-hidden relative ${!isPentest ? 'hidden' : ''}`}>
+      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col ui-shell overflow-hidden relative ${!isPentest ? 'hidden' : ''}`}>
         <PentestPanel language={language} />
       </div>
 
       {/* Main Dashboard Metrics View */}
-      <div className={`flex-1 flex flex-col h-screen overflow-hidden glass relative ${!isMetrics ? 'hidden' : ''}`}>
+      <div className={`flex-1 flex flex-col h-screen overflow-hidden ui-shell relative ${!isMetrics ? 'hidden' : ''}`}>
       
       {/* Top Bar */}
       <div className="px-8 md:px-10 py-8 flex items-center justify-between relative z-20">
@@ -1512,14 +1512,13 @@ export default function Dashboard({
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <h1 className="text-3xl md:text-4xl font-black text-slate-800 tracking-tight capitalize flex items-center gap-3">
-              {activeTab === 'system' && <Cpu className="text-sky-500" size={36} />}
-              {activeTab === 'network' && <Globe className="text-sky-500" size={36} />}
-              {activeTab === 'services' && <Server className="text-sky-500" size={36} />}
-              {activeTab === 'docker' && <Layout className="text-sky-500" size={36} />}
+            <h1 className="text-3xl md:text-4xl font-bold text-slate-900 tracking-tight capitalize flex items-center gap-3">
+              {activeTab === 'system' && <Cpu className="text-slate-800" size={32} />}
+              {activeTab === 'network' && <Globe className="text-slate-800" size={32} />}
+              {activeTab === 'services' && <Server className="text-slate-800" size={32} />}
+              {activeTab === 'docker' && <Layout className="text-slate-800" size={32} />}
               {t[activeTab as keyof typeof t] || activeTab}
             </h1>
-            <div className="h-1 w-20 bg-gradient-to-r from-sky-500 to-indigo-500 mt-2 rounded-full" />
             <p className="mt-3 text-sm text-slate-500 max-w-xl">
               {language === "zh" ? "实时查看核心指标与取证结果，支持快速检索与聚焦分析。" : "Realtime metrics and forensic outputs with fast search and focused analysis."}
             </p>
@@ -1535,7 +1534,7 @@ export default function Dashboard({
                       whileTap={{ scale: 0.985 }}
                       onClick={() => setActiveSubcategories((prev) => ({ ...prev, [activeTab]: option.key }))}
                       className={`relative overflow-hidden rounded-2xl px-4 py-2.5 text-sm font-medium transition-all ${
-                        isActive ? "text-slate-900 shadow-[0_16px_32px_-24px_rgba(37,99,235,0.4)]" : "ui-chip text-slate-600"
+                        isActive ? "ui-chip-active" : "ui-chip"
                       }`}
                     >
                       {isActive && (
@@ -1555,11 +1554,11 @@ export default function Dashboard({
           
           {/* Connection Status Indicator */}
           {currentSession && (
-            <div className="flex items-center gap-2 mt-4 bg-white/70 backdrop-blur px-3 py-1.5 rounded-full border border-sky-100/60 w-fit shadow-sm">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-              <span className="text-xs font-semibold text-slate-600">
+            <div className="flex items-center gap-2 mt-4 ui-subtle-surface px-3 py-1.5 w-fit shadow-sm">
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-xs font-medium text-slate-600">
                 {t.connected_to}{" "}
-                <span className="text-sky-600 font-mono">
+                <span className="text-slate-800 font-mono">
                   {currentSession.user}@{currentSession.ip}
                 </span>
               </span>
@@ -1572,14 +1571,14 @@ export default function Dashboard({
           {progress < 100 && progress > 0 && (
             <div className="flex flex-col items-end mr-4">
               <div className="flex items-center gap-2 mb-1">
-                <div className="w-3 h-3 rounded-full border-2 border-sky-500 border-t-transparent animate-spin" />
-                <span className="text-xs font-semibold text-sky-600">
+                <div className="w-3 h-3 rounded-full border-2 border-slate-900 border-t-transparent animate-spin" />
+                <span className="text-xs font-bold text-slate-900">
                   {t.running}: {currentTaskTitle}
                 </span>
               </div>
-              <div className="w-32 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div className="w-32 h-1 bg-slate-200 rounded-full overflow-hidden">
                 <motion.div
-                  className="h-full bg-sky-500 rounded-full"
+                  className="h-full bg-slate-900 rounded-full"
                   initial={{ width: 0 }}
                   animate={{ width: `${progress}%` }}
                 />
@@ -1589,9 +1588,9 @@ export default function Dashboard({
 
           {/* Monitoring Status */}
           {isMonitoring && (
-            <div className="hidden md:flex items-center gap-2 mr-2 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
-              <Activity size={14} className="text-emerald-500 animate-pulse" />
-              <span className="text-xs font-bold text-emerald-600">
+            <div className="hidden md:flex items-center gap-2 mr-2 bg-slate-50 px-3 py-1 rounded-full border border-slate-200">
+              <Activity size={14} className="text-slate-800 animate-pulse" />
+              <span className="text-xs font-semibold text-slate-800">
                 {t.monitoring_metrics.replace('{0}', monitoredCommandIds.length.toString())}
               </span>
             </div>
@@ -1599,23 +1598,23 @@ export default function Dashboard({
 
           <div className="relative group">
             <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-sky-500 transition-colors"
-              size={18}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 transition-colors"
+              size={16}
             />
             <input
               type="text"
               placeholder={t.search_metrics}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2.5 bg-white/85 backdrop-blur-sm border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 transition-all w-52 md:w-64 shadow-sm hover:shadow-md"
+              className="pl-9 pr-4 py-2 ui-input-base w-52 md:w-64"
             />
           </div>
 
           <button
             onClick={() => setShowAbout(true)}
-            className="w-10 h-10 rounded-xl bg-white/80 backdrop-blur-sm border border-slate-200 flex items-center justify-center text-slate-500 hover:text-sky-600 hover:border-sky-200 hover:bg-sky-50 transition-all shadow-sm hover:shadow-md"
+            className="w-9 h-9 glass-button flex items-center justify-center text-slate-500"
           >
-            <HelpCircle size={20} />
+            <HelpCircle size={18} />
           </button>
         </div>
       </div>
@@ -1628,7 +1627,7 @@ export default function Dashboard({
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden relative"
+              className="bg-white/80 backdrop-blur-2xl w-full max-w-md rounded-3xl shadow-2xl border border-white/50 overflow-hidden relative"
             >
               <button
                 onClick={() => setShowAbout(false)}
@@ -1713,7 +1712,7 @@ export default function Dashboard({
           <div className="mb-6 flex justify-end">
             <button
               onClick={() => onTabChange("agent-database")}
-              className="flex items-center gap-2 px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg shadow-lg shadow-sky-500/20 transition-all font-medium text-sm transform hover:scale-105 active:scale-95"
+              className="flex items-center gap-2 px-4 py-2 ui-button-primary transition-all text-sm transform"
             >
               <Database size={16} />
               <span>{language === 'zh' ? '数据库智查与管理' : 'Database AI & Management'}</span>
@@ -1724,10 +1723,10 @@ export default function Dashboard({
         {/* Command Cards */}
         {visibleCommands.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-            <div className="w-24 h-24 rounded-3xl bg-white/50 backdrop-blur shadow-xl shadow-sky-500/10 flex items-center justify-center mb-6 border border-white">
-              <Cloud className="text-sky-400" size={48} />
+            <div className="w-24 h-24 rounded-[16px] bg-white border border-slate-200 shadow-sm flex items-center justify-center mb-6">
+              <Cloud className="text-slate-400" size={32} />
             </div>
-            <h3 className="text-2xl font-bold text-slate-800 mb-2">
+            <h3 className="text-xl font-semibold text-slate-800 mb-2 tracking-tight">
               {searchTerm
                 ? (language === "zh" ? "没有匹配结果" : "No Matching Results")
                 : !hasDefinitionsInScope
@@ -1736,7 +1735,7 @@ export default function Dashboard({
                     ? (language === "zh" ? "等待采集" : "Waiting For Collection")
                     : t.no_metrics_title}
             </h3>
-            <p className="text-slate-500 max-w-md mx-auto mb-8 text-lg">
+            <p className="text-slate-500 max-w-md mx-auto mb-8 text-sm">
               {searchTerm
                 ? (language === "zh" ? "当前筛选条件下没有匹配的命令，请尝试更换关键词。" : "No commands match the current search. Try a different keyword.")
                 : !hasDefinitionsInScope
@@ -1746,18 +1745,18 @@ export default function Dashboard({
                     : t.no_metrics_desc}
             </p>
             <button
-              onClick={() => {
-                const ids = tabCommands.map((command) => command.id);
-                if (ids.length > 0) {
-                  void fetchAll(ids, true);
-                }
-              }}
-              className="px-8 py-4 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white rounded-2xl font-bold shadow-lg shadow-sky-500/30 transition-all flex items-center gap-3 transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={!hasDefinitionsInScope}
-            >
-              <RefreshCw size={20} />
-              <span>{t.reload_system}</span>
-            </button>
+                onClick={() => {
+                  const ids = tabCommands.map((command) => command.id);
+                  if (ids.length > 0) {
+                    void fetchAll(ids, true);
+                  }
+                }}
+                className="px-6 py-3 ui-button-primary transition-all flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!hasDefinitionsInScope}
+              >
+                <RefreshCw size={16} />
+                <span>{t.reload_system}</span>
+              </button>
           </div>
         ) : (
           <motion.div 

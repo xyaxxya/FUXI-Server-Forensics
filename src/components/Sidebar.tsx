@@ -75,8 +75,8 @@ const navItems: NavItem[] = [
   {
     id: "pentest",
     icon: Wrench,
-    title: { zh: "工具面板", en: "Tool Panel" },
-    description: { zh: "访问现有工具与辅助能力", en: "Open tools and helper capabilities" },
+    title: { zh: "远勘智能体", en: "Recon Agent" },
+    description: { zh: "网站画像、后台发现与攻击面研判", en: "Web profiling, admin discovery and attack-surface triage" },
   },
 ];
 
@@ -105,24 +105,23 @@ export default function Sidebar({
       : "Collapse";
 
   return (
-    <div className={`h-full ui-shell flex flex-col transition-all duration-300 ${isCollapsed ? "w-[88px]" : "w-[292px]"}`}>
-      <div className="border-b border-slate-200/70 p-4">
+    <div className={`h-full ui-shell border-r border-slate-100 flex flex-col transition-all duration-300 ${isCollapsed ? "w-[80px]" : "w-[260px]"}`}>
+      <div className="border-b border-slate-100/50 p-4">
         <div className="flex items-center gap-3">
           <motion.button
             onClick={onToggleServerSidebar}
-            whileHover={{ y: -2, scale: 1.02 }}
+            whileHover={{ y: -1, scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
-            className="ui-button ui-pressable ui-focus-ring flex h-12 w-12 items-center justify-center rounded-[1.35rem]"
+            className="glass-button flex h-10 w-10 items-center justify-center rounded-lg"
           >
-            <img src={tauriLogo} alt="FUXI" className="h-8 w-8 object-contain" />
+            <img src={tauriLogo} alt="FUXI" className="h-6 w-6 object-contain grayscale opacity-80" />
           </motion.button>
           {!isCollapsed && (
             <div className="min-w-0 flex-1">
-              <div className="text-lg font-bold text-slate-900">FUXI AI Workbench</div>
-              <div className="mt-1 text-xs text-slate-500">
-                {language === "zh" ? "服务器取证与智能分析工作台" : "Server forensics and AI investigation workspace"}
+              <div className="text-[15px] font-semibold text-slate-900 tracking-tight">FUXI Workbench</div>
+              <div className="text-[10px] font-medium tracking-wide text-slate-500">
+                {language === "zh" ? "SERVER FORENSICS" : "SERVER FORENSICS"}
               </div>
-              <div className="mt-3 h-px ui-divider" />
             </div>
           )}
         </div>
@@ -130,11 +129,11 @@ export default function Sidebar({
 
       <div className="flex-1 overflow-y-auto custom-scrollbar px-3 pt-4 pb-3">
         {!isCollapsed && (
-          <div className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+          <div className="px-3 pb-2 text-[10px] font-semibold text-slate-400">
             {language === "zh" ? "核心工作区" : "Core Workspace"}
           </div>
         )}
-        <nav className="space-y-2">
+        <nav className="space-y-1">
           {navItems.map((item) => {
             const isActive = item.id === activeTab;
             const Icon = item.icon;
@@ -143,35 +142,35 @@ export default function Sidebar({
                 key={item.id}
                 onClick={() => onTabChange(item.id)}
                 title={isCollapsed ? textByLanguage(language, item.title) : undefined}
-                whileHover={{ y: -2 }}
+                whileHover={{ y: -1 }}
                 whileTap={{ scale: 0.985 }}
-                className={`ui-hover-lift ui-pressable ui-focus-ring relative w-full overflow-hidden text-left ${
-                  isActive ? "ui-chip-active rounded-[1.5rem]" : "ui-button rounded-[1.5rem]"
-                } ${isCollapsed ? "flex justify-center p-3.5" : "p-4"}`}
+                className={`relative w-full overflow-hidden text-left transition-all duration-200 ${
+                  isActive ? "bg-transparent" : "hover:bg-slate-50/50"
+                } ${isCollapsed ? "flex justify-center p-2.5 rounded-lg" : "p-3 rounded-lg"}`}
               >
                 {isActive && (
                   <motion.div
                     layoutId="sidebar-active-item"
-                    className="absolute inset-0 rounded-[1.5rem] bg-gradient-to-br from-blue-50 via-white to-indigo-50"
-                    transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                    className="absolute inset-0 rounded-[12px] bg-gradient-to-r from-blue-600 to-indigo-600 shadow-md shadow-indigo-500/20"
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
                 )}
                 <div className={`relative z-10 ${isCollapsed ? "flex items-center justify-center" : "flex items-start gap-3.5"}`}>
                   <div
-                    className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition-all ${
+                    className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-all ${
                       isActive
-                        ? "bg-white text-blue-700 shadow-[0_12px_24px_-18px_rgba(37,99,235,0.6)]"
-                        : "bg-slate-100/90 text-slate-500"
+                        ? "bg-transparent text-white"
+                        : "bg-[#F7F7F8] text-slate-500 border border-black/5"
                     }`}
                   >
                     <Icon size={18} />
                   </div>
                   {!isCollapsed && (
                     <div className="min-w-0 flex-1">
-                      <div className={`text-sm font-semibold ${isActive ? "text-slate-900" : "text-slate-700"}`}>
+                      <div className={`text-sm font-semibold ${isActive ? "text-white" : "text-slate-800"}`}>
                         {textByLanguage(language, item.title)}
                       </div>
-                      <div className={`mt-1 text-xs leading-5 ${isActive ? "text-blue-700/80" : "text-slate-500"}`}>
+                      <div className={`mt-0.5 text-[11px] leading-5 font-medium ${isActive ? "text-white/70" : "text-slate-500"}`}>
                         {textByLanguage(language, item.description)}
                       </div>
                     </div>
@@ -189,12 +188,12 @@ export default function Sidebar({
             onClick={onToggleCollapse}
             whileHover={{ y: -1 }}
             whileTap={{ scale: 0.985 }}
-            className={`ui-button ui-hover-lift ui-pressable ui-focus-ring w-full rounded-[1.35rem] text-slate-600 ${
-              isCollapsed ? "flex justify-center p-3.5" : "flex items-center gap-3 px-4 py-3"
+            className={`w-full rounded-lg text-slate-600 hover:bg-slate-50 transition-colors ${
+              isCollapsed ? "flex justify-center p-2.5" : "flex items-center gap-3 px-3 py-2"
             }`}
             title={collapseLabel}
           >
-            <ChevronRight className={`transition-transform ${isCollapsed ? "" : "rotate-180"}`} size={18} />
+            <ChevronRight className={`transition-transform ${isCollapsed ? "" : "rotate-180"}`} size={16} />
             {!isCollapsed && <span className="text-sm font-medium">{collapseLabel}</span>}
           </motion.button>
         )}
@@ -202,24 +201,24 @@ export default function Sidebar({
           onClick={onOpenSettings}
           whileHover={{ y: -1 }}
           whileTap={{ scale: 0.985 }}
-          className={`ui-button ui-hover-lift ui-pressable ui-focus-ring w-full rounded-[1.35rem] text-slate-600 ${
-            isCollapsed ? "flex justify-center p-3.5" : "flex items-center gap-3 px-4 py-3"
+          className={`w-full rounded-lg text-slate-600 hover:bg-slate-50 transition-colors ${
+            isCollapsed ? "flex justify-center p-2.5" : "flex items-center gap-3 px-3 py-2"
           }`}
           title={settingsLabel}
         >
-          <Settings size={18} />
+          <Settings size={16} />
           {!isCollapsed && <span className="text-sm font-medium">{settingsLabel}</span>}
         </motion.button>
         <motion.button
           onClick={onDisconnect}
           whileHover={{ y: -1 }}
           whileTap={{ scale: 0.985 }}
-          className={`ui-button-danger ui-hover-lift ui-pressable ui-focus-ring w-full rounded-[1.35rem] ${
-            isCollapsed ? "flex justify-center p-3.5" : "flex items-center gap-3 px-4 py-3"
+          className={`w-full rounded-lg text-red-600 hover:bg-red-50 transition-colors ${
+            isCollapsed ? "flex justify-center p-2.5" : "flex items-center gap-3 px-3 py-2"
           }`}
           title={disconnectLabel}
         >
-          <LogOut size={18} />
+          <LogOut size={16} />
           {!isCollapsed && <span className="text-sm font-medium">{disconnectLabel}</span>}
         </motion.button>
       </div>

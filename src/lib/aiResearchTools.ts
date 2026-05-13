@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AIMessage, Tool, ToolCall } from "./ai";
 import type { Language } from "../translations";
+import type { WebReconBatchResult } from "./webRecon";
 
 interface WebSearchItem {
   title: string;
@@ -57,6 +58,41 @@ export const researchTools: Tool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "web_recon_batch",
+      description:
+        "批量对公开网站做安全远勘：解析 IP、DNS、RDAP/注册商、标题、技术栈、架构线索、业务功能、TLS 证书、favicon 哈希、标准站点产物、外部服务主机、页面与 JS 中的 API/后台路径、登录表单和弱口令风险信号。只做公开信息采集，不做口令尝试或暴力破解。",
+      parameters: {
+        type: "object",
+        properties: {
+          targets: {
+            type: "array",
+            items: { type: "string" },
+            description: "要分析的域名或 URL 列表",
+          },
+          probe_admin_paths: {
+            type: "boolean",
+            description: "是否额外探测公开的后台/登录入口候选",
+          },
+          allow_private_targets: {
+            type: "boolean",
+            description: "是否允许扫描内网或保留地址",
+          },
+          timeout_ms: {
+            type: "number",
+            description: "单个站点的超时时间（毫秒）",
+          },
+          max_probe_paths: {
+            type: "number",
+            description: "单站点最多探测多少个候选路径",
+          },
+        },
+        required: ["targets"],
+      },
+    },
+  },
 ];
 
 export async function executeResearchTool(toolCall: ToolCall, language: Language): Promise<AIMessage | null> {
@@ -104,6 +140,39 @@ export async function executeResearchTool(toolCall: ToolCall, language: Language
     return {
       role: "tool",
       content: JSON.stringify(payload, null, 2),
+      tool_call_id: toolCall.id,
+    };
+  }
+
+  if (toolCall.function.name === "web_recon_batch") {
+    const args = JSON.parse(toolCall.function.arguments) as {
+      targets?: unknown;
+      probe_admin_paths?: boolean;
+      allow_private_targets?: boolean;
+      timeout_ms?: number;
+      max_probe_paths?: number;
+    };
+    const targets = Array.isArray(args.targets)
+      ? args.targets.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean)
+      : [];
+    if (targets.length === 0) {
+      return {
+        role: "tool",
+        content: language === "zh" ? "远勘目标列表为空。" : "Recon target list is empty.",
+        tool_call_id: toolCall.id,
+      };
+    }
+
+    const result = await invoke<WebReconBatchResult>("web_recon_batch", {
+      targets,
+      probeAdminPaths: args.probe_admin_paths ?? true,
+      allowPrivateTargets: args.allow_private_targets ?? false,
+      timeoutMs: args.timeout_ms ?? 12000,
+      maxProbePaths: args.max_probe_paths ?? 12,
+    });
+    return {
+      role: "tool",
+      content: JSON.stringify(result, null, 2),
       tool_call_id: toolCall.id,
     };
   }

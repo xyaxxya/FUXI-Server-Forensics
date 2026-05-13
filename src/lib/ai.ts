@@ -29,6 +29,15 @@ export interface ToolCall {
   };
 }
 
+type PartialToolCall = {
+  id?: string;
+  type?: string;
+  function?: {
+    name?: string;
+    arguments?: unknown;
+  };
+};
+
 export type AIProviderId = "fuxi" | "zhipu" | "openai" | "qwen" | "claude" | "kimi" | "gemini" | "ollama" | "custom";
 
 export interface AIProviderConfig {
@@ -394,6 +403,145 @@ function trimForDisplay(value: string, maxLength = 120) {
   return `${normalized.slice(0, maxLength - 3)}...`;
 }
 
+function normalizeToolCalls(value: unknown): ToolCall[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const normalized = value
+    .map((item, index): ToolCall | null => {
+      const raw = item as PartialToolCall | null;
+      const functionName = raw?.function?.name?.trim() || "";
+      if (!functionName) {
+        return null;
+      }
+
+      const rawArguments = raw?.function?.arguments;
+      const args =
+        typeof rawArguments === "string"
+          ? rawArguments
+          : rawArguments === undefined || rawArguments === null
+            ? "{}"
+            : JSON.stringify(rawArguments);
+
+      return {
+        id: typeof raw?.id === "string" && raw.id.trim() ? raw.id : `tool_call_${index}`,
+        type: "function",
+        function: {
+          name: functionName,
+          arguments: args,
+        },
+      };
+    })
+    .filter((toolCall): toolCall is ToolCall => toolCall !== null);
+
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function mergeToolName(current: string, nextChunk: string, knownToolNames: string[]) {
+  if (!nextChunk) {
+    return current;
+  }
+  if (!current || knownToolNames.includes(nextChunk)) {
+    return nextChunk;
+  }
+  if (current === nextChunk || knownToolNames.includes(current)) {
+    return current;
+  }
+
+  const appended = `${current}${nextChunk}`;
+  if (knownToolNames.some((name) => name === appended || name.startsWith(appended))) {
+    return appended;
+  }
+  return nextChunk;
+}
+
+function appendStreamingToolCallDelta(
+  toolCalls: PartialToolCall[],
+  rawDelta: PartialToolCall & { index?: number },
+  knownToolNames: string[],
+) {
+  const index = Number.isInteger(rawDelta.index) ? rawDelta.index : toolCalls.length;
+  if (index === undefined || index < 0) {
+    return;
+  }
+
+  if (!toolCalls[index]) {
+    toolCalls[index] = {
+      id: rawDelta.id,
+      type: "function",
+      function: {
+        name: "",
+        arguments: "",
+      },
+    };
+  }
+
+  const current = toolCalls[index];
+  if (typeof rawDelta.id === "string" && rawDelta.id.trim()) {
+    current.id = rawDelta.id;
+  }
+  current.type = "function";
+  current.function = current.function || { name: "", arguments: "" };
+
+  const deltaFunction = rawDelta.function;
+  if (!deltaFunction) {
+    return;
+  }
+  if (typeof deltaFunction.name === "string") {
+    current.function.name = mergeToolName(current.function.name || "", deltaFunction.name, knownToolNames);
+  }
+  if (typeof deltaFunction.arguments === "string") {
+    current.function.arguments = `${current.function.arguments || ""}${deltaFunction.arguments}`;
+  }
+}
+
+function collapseSystemMessages(messages: AIMessage[], fallbackSystemPrompt: string): AIMessage[] {
+  const systemContent = messages
+    .filter((message) => message.role === "system")
+    .map((message) => message.content.trim())
+    .filter(Boolean)
+    .join("\n\n");
+  const nonSystemMessages = messages.filter((message) => message.role !== "system");
+
+  return [
+    {
+      role: "system",
+      content: systemContent || fallbackSystemPrompt,
+    },
+    ...nonSystemMessages,
+  ];
+}
+
+function sanitizeChatMessage(message: AIMessage) {
+  const payload: {
+    role: AIMessage["role"];
+    content: string;
+    tool_call_id?: string;
+    tool_calls?: ToolCall[];
+  } = {
+    role: message.role,
+    content: message.content || "",
+  };
+
+  if (message.role === "tool" && message.tool_call_id) {
+    payload.tool_call_id = message.tool_call_id;
+  }
+  if (message.role === "assistant" && message.tool_calls?.length) {
+    payload.tool_calls = message.tool_calls;
+  }
+
+  return payload;
+}
+
+function parseToolCallInput(argumentsJson: string) {
+  try {
+    return JSON.parse(argumentsJson) as Record<string, unknown>;
+  } catch {
+    return { raw_arguments: argumentsJson };
+  }
+}
+
 export function getToolDisplayName(toolName: string) {
   if (toolName === "list_server_directory") return "list_files";
   if (toolName === "find_server_files") return "find_files";
@@ -401,6 +549,7 @@ export function getToolDisplayName(toolName: string) {
   if (toolName === "read_server_file") return "read_file";
   if (toolName === "search_web") return "Web Search";
   if (toolName === "fetch_webpage") return "Fetch";
+  if (toolName === "web_recon_batch") return "Web Recon";
   if (toolName === "run_shell_command") return "Shell";
   return toolName;
 }
@@ -420,6 +569,18 @@ export function buildToolDisplayText(toolCall: ToolCall) {
   if (typeof args.query === "string" && args.query.trim()) {
     return {
       title: `${displayName}("${trimForDisplay(args.query, 80)}")`,
+      command: displayName,
+    };
+  }
+  if (Array.isArray(args.targets) && args.targets.length > 0) {
+    const preview = args.targets
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 3)
+      .join(", ");
+    return {
+      title: `${displayName}(${trimForDisplay(preview || String(args.targets.length), 80)})`,
       command: displayName,
     };
   }
@@ -597,10 +758,12 @@ export async function sendToAI(
 
   let effectiveMessages = [...messages];
   const autoRouting = detectAutoSkillRouting(messages, generalInfo);
-  const autoSkillPrompt = buildSkillPackPrompt(autoRouting.selectedSkillIds, "zh");
+  const activeSkillIds = [...autoRouting.selectedSkillIds];
+  const manualSkillMatch = generalInfo?.match(/## Active Skill Packs[\s\S]*/);
+  const autoSkillPrompt = manualSkillMatch ? "" : buildSkillPackPrompt(activeSkillIds, "zh");
   const lastUserContent = [...messages].reverse().find((m) => m.role === "user")?.content || "";
   const isSkillQuestion = /skills?|skill|调用.*skills|会调用什么|哪些skills|有什么skills|调用了哪些|可调用能力/.test(lastUserContent.toLowerCase());
-  const isResearchQuestion = /查资料|搜资料|搜索|联网|网上|互联网|文档|官网|官方|漏洞|cve|资料|教程|说明|公开信息|bing|baidu|百度|必应|查一下|搜一下|检索|query.*web|search.*web/i.test(lastUserContent);
+  const isResearchQuestion = /查资料|搜资料|搜索|联网|网上|互联网|文档|官网|官方|漏洞|cve|资料|教程|说明|公开信息|whois|rdap|favicon|指纹|远勘|后台|域名|bing|baidu|百度|必应|查一下|搜一下|检索|query.*web|search.*web/i.test(lastUserContent);
 
   if (isSkillQuestion) {
       const frameworkText = autoRouting.frameworks.length ? autoRouting.frameworks.join(" / ") : "未识别特定框架";
@@ -752,26 +915,44 @@ export async function sendToAI(
 
   // Claude Specific Handling
   if (config.id === "claude") {
-    const systemMsg = effectiveMessages.find((m) => m.role === "system");
-    const userMsgs = effectiveMessages
+    const claudeMessages = collapseSystemMessages(effectiveMessages, SYSTEM_PROMPT);
+    const systemMsg = claudeMessages.find((m) => m.role === "system");
+    const userMsgs = claudeMessages
       .filter((m) => m.role !== "system")
-      .map((m) => ({
-        role: m.role === "tool" ? "user" : m.role, // Claude doesn't strictly have 'tool' role in input messages same way, but for simplicity mapping tool outputs needs care.
-        // Actually Claude tool use flow:
-        // Assistant: tool_use block
-        // User: tool_result block
-        // We need to map 'tool' role to 'user' role with content block type 'tool_result'
-        content:
-          m.role === "tool"
-            ? [
-                {
-                  type: "tool_result",
-                  tool_use_id: m.tool_call_id,
-                  content: m.content,
-                },
-              ]
-            : m.content,
-      }));
+      .map((m) => {
+        if (m.role === "tool") {
+          return {
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: m.tool_call_id,
+                content: m.content,
+              },
+            ],
+          };
+        }
+
+        if (m.role === "assistant" && m.tool_calls?.length) {
+          return {
+            role: "assistant",
+            content: [
+              ...(m.content.trim() ? [{ type: "text", text: m.content }] : []),
+              ...m.tool_calls.map((toolCall) => ({
+                type: "tool_use",
+                id: toolCall.id,
+                name: toolCall.function.name,
+                input: parseToolCallInput(toolCall.function.arguments),
+              })),
+            ],
+          };
+        }
+
+        return {
+          role: m.role,
+          content: m.content,
+        };
+      });
 
     // Claude tools format
     const claudeTools = tools.map((t) => ({
@@ -828,7 +1009,7 @@ export async function sendToAI(
       return {
         role: "assistant",
         content: textContent,
-        tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
+        tool_calls: normalizeToolCalls(tool_calls),
         usage: {
           prompt_tokens: data.usage?.input_tokens || 0,
           completion_tokens: data.usage?.output_tokens || 0,
@@ -848,11 +1029,7 @@ export async function sendToAI(
   }
 
   // OpenAI Compatible (Zhipu, OpenAI, Qwen, Kimi)
-  // Ensure system prompt is present
-  let finalMessages = effectiveMessages;
-  if (!finalMessages.some((m) => m.role === "system")) {
-    finalMessages = [{ role: "system", content: SYSTEM_PROMPT }, ...finalMessages];
-  }
+  const finalMessages = collapseSystemMessages(effectiveMessages, SYSTEM_PROMPT).map(sanitizeChatMessage);
 
   const payload = {
     model: config.model,
@@ -861,6 +1038,7 @@ export async function sendToAI(
     stream: true,
     ...(tools.length > 0 ? { tools, tool_choice: "auto" } : {}),
   };
+  const knownToolNames = tools.map((tool) => tool.function.name);
 
   try {
     const response = await fetch(`${config.baseUrl}/chat/completions`, {
@@ -883,7 +1061,7 @@ export async function sendToAI(
       const decoder = new TextDecoder("utf-8");
       let content = "";
       let reasoning_content = "";
-      let tool_calls: any[] = [];
+      let tool_calls: PartialToolCall[] = [];
       let usage: any = undefined;
 
       if (reader) {
@@ -905,17 +1083,7 @@ export async function sendToAI(
                   if (delta.reasoning_content) reasoning_content += delta.reasoning_content;
                   if (delta.tool_calls) {
                     for (const tc of delta.tool_calls) {
-                      if (!tool_calls[tc.index]) {
-                        tool_calls[tc.index] = { 
-                          id: tc.id, 
-                          type: "function", 
-                          function: { name: tc.function?.name || "", arguments: tc.function?.arguments || "" } 
-                        };
-                      } else {
-                        if (tc.function?.arguments) {
-                          tool_calls[tc.index].function.arguments += tc.function.arguments;
-                        }
-                      }
+                      appendStreamingToolCallDelta(tool_calls, tc, knownToolNames);
                     }
                   }
                 }
@@ -933,7 +1101,7 @@ export async function sendToAI(
       return {
         role: "assistant",
         content: reasoning_content ? `<think>\n${reasoning_content}\n</think>\n${content}` : content,
-        tool_calls: tool_calls.length > 0 ? tool_calls.filter(Boolean) : undefined,
+        tool_calls: normalizeToolCalls(tool_calls),
         usage: usage ? {
           prompt_tokens: usage.prompt_tokens || 0,
           completion_tokens: usage.completion_tokens || 0,
@@ -963,7 +1131,7 @@ export async function sendToAI(
     return {
       role: message.role,
       content: message.content || "",
-      tool_calls: message.tool_calls,
+      tool_calls: normalizeToolCalls(message.tool_calls),
       usage: data.usage ? {
         prompt_tokens: data.usage.prompt_tokens || 0,
         completion_tokens: data.usage.completion_tokens || 0,

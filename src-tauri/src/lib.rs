@@ -19,7 +19,9 @@ use std::thread;
 use std::time::Duration;
 use tauri::{Emitter, Manager, State};
 mod license;
+mod recon;
 mod updater;
+use recon::web_recon_batch;
 
 // Database Connection Management
 struct DbConnection {
@@ -69,7 +71,7 @@ struct SessionInfo {
     pass: Option<String>,
     note: String,
     initial_history_count: Option<usize>, // 记录登录时的历史行数
-    connect_timestamp: String, // 记录连接时间戳，用于精确清理日志
+    connect_timestamp: String,            // 记录连接时间戳，用于精确清理日志
 }
 
 struct AppState {
@@ -262,8 +264,8 @@ fn is_search_result_url(url: &str) -> bool {
         .unwrap_or(normalized.as_str());
 
     ![
-        ".css", ".js", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".woff",
-        ".woff2", ".ttf", ".map", ".xml",
+        ".css", ".js", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".woff", ".woff2",
+        ".ttf", ".map", ".xml",
     ]
     .iter()
     .any(|ext| path.ends_with(ext))
@@ -297,7 +299,9 @@ fn normalize_search_query(input: &str) -> String {
 }
 
 fn contains_cjk(input: &str) -> bool {
-    input.chars().any(|ch| ('\u{4e00}'..='\u{9fff}').contains(&ch))
+    input
+        .chars()
+        .any(|ch| ('\u{4e00}'..='\u{9fff}').contains(&ch))
 }
 
 fn extract_cve_identifier(input: &str) -> Option<String> {
@@ -322,7 +326,8 @@ fn extract_cve_identifier(input: &str) -> Option<String> {
 }
 
 fn contains_version_signature(input: &str) -> bool {
-    input.split(|ch: char| ch.is_whitespace() || ch == ',' || ch == '(' || ch == ')')
+    input
+        .split(|ch: char| ch.is_whitespace() || ch == ',' || ch == '(' || ch == ')')
         .any(|token| {
             let clean = token.trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '.');
             let dot_count = clean.chars().filter(|ch| *ch == '.').count();
@@ -605,7 +610,14 @@ fn score_search_item(query: &str, item: &WebSearchItem, intent: SearchIntent) ->
 
     match intent {
         SearchIntent::Cve => {
-            for keyword in ["affected", "versions", "exploit", "mitigation", "advisory", "patch"] {
+            for keyword in [
+                "affected",
+                "versions",
+                "exploit",
+                "mitigation",
+                "advisory",
+                "patch",
+            ] {
                 if title.contains(keyword) || snippet.contains(keyword) || url.contains(keyword) {
                     score += 8;
                 }
@@ -619,14 +631,31 @@ fn score_search_item(query: &str, item: &WebSearchItem, intent: SearchIntent) ->
             }
         }
         SearchIntent::AttackPattern => {
-            for keyword in ["ioc", "indicator", "forensic", "persistence", "authorized_keys", "crontab", "detection", "att&ck"] {
+            for keyword in [
+                "ioc",
+                "indicator",
+                "forensic",
+                "persistence",
+                "authorized_keys",
+                "crontab",
+                "detection",
+                "att&ck",
+            ] {
                 if title.contains(keyword) || snippet.contains(keyword) || url.contains(keyword) {
                     score += 12;
                 }
             }
         }
         SearchIntent::ToolDocs => {
-            for keyword in ["docs", "documentation", "manual", "reference", "usage", "guide", "readme"] {
+            for keyword in [
+                "docs",
+                "documentation",
+                "manual",
+                "reference",
+                "usage",
+                "guide",
+                "readme",
+            ] {
                 if title.contains(keyword) || snippet.contains(keyword) || url.contains(keyword) {
                     score += 12;
                 }
@@ -642,17 +671,18 @@ fn score_search_item(query: &str, item: &WebSearchItem, intent: SearchIntent) ->
     score
 }
 
-fn rerank_search_items(query: &str, intent: SearchIntent, items: Vec<WebSearchItem>) -> Vec<WebSearchItem> {
+fn rerank_search_items(
+    query: &str,
+    intent: SearchIntent,
+    items: Vec<WebSearchItem>,
+) -> Vec<WebSearchItem> {
     let mut scored = items
         .into_iter()
         .map(|item| (score_search_item(query, &item, intent), item))
         .collect::<Vec<_>>();
 
     scored.sort_by(|left, right| right.0.cmp(&left.0));
-    scored
-        .into_iter()
-        .map(|(_, item)| item)
-        .collect::<Vec<_>>()
+    scored.into_iter().map(|(_, item)| item).collect::<Vec<_>>()
 }
 
 fn parse_bing_results(html: &str) -> Vec<WebSearchItem> {
@@ -1370,9 +1400,13 @@ fn connect_ssh(
     // 获取当前 bash_history 的行数（用于后续只删除新增的）
     let initial_history_count = {
         let mut channel = sess.channel_session().map_err(|e| e.to_string())?;
-        channel.exec("wc -l < ~/.bash_history 2>/dev/null || echo 0").map_err(|e| e.to_string())?;
+        channel
+            .exec("wc -l < ~/.bash_history 2>/dev/null || echo 0")
+            .map_err(|e| e.to_string())?;
         let mut count_str = String::new();
-        channel.read_to_string(&mut count_str).map_err(|e| e.to_string())?;
+        channel
+            .read_to_string(&mut count_str)
+            .map_err(|e| e.to_string())?;
         channel.wait_close().map_err(|e| e.to_string())?;
         count_str.trim().parse::<usize>().ok()
     };
@@ -1532,7 +1566,7 @@ fn disconnect_ssh(
             let _ = tauri::async_runtime::block_on(async {
                 // 清理本次登录后新增的 bash 历史
                 let _ = cleanup_current_user_history(state.clone(), id.clone()).await;
-                
+
                 // 清理本次连接的 SSH 日志
                 let _ = cleanup_ssh_log_for_user(state.clone(), id.clone()).await;
             });
@@ -1728,22 +1762,26 @@ fn reconnect_ssh_session(session_info: &mut SessionInfo, timeout: u32) -> Result
     }
 
     sess.set_timeout(timeout);
-    
+
     // 重新获取历史行数
     let initial_history_count = {
         let mut channel = sess.channel_session().map_err(|e| e.to_string())?;
-        channel.exec("wc -l < ~/.bash_history 2>/dev/null || echo 0").map_err(|e| e.to_string())?;
+        channel
+            .exec("wc -l < ~/.bash_history 2>/dev/null || echo 0")
+            .map_err(|e| e.to_string())?;
         let mut count_str = String::new();
-        channel.read_to_string(&mut count_str).map_err(|e| e.to_string())?;
+        channel
+            .read_to_string(&mut count_str)
+            .map_err(|e| e.to_string())?;
         channel.wait_close().map_err(|e| e.to_string())?;
         count_str.trim().parse::<usize>().ok()
     };
-    
+
     session_info.session = sess;
     session_info.cwd = "/".to_string();
     session_info.initial_history_count = initial_history_count;
     session_info.connect_timestamp = chrono::Local::now().format("%b %d %H:%M").to_string();
-    
+
     Ok(())
 }
 
@@ -2020,7 +2058,9 @@ fn start_pty_session(
     // 自动禁用当前会话的历史记录（不影响已有的 .bash_history）
     // 使用 HISTFILE=/dev/null 将历史写入到 /dev/null，而不是删除原有文件
     let disable_history_cmd = "unset HISTFILE; export HISTSIZE=0; export HISTFILESIZE=0\n";
-    channel.write_all(disable_history_cmd.as_bytes()).map_err(|e| e.to_string())?;
+    channel
+        .write_all(disable_history_cmd.as_bytes())
+        .map_err(|e| e.to_string())?;
     channel.flush().map_err(|e| e.to_string())?;
 
     let pty_id = Uuid::new_v4().to_string();
@@ -2560,7 +2600,10 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].title, "杭州天气预报");
-        assert_eq!(items[0].url, "https://www.weather.com.cn/weather/101210101.shtml");
+        assert_eq!(
+            items[0].url,
+            "https://www.weather.com.cn/weather/101210101.shtml"
+        );
         assert!(items[0].snippet.contains("杭州明天天气预报"));
     }
 
@@ -2596,7 +2639,8 @@ mod tests {
             WebSearchItem {
                 title: "CVE-2021-41773".to_string(),
                 url: "https://nvd.nist.gov/vuln/detail/CVE-2021-41773".to_string(),
-                snippet: "NVD vulnerability detail with affected products and references".to_string(),
+                snippet: "NVD vulnerability detail with affected products and references"
+                    .to_string(),
                 engine: "bing".to_string(),
             },
         ];
@@ -2615,7 +2659,7 @@ async fn cleanup_ssh_log_for_user(
     session_id: String,
 ) -> Result<String, String> {
     ensure_license_valid()?;
-    
+
     let session_arc = {
         let sessions = state.sessions.lock().unwrap();
         sessions
@@ -2666,7 +2710,7 @@ async fn cleanup_current_user_history(
     session_id: String,
 ) -> Result<String, String> {
     ensure_license_valid()?;
-    
+
     let session_arc = {
         let sessions = state.sessions.lock().unwrap();
         sessions
@@ -2678,7 +2722,7 @@ async fn cleanup_current_user_history(
     tauri::async_runtime::spawn_blocking(move || {
         let session_info = session_arc.lock().unwrap();
         let initial_count = session_info.initial_history_count;
-        
+
         // 如果记录了初始行数，只删除新增的行
         let cleanup_cmd = if let Some(count) = initial_count {
             // 方案：使用 sed 只保留前 N 行
@@ -2690,18 +2734,22 @@ async fn cleanup_current_user_history(
             // 如果没有记录初始行数（旧会话），清空所有
             "history -c; rm -f ~/.bash_history; touch ~/.bash_history".to_string()
         };
-        
+
         // 需要重新获取可变引用
         drop(session_info);
         let mut session_info_mut = session_arc.lock().unwrap();
         let result = execute_single_command(&mut session_info_mut, &cleanup_cmd, 10000)?;
-        
+
         if result.exit_code != 0 && !result.stderr.is_empty() {
             return Err(format!("清理失败: {}", result.stderr));
         }
-        
-        Ok(format!("已清理本次登录后的 {} 条新增历史记录", 
-            initial_count.map(|c| format!("约 {}", c)).unwrap_or_else(|| "所有".to_string())))
+
+        Ok(format!(
+            "已清理本次登录后的 {} 条新增历史记录",
+            initial_count
+                .map(|c| format!("约 {}", c))
+                .unwrap_or_else(|| "所有".to_string())
+        ))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -2742,6 +2790,7 @@ pub fn run() {
             exec_local_command,
             web_search,
             fetch_webpage,
+            web_recon_batch,
             list_sessions,
             update_session_note,
             reorder_sessions,

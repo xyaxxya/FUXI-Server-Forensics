@@ -12,7 +12,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Language } from "./translations";
 import { CommandProvider, useCommandStore } from "./store/CommandContext";
 import { AISettings, DEFAULT_SETTINGS } from "./lib/ai";
-import StarrySkyBackground from "./components/StarrySkyBackground";
+import ModernBackground from "./components/ModernBackground";
 import LicenseGate from "./components/LicenseGate";
 import { APP_VERSION } from "./config/app";
 import { ToastProvider } from "./components/Toast";
@@ -300,20 +300,8 @@ function MainApp() {
     : "启动中：准备完成";
 
   return (
-    <div className={`relative w-full h-screen overflow-hidden text-slate-800 font-sans selection:bg-sky-100 selection:text-sky-900 ${isStarryMode ? '' : 'bg-[#F8FAFC]'}`}>
-      {isStarryMode ? (
-        <StarrySkyBackground />
-      ) : (
-        <>
-          {/* Noise Overlay */}
-          <div className="noise-overlay" />
-          
-          {/* Global Background Gradient - Subtle Cold Light */}
-          <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#F8FAFC] via-[#F1F5F9] to-[#E2E8F0] opacity-100 pointer-events-none" />
-          <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] rounded-full bg-sky-100/30 blur-[120px] pointer-events-none" />
-          <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-slate-200/40 blur-[100px] pointer-events-none" />
-        </>
-      )}
+    <div className={`relative w-full h-screen overflow-hidden text-slate-800 font-sans selection:bg-indigo-100 selection:text-indigo-900 bg-transparent`}>
+      <ModernBackground />
       
       <AnimatePresence mode="wait">
         {showIntro ? (

@@ -99,19 +99,46 @@ export function getSlashCommandCompletion(input: string, commands: SlashCommandI
   return first?.command || null;
 }
 
-export function getExactSlashCommand(input: string, commands: SlashCommandItem[]) {
-  const { commandToken } = splitSlashCommandInput(input);
-  if (!commandToken) {
-    return null;
+function resolveLongestSlashCommand(input: string, commands: SlashCommandItem[]) {
+  const trimmed = input.trim();
+  if (!trimmed.startsWith("/")) {
+    return {
+      matchedCommand: null,
+      commandToken: null,
+      bodyText: "",
+    };
   }
-  return commands.find((item) => item.command.toLowerCase() === commandToken.toLowerCase()) || null;
+
+  const matchedCommand = [...commands]
+    .sort((a, b) => b.command.length - a.command.length)
+    .find((item) => {
+      const command = item.command.toLowerCase();
+      const candidate = trimmed.toLowerCase();
+      return candidate === command || candidate.startsWith(`${command} `);
+    }) || null;
+
+  if (!matchedCommand) {
+    const { commandToken, bodyText } = splitSlashCommandInput(input);
+    return {
+      matchedCommand: null,
+      commandToken,
+      bodyText,
+    };
+  }
+
+  return {
+    matchedCommand,
+    commandToken: matchedCommand.command,
+    bodyText: trimmed.slice(matchedCommand.command.length).trim(),
+  };
+}
+
+export function getExactSlashCommand(input: string, commands: SlashCommandItem[]) {
+  return resolveLongestSlashCommand(input, commands).matchedCommand;
 }
 
 export function resolveSlashCommandInput(input: string, commands: SlashCommandItem[]): ResolvedSlashCommand {
-  const { commandToken, bodyText } = splitSlashCommandInput(input);
-  const matchedCommand = commandToken
-    ? commands.find((item) => item.command.toLowerCase() === commandToken.toLowerCase()) || null
-    : null;
+  const { matchedCommand, commandToken, bodyText } = resolveLongestSlashCommand(input, commands);
 
   if (!matchedCommand) {
     return {

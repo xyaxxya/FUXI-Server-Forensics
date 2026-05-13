@@ -379,7 +379,7 @@ export const translations = {
     docker: '容器服务',
     k8s: 'K8s 集群',
     terminal: '终端命令行',
-    pentest: '渗透侧边栏',
+    pentest: '远勘智能体',
     web: '面板应用',
     security: '安全审计',
     disconnect: '断开连接',

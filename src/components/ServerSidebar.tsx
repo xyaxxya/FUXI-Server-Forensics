@@ -64,11 +64,11 @@ const ServerCard = ({
   return (
     <div
       className={cn(
-        "group relative flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all duration-300",
+        "group relative flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200",
         "border",
         isActive 
-          ? "bg-white/60 border-sky-300/50 shadow-lg shadow-sky-500/10 ring-1 ring-sky-100/50 z-10 backdrop-blur-md" 
-          : "bg-white/10 border-white/20 hover:bg-white/30 hover:border-white/40 backdrop-blur-sm"
+          ? "bg-slate-50 border-black/10 shadow-[0_1px_2px_rgba(0,0,0,0.02)] z-10" 
+          : "bg-transparent border-transparent hover:bg-slate-50/50 hover:border-black/5"
       )}
       onClick={!isEditing ? onClick : undefined}
       onMouseEnter={() => setIsHovered(true)}
@@ -78,7 +78,7 @@ const ServerCard = ({
       {isActive && (
         <motion.div 
           layoutId="active-indicator"
-          className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.4)]" 
+          className="absolute left-0 top-2 bottom-2 w-1 rounded-r-md bg-slate-800" 
         />
       )}
 
@@ -88,7 +88,7 @@ const ServerCard = ({
           onClick={onToggleSelect}
           className={cn(
             "relative z-20 flex-shrink-0 transition-colors p-1 rounded-md",
-            isSelected ? "text-sky-500" : "text-slate-400 hover:text-sky-400"
+            isSelected ? "text-slate-800" : "text-slate-400 hover:text-slate-600"
           )}
         >
           {isSelected ? (
@@ -127,8 +127,8 @@ const ServerCard = ({
         ) : (
           <>
             <div className={cn(
-              "font-semibold text-sm truncate flex items-center gap-2 transition-colors",
-              isActive ? "text-slate-800" : "text-slate-600 group-hover:text-slate-800"
+              "font-medium text-[13px] truncate flex items-center gap-2 transition-colors",
+              isActive ? "text-slate-900" : "text-slate-700 group-hover:text-slate-900"
             )}>
               <span className="truncate tracking-tight">{session.user}@{session.ip}</span>
             </div>
@@ -387,31 +387,31 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
   };
 
   return (
-    <div className="w-full h-full flex flex-col relative z-30 font-sans glass transition-colors duration-300">
+    <div className="w-full h-full flex flex-col relative z-30 font-sans ui-shell border-r transition-colors duration-300">
       
       {/* Content Layer */}
       <div className="relative flex flex-col h-full z-10">
         
         {/* Header Section */}
-        <div className="p-4 pb-2">
-          <div className="flex items-center justify-between mb-4">
+        <div className="p-4 pb-2 border-b border-slate-100">
+          <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
-              <div className="bg-white/80 p-2 rounded-xl shadow-sm border border-slate-100 text-sky-500">
-                <Terminal size={18} />
+              <div className="bg-slate-50 p-2 rounded-lg border border-slate-200 text-slate-800">
+                <Terminal size={16} />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-slate-800 tracking-tight">{t.servers_title}</h2>
-                <div className="text-[10px] text-slate-500 font-medium tracking-wide">
+                <h2 className="text-sm font-semibold text-slate-800 tracking-tight">{t.servers_title}</h2>
+                <div className="text-[11px] text-slate-500 font-medium">
                   {t.connected_count.replace('{0}', sessions.length.toString())}
                 </div>
               </div>
             </div>
             
             <motion.button 
-              whileHover={{ scale: 1.05 }}
+              whileHover={{ scale: 1.05, y: -1 }}
               whileTap={{ scale: 0.95 }}
               onClick={onAddSession}
-              className="p-2 rounded-xl bg-white/60 text-sky-500 border border-slate-200 hover:border-sky-200 transition-all glass-button"
+              className="p-1.5 rounded-md bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 transition-all shadow-sm"
               title={t.new_connection}
             >
               <Plus size={16} />
@@ -419,15 +419,15 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
           </div>
 
           {/* Bulk Actions Bar */}
-          <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-white/30 border border-slate-200/50 backdrop-blur-sm">
+          <div className="flex items-center justify-between px-2 py-1.5 rounded-md bg-slate-50 border border-slate-100 mb-2">
              <button 
               onClick={toggleSelectAll}
-              className="flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors group"
+              className="flex items-center gap-2 text-[11px] font-medium text-slate-500 hover:text-slate-800 transition-colors group"
             >
               {selectedSessionIds.length === sessions.length && sessions.length > 0 ? (
-                <CheckSquare size={14} className="text-sky-500" />
+                <CheckSquare size={14} className="text-slate-800" />
               ) : (
-                <Square size={14} className="text-slate-400 group-hover:text-sky-400" />
+                <Square size={14} className="text-slate-400 group-hover:text-slate-600" />
               )}
               <span>{t.select_all_context}</span>
             </button>
@@ -448,7 +448,7 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
               </div>
               <button 
                 onClick={onAddSession}
-                className="mt-1 px-4 py-2 bg-sky-500 hover:bg-sky-400 text-white text-xs font-bold rounded-xl shadow-lg shadow-sky-500/20 transition-all"
+                className="mt-1 px-4 py-2 ui-button-primary text-xs font-bold transition-all"
               >
                 {t.connect_server_btn}
               </button>

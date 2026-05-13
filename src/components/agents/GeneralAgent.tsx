@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
-import { Bot, Loader2, Send, Square, Trash2, Wand2 } from "lucide-react";
+import { Bot, BookOpenText, BrainCircuit, ClipboardList, FileSearch, Loader2, Send, Square, Trash2, Wand2 } from "lucide-react";
 import { useCommandStore } from "../../store/CommandContext";
 import { AIMessage, AISettings, ToolCall, buildServerForensicsToolExecution, buildToolDisplayText, shouldTreatAssistantMessageAsThinking } from "../../lib/ai";
 import { buildContextSections, buildServerContextSummary, buildWorkspacePromptContext } from "../../lib/aiContext";
@@ -9,8 +9,10 @@ import { applyUsageToSettings, runConversationLoop } from "../../lib/aiRuntime";
 import { executeResearchTool } from "../../lib/aiResearchTools";
 import { useAIWorkspaceStore } from "../../lib/aiWorkspaceStore";
 import { Language } from "../../translations";
+import { SKILL_REGISTRY, buildSkillPackPrompt, detectAutoSkillRouting, getSkillById, getSkillsByIds } from "../../skills/registry";
 import { ChatTranscriptMessage } from "./ChatTranscriptMessage";
 import ThinkingProcess, { ThinkingStep } from "./ThinkingProcess";
+import SkillPanel from "./SkillPanel";
 import {
   FloatingContextMenu,
   PlannerPanel,
@@ -38,6 +40,8 @@ interface GeneralAgentProps {
 type DisplayItem =
   | { type: "message"; message: AIMessage }
   | { type: "thinking"; steps: ThinkingStep[]; isFinished: boolean };
+
+type InspectorTab = "skills" | "plan" | "prompts" | "clues";
 
 interface RemoteSession {
   id: string;
@@ -171,6 +175,9 @@ export default function GeneralAgent({
   const promptHistory = useAIWorkspaceStore((state) => state.promptHistory);
   const promptSnippets = useAIWorkspaceStore((state) => state.promptSnippets);
   const sessionTitle = useAIWorkspaceStore((state) => state.sessionTitle);
+  const manualSkillIds = useAIWorkspaceStore((state) => state.manualSkillIds);
+  const autoSkillIds = useAIWorkspaceStore((state) => state.autoSkillIds);
+  const activeSkillIds = useAIWorkspaceStore((state) => state.activeSkillIds);
   const appendRecord = useAIWorkspaceStore((state) => state.appendRecord);
   const syncTasks = useAIWorkspaceStore((state) => state.syncTasks);
   const finalizeTasks = useAIWorkspaceStore((state) => state.finalizeTasks);
@@ -181,21 +188,33 @@ export default function GeneralAgent({
   const savePromptSnippet = useAIWorkspaceStore((state) => state.savePromptSnippet);
   const removePromptSnippet = useAIWorkspaceStore((state) => state.removePromptSnippet);
   const togglePromptSnippetPin = useAIWorkspaceStore((state) => state.togglePromptSnippetPin);
+  const setAutoSkillIds = useAIWorkspaceStore((state) => state.setAutoSkillIds);
+  const enableSkill = useAIWorkspaceStore((state) => state.enableSkill);
+  const toggleSkill = useAIWorkspaceStore((state) => state.toggleSkill);
+  const clearManualSkills = useAIWorkspaceStore((state) => state.clearManualSkills);
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
   const [cluePreview, setCluePreview] = useState<{ title: string; content: string } | null>(null);
   const [clueMenu, setClueMenu] = useState<{ x: number; y: number; actions: Array<{ label: string; onClick: () => void; danger?: boolean }> } | null>(null);
+  const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTab>("skills");
   const abortControllerRef = useRef<AbortController | null>(null);
   const listEndRef = useRef<HTMLDivElement | null>(null);
 
   const displayItems = useMemo(() => buildDisplayItems(messages), [messages]);
   const config = aiSettings.configs[aiSettings.activeProvider];
+  const activeSkills = useMemo(() => getSkillsByIds(activeSkillIds), [activeSkillIds]);
+  const activeSkillNames = useMemo(() => activeSkills.map((skill) => skill.name.zh), [activeSkills]);
 
   useEffect(() => {
     listEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [displayItems.length, loading, messages.length, status]);
+
+  useEffect(() => {
+    const routing = detectAutoSkillRouting(messages, generalInfo);
+    setAutoSkillIds(routing.selectedSkillIds);
+  }, [generalInfo, messages, setAutoSkillIds]);
 
   const executeToolCall = async (toolCall: ToolCall) => {
     if (toolCall.function.name === "update_context_info") {
@@ -278,7 +297,7 @@ export default function GeneralAgent({
       targetSessions.map(async (session) => {
         try {
           const result = await invoke<{ stdout: string; stderr: string; exit_code: number }>("exec_command", {
-            cmd: args.command,
+            cmd: command,
             sessionId: session.id,
           });
           const body = [result.stdout.trim(), result.stderr.trim()].filter(Boolean).join("\n");
@@ -311,6 +330,25 @@ export default function GeneralAgent({
     setStatus("");
   };
 
+  const enableSkillFromQuery = useCallback((value: string) => {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+    const matchedSkill = SKILL_REGISTRY.find((skill) => {
+      const fields = [skill.id, skill.name.zh, skill.name.en, ...skill.triggers].join(" ").toLowerCase();
+      return fields.includes(normalized) || normalized.includes(skill.id.toLowerCase());
+    }) || null;
+    if (matchedSkill) {
+      enableSkill(matchedSkill.id);
+      setInput(language === "zh" ? `请调用 ${matchedSkill.name.zh} 技能继续分析。` : `Use the ${matchedSkill.name.en} skill to continue the investigation.`);
+      setStatus(language === "zh" ? `已启用技能：${matchedSkill.name.zh}` : `Enabled skill: ${matchedSkill.name.en}`);
+      return true;
+    }
+    setStatus(language === "zh" ? `未找到匹配技能：${value}` : `No matching skill: ${value}`);
+    return false;
+  }, [enableSkill, language]);
+
   const slashCommands = useMemo(
     () => [
       {
@@ -335,6 +373,77 @@ export default function GeneralAgent({
         insertText: language === "zh" ? "请先基于共享线索池中的内容继续推理，并告诉我下一步最值得验证的点。" : "Use the shared clue pool first and tell me the next best evidence to verify.",
       },
       {
+        id: "skills",
+        command: "/skills",
+        title: language === "zh" ? "查看可调用技能" : "Show callable skills",
+        description: language === "zh" ? "列出当前技能运行时、自动路由与手动技能" : "List runtime skills, auto routing and manual skills",
+        insertText:
+          language === "zh"
+            ? `请说明当前可调用技能、已自动路由技能、手动启用技能，并建议下一步应该调用哪些技能。当前启用：${activeSkillNames.join("、") || "暂无"}`
+            : `Explain callable skills, auto-routed skills, manual skills, and suggest what to invoke next. Active: ${activeSkillNames.join(", ") || "none"}`,
+      },
+      {
+        id: "skill",
+        command: "/skill",
+        title: language === "zh" ? "按名称启用技能" : "Enable Skill By Name",
+        description: language === "zh" ? "用法：/skill webshell、/skill mysql、/skill docker" : "Usage: /skill webshell, /skill mysql, /skill docker",
+        insertText: language === "zh" ? "请说明我想调用哪个技能，并给出可用技能名称。" : "Ask which skill to invoke and list available skill names.",
+      },
+      {
+        id: "skill-webshell",
+        command: "/skill webshell",
+        title: language === "zh" ? "启用 Webshell 排查" : "Enable Webshell Hunting",
+        description: language === "zh" ? "手动启用 Webshell 排查技能" : "Manually enable the webshell hunting skill",
+        onSelect: () => {
+          enableSkill("webshell_hunting");
+          setInput(language === "zh" ? "请调用 Webshell 排查技能，围绕网站目录、上传点和近期变更文件进行分析。" : "Use the Webshell Hunting skill to analyze web roots, upload paths and recent file changes.");
+        },
+      },
+      {
+        id: "skill-springboot",
+        command: "/skill springboot",
+        title: language === "zh" ? "启用 SpringBoot" : "Enable SpringBoot",
+        description: language === "zh" ? "手动启用 SpringBoot 与 Java 运行时技能" : "Manually enable SpringBoot and Java runtime skills",
+        onSelect: () => {
+          enableSkill("springboot_forensics");
+          enableSkill("java_runtime");
+          setInput(language === "zh" ? "请调用 SpringBoot 技能，识别 Actuator、profiles、配置来源、数据源和异常定时任务。" : "Use the SpringBoot skill to inspect Actuator, profiles, config sources, datasources and suspicious schedules.");
+        },
+      },
+      {
+        id: "triage",
+        command: "/triage",
+        title: language === "zh" ? "启动初始排查" : "Start Triage",
+        description: language === "zh" ? "启用 Linux 基线、Web 服务与证据整理技能" : "Enable Linux baseline, web middleware and evidence summary skills",
+        onSelect: () => {
+          enableSkill("linux_baseline");
+          enableSkill("web_middleware");
+          enableSkill("evidence_summary");
+          setInput(language === "zh" ? "请启动初始排查：先建立调查计划，再采集系统基线、Web 服务信息和关键证据。" : "Start initial triage: create a plan, collect system baseline, web service details and key evidence.");
+        },
+      },
+      {
+        id: "report",
+        command: "/report",
+        title: language === "zh" ? "生成事件报告" : "Generate Report",
+        description: language === "zh" ? "启用事件报告和证据整理技能" : "Enable incident report and evidence summary skills",
+        onSelect: () => {
+          enableSkill("incident_report");
+          enableSkill("evidence_summary");
+          setInput(language === "zh" ? "请基于共享线索池生成事件报告，包含执行摘要、时间线、证据、影响评估、未确认假设和后续建议。" : "Generate an incident report from the shared clue pool with summary, timeline, evidence, impact, assumptions and recommendations.");
+        },
+      },
+      {
+        id: "evidence",
+        command: "/evidence",
+        title: language === "zh" ? "整理证据" : "Summarize Evidence",
+        description: language === "zh" ? "把共享线索整理为事实、假设、IOC 和下一步" : "Turn shared clues into facts, hypotheses, IOCs and next steps",
+        onSelect: () => {
+          enableSkill("evidence_summary");
+          setInput(language === "zh" ? "请整理共享线索池：区分已证实事实、合理假设、待验证问题、IOC、MITRE 映射和下一步采集动作。" : "Summarize the shared clue pool into facts, hypotheses, open questions, IOCs, MITRE mapping and next collection steps.");
+        },
+      },
+      {
         id: "clear",
         command: "/clear",
         title: language === "zh" ? "清空当前会话" : "Clear session",
@@ -345,7 +454,7 @@ export default function GeneralAgent({
         },
       },
     ],
-    [handleClear, language],
+    [activeSkillNames, enableSkill, handleClear, language],
   );
   const resolvedSlashInput = useMemo(() => resolveSlashCommandInput(input, slashCommands), [input, slashCommands]);
   const canSend = !!input.trim() && !loading && (!input.trim().startsWith("/") || !!resolvedSlashInput.matchedCommand);
@@ -362,6 +471,10 @@ export default function GeneralAgent({
 
     const resolvedSlash = resolveSlashCommandInput(trimmedInput, slashCommands);
     if (trimmedInput.startsWith("/") && !resolvedSlash.matchedCommand) {
+      return;
+    }
+    if (resolvedSlash.matchedCommand?.id === "skill" && resolvedSlash.bodyText) {
+      enableSkillFromQuery(resolvedSlash.bodyText);
       return;
     }
     if (resolvedSlash.shouldExecuteImmediately && resolvedSlash.matchedCommand?.onSelect) {
@@ -395,6 +508,10 @@ export default function GeneralAgent({
       {
         title: "执行计划要求",
         content: "复杂问题先调用 update_plan 给出 3-6 步计划；过程中持续更新 pending / in_progress / completed 状态。",
+      },
+      {
+        title: "当前启用技能",
+        content: activeSkillIds.length > 0 ? buildSkillPackPrompt(activeSkillIds, language) : "暂无手动或自动启用技能。",
       },
     ]);
 
@@ -477,6 +594,7 @@ export default function GeneralAgent({
             { label: language === "zh" ? "线索" : "Clues", value: String(records.length) },
             { label: language === "zh" ? "计划任务" : "Tasks", value: String(tasks.length) },
             { label: language === "zh" ? "服务器" : "Servers", value: String(selectedSessionIds.length || (currentSession ? 1 : 0)) },
+            { label: language === "zh" ? "技能" : "Skills", value: String(activeSkillIds.length) },
             { label: language === "zh" ? "会话标题" : "Session", value: sessionTitle },
           ]}
           actions={
@@ -506,6 +624,36 @@ export default function GeneralAgent({
         />
 
         <div className="flex-1 min-h-0 overflow-auto bg-slate-50/40 px-4 py-4 md:px-6 md:py-5">
+          <div className="mb-4 rounded-[1.5rem] border border-slate-200/70 bg-white/82 p-3 shadow-[0_22px_48px_-38px_rgba(15,23,42,0.45)]">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                <BrainCircuit size={14} />
+                {language === "zh" ? "当前技能" : "Active Skills"}
+              </div>
+              <button onClick={() => setActiveInspectorTab("skills")} className="text-xs font-medium text-slate-500 hover:text-slate-900">
+                {language === "zh" ? "管理技能" : "Manage"}
+              </button>
+            </div>
+            {activeSkills.length === 0 ? (
+              <div className="text-sm text-slate-500">
+                {language === "zh" ? "输入 /triage 或在右侧技能页启用技能。" : "Type /triage or enable skills from the right panel."}
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {activeSkills.slice(0, 8).map((skill) => (
+                  <button
+                    key={skill.id}
+                    onClick={() => setInput(language === "zh" ? `请调用 ${skill.name.zh} 技能继续分析。` : `Use the ${skill.name.en} skill to continue the investigation.`)}
+                    className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${manualSkillIds.includes(skill.id) ? "bg-slate-900 text-white" : "border border-blue-100 bg-blue-50 text-blue-700"}`}
+                  >
+                    {language === "zh" ? skill.name.zh : skill.name.en}
+                  </button>
+                ))}
+                {activeSkills.length > 8 && <span className="rounded-2xl bg-slate-100 px-3 py-1.5 text-xs text-slate-500">+{activeSkills.length - 8}</span>}
+              </div>
+            )}
+          </div>
+
           <div className="mb-4 flex flex-wrap gap-2">
             {quickPrompts[language].map((prompt) => (
               <motion.button
@@ -617,85 +765,139 @@ export default function GeneralAgent({
         </div>
       </section>
 
-      <aside className="order-2 min-h-0 custom-scrollbar overflow-auto pr-1 flex flex-col gap-4">
-        <PlannerPanel
-          language={language}
-          tasks={tasks}
-          onClear={() => clearTasks()}
-          onUpdateTaskStatus={updateTaskStatus}
-          onRemoveTask={removeTask}
-        />
-        <PromptDeck
-          language={language}
-          title={language === "zh" ? "提示词面板" : "Prompt Deck"}
-          promptHistory={promptHistory}
-          promptSnippets={promptSnippets}
-          currentInput={input}
-          onUsePrompt={(value) => setInput(value)}
-          onSaveCurrent={() => {
-            savePromptSnippet({ content: input, pinned: true });
-          }}
-          onSaveHistoryPrompt={(value) => savePromptSnippet({ content: value, pinned: false })}
-          onRemoveSnippet={removePromptSnippet}
-          onTogglePin={togglePromptSnippetPin}
-        />
-        <div className="ui-shell min-h-0 rounded-[2rem] overflow-hidden flex flex-col">
-          <div className="border-b border-slate-200/70 px-5 py-4">
-            <h3 className="text-base font-bold text-slate-900">
-              {language === "zh" ? "共享线索池" : "Shared Clue Pool"}
-            </h3>
-            <p className="mt-1 text-sm text-slate-500">
-              {language === "zh"
-                ? "所有 AI 面板都会把有效信息沉淀到这里，并自动参与后续推理。"
-                : "All AI panels retain useful findings here for later reasoning."}
-            </p>
+      <aside className="order-2 min-h-0 overflow-hidden rounded-[2rem] border border-white/70 bg-white/76 shadow-[0_30px_80px_-52px_rgba(15,23,42,0.45)] backdrop-blur-xl flex flex-col">
+        <div className="border-b border-slate-200/70 p-3">
+          <div className="grid grid-cols-4 gap-1 rounded-[1.2rem] bg-slate-100/70 p-1">
+            {[
+              { id: "skills" as const, label: language === "zh" ? "技能" : "Skills", icon: BrainCircuit, count: activeSkillIds.length },
+              { id: "plan" as const, label: language === "zh" ? "计划" : "Plan", icon: ClipboardList, count: tasks.length },
+              { id: "prompts" as const, label: language === "zh" ? "提示" : "Prompts", icon: BookOpenText, count: promptSnippets.length },
+              { id: "clues" as const, label: language === "zh" ? "线索" : "Clues", icon: FileSearch, count: records.length },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const active = activeInspectorTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveInspectorTab(tab.id)}
+                  className={`relative flex flex-col items-center justify-center gap-1 rounded-[0.95rem] px-2 py-2 text-xs font-semibold transition ${active ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                >
+                  <span className="inline-flex items-center gap-1">
+                    <Icon size={14} />
+                    {tab.label}
+                  </span>
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-slate-900 text-white" : "bg-white/80 text-slate-500"}`}>{tab.count}</span>
+                </button>
+              );
+            })}
           </div>
-          <div className="flex-1 overflow-auto p-4 space-y-3">
-            {records.length === 0 && (
-              <div className="rounded-[1.4rem] border border-dashed border-slate-300 bg-white/80 p-5 text-sm text-slate-500">
-                {language === "zh" ? "暂时还没有沉淀线索。" : "No clues have been retained yet."}
+        </div>
+
+        <div className="custom-scrollbar min-h-0 flex-1 overflow-auto p-3">
+          {activeInspectorTab === "skills" && (
+            <SkillPanel
+              language={language}
+              activeSkillIds={activeSkillIds}
+              autoSkillIds={autoSkillIds}
+              manualSkillIds={manualSkillIds}
+              onToggleSkill={toggleSkill}
+              onClearManualSkills={clearManualSkills}
+              onUseSkill={(id) => {
+                const skill = getSkillById(id);
+                if (skill) {
+                  setInput(language === "zh" ? `请调用 ${skill.name.zh} 技能继续分析。` : `Use the ${skill.name.en} skill to continue the investigation.`);
+                }
+              }}
+            />
+          )}
+
+          {activeInspectorTab === "plan" && (
+            <PlannerPanel
+              language={language}
+              tasks={tasks}
+              onClear={() => clearTasks()}
+              onUpdateTaskStatus={updateTaskStatus}
+              onRemoveTask={removeTask}
+            />
+          )}
+
+          {activeInspectorTab === "prompts" && (
+            <PromptDeck
+              language={language}
+              title={language === "zh" ? "提示词面板" : "Prompt Deck"}
+              promptHistory={promptHistory}
+              promptSnippets={promptSnippets}
+              currentInput={input}
+              onUsePrompt={(value) => setInput(value)}
+              onSaveCurrent={() => {
+                savePromptSnippet({ content: input, pinned: true });
+              }}
+              onSaveHistoryPrompt={(value) => savePromptSnippet({ content: value, pinned: false })}
+              onRemoveSnippet={removePromptSnippet}
+              onTogglePin={togglePromptSnippetPin}
+            />
+          )}
+
+          {activeInspectorTab === "clues" && (
+            <div className="ui-shell min-h-0 rounded-[2rem] overflow-hidden flex flex-col">
+              <div className="border-b border-slate-200/70 px-5 py-4">
+                <h3 className="text-base font-bold text-slate-900">
+                  {language === "zh" ? "共享线索池" : "Shared Clue Pool"}
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  {language === "zh"
+                    ? "所有 AI 面板都会把有效信息沉淀到这里，并自动参与后续推理。"
+                    : "All AI panels retain useful findings here for later reasoning."}
+                </p>
               </div>
-            )}
-            {records.map((record) => (
-              <motion.div
-                key={record.id}
-                whileHover={{ y: -2 }}
-                onDoubleClick={() => setCluePreview({ title: record.title, content: record.content })}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  setClueMenu({
-                    x: event.clientX,
-                    y: event.clientY,
-                    actions: [
-                      {
-                        label: language === "zh" ? "查看详情" : "Preview",
-                        onClick: () => setCluePreview({ title: record.title, content: record.content }),
-                      },
-                      {
-                        label: language === "zh" ? "复制内容" : "Copy",
-                        onClick: () => void navigator.clipboard.writeText(record.content),
-                      },
-                      {
-                        label: language === "zh" ? "存为提示词模板" : "Save as Prompt Snippet",
-                        onClick: () => savePromptSnippet({ content: record.content, title: record.title, pinned: false }),
-                      },
-                      {
-                        label: language === "zh" ? "发送到输入框" : "Send to Input",
-                        onClick: () => setInput(record.content),
-                      },
-                    ],
-                  });
-                }}
-                className="ui-subtle-surface rounded-[1.4rem] p-4"
-              >
-                <div className="text-sm font-semibold text-slate-900">{record.title}</div>
-                <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{record.content}</div>
-                <div className="mt-3 text-xs text-slate-400">
-                  {language === "zh" ? "来源" : "Source"} · {record.source}
-                </div>
-              </motion.div>
-            ))}
-          </div>
+              <div className="flex-1 overflow-auto p-4 space-y-3">
+                {records.length === 0 && (
+                  <div className="rounded-[1.4rem] border border-dashed border-slate-300 bg-white/80 p-5 text-sm text-slate-500">
+                    {language === "zh" ? "暂时还没有沉淀线索。分析过程中可调用 update_context_info 自动写入。" : "No clues yet. The agent can write findings here while analyzing."}
+                  </div>
+                )}
+                {records.map((record) => (
+                  <motion.div
+                    key={record.id}
+                    whileHover={{ y: -2 }}
+                    onDoubleClick={() => setCluePreview({ title: record.title, content: record.content })}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setClueMenu({
+                        x: event.clientX,
+                        y: event.clientY,
+                        actions: [
+                          {
+                            label: language === "zh" ? "查看详情" : "Preview",
+                            onClick: () => setCluePreview({ title: record.title, content: record.content }),
+                          },
+                          {
+                            label: language === "zh" ? "复制内容" : "Copy",
+                            onClick: () => void navigator.clipboard.writeText(record.content),
+                          },
+                          {
+                            label: language === "zh" ? "存为提示词模板" : "Save as Prompt Snippet",
+                            onClick: () => savePromptSnippet({ content: record.content, title: record.title, pinned: false }),
+                          },
+                          {
+                            label: language === "zh" ? "发送到输入框" : "Send to Input",
+                            onClick: () => setInput(record.content),
+                          },
+                        ],
+                      });
+                    }}
+                    className="ui-subtle-surface rounded-[1.4rem] p-4"
+                  >
+                    <div className="text-sm font-semibold text-slate-900">{record.title}</div>
+                    <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{record.content}</div>
+                    <div className="mt-3 text-xs text-slate-400">
+                      {language === "zh" ? "来源" : "Source"} · {record.source}
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <FloatingContextMenu menu={clueMenu} onClose={() => setClueMenu(null)} />
         {cluePreview && <PreviewDialog title={cluePreview.title} content={cluePreview.content} onClose={() => setCluePreview(null)} />}

@@ -255,13 +255,13 @@ pub fn get_license_status() -> Result<LicenseStatus, String> {
                 info.license_label.clone()
             };
             Ok(LicenseStatus {
-            valid: true,
-            message: "许可证有效".to_string(),
-            machine_code,
-            expires_at: Some(info.expires_at),
-            nickname: Some(info.nickname),
-            qq: Some(info.qq),
-            avatar: Some(info.avatar),
+                valid: true,
+                message: "许可证有效".to_string(),
+                machine_code,
+                expires_at: Some(info.expires_at),
+                nickname: Some(info.nickname),
+                qq: Some(info.qq),
+                avatar: Some(info.avatar),
                 license_plan: Some(normalized_plan),
                 license_label: Some(normalized_label),
             })
