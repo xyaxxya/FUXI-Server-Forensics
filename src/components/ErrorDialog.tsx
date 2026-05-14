@@ -16,24 +16,24 @@ export default function ErrorDialog({ isOpen, error, onClose, onRetry, language 
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/32 p-4 backdrop-blur-md">
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+            className="ui-shell w-full max-w-md overflow-hidden rounded-[30px]"
           >
             {/* Header */}
-            <div className="bg-red-50 border-b border-red-100 px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center justify-between border-b border-red-100/80 bg-red-50/74 px-6 py-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center text-red-600">
+                <div className="flex h-11 w-11 items-center justify-center rounded-[18px] bg-red-100 text-red-600">
                   <AlertCircle size={24} />
                 </div>
                 <h3 className="font-bold text-red-900 text-lg">{error.title}</h3>
               </div>
               <button
                 onClick={onClose}
-                className="p-2 hover:bg-red-100 rounded-lg text-red-400 hover:text-red-600 transition-colors"
+                className="rounded-2xl p-2 text-red-400 transition-colors hover:bg-red-100 hover:text-red-600"
               >
                 <X size={20} />
               </button>
@@ -46,7 +46,7 @@ export default function ErrorDialog({ isOpen, error, onClose, onRetry, language 
               </p>
 
               {error.suggestion && (
-                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                <div className="rounded-[20px] border border-slate-200/80 bg-slate-50/74 p-4">
                   <h4 className="font-semibold text-slate-800 text-xs mb-2">
                     {language === 'zh' ? '解决建议' : 'Suggestions'}
                   </h4>
@@ -58,10 +58,10 @@ export default function ErrorDialog({ isOpen, error, onClose, onRetry, language 
             </div>
 
             {/* Actions */}
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex gap-3 justify-end">
+            <div className="flex justify-end gap-3 border-t border-slate-200/70 bg-white/58 px-6 py-4">
               <button
                 onClick={onClose}
-                className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                className="ui-button px-4 py-2 text-sm"
               >
                 {language === 'zh' ? '关闭' : 'Close'}
               </button>
@@ -71,7 +71,7 @@ export default function ErrorDialog({ isOpen, error, onClose, onRetry, language 
                     onClose();
                     onRetry();
                   }}
-                  className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2 shadow-sm"
+                  className="ui-button-primary flex items-center gap-2 px-4 py-2 text-sm"
                 >
                   <RotateCw size={16} />
                   {language === 'zh' ? '重试' : 'Retry'}

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import type { AIMessage } from "./ai";
 import { normalizeSkillIds } from "../skills/registry";
 
 export type AIWorkspaceSource =
@@ -36,6 +37,22 @@ export interface AIPromptSnippet {
   pinned: boolean;
   createdAt: number;
   updatedAt: number;
+}
+
+export type AIConversationScope =
+  | "agent-general"
+  | "agent-context"
+  | "agent-batch"
+  | "agent-database";
+
+export interface AIConversationSession {
+  id: string;
+  scope: AIConversationScope;
+  title: string;
+  messages: AIMessage[];
+  createdAt: number;
+  updatedAt: number;
+  pinned?: boolean;
 }
 
 export interface AIWorkspaceSnapshot {
@@ -86,6 +103,8 @@ interface AIWorkspaceState {
   tasks: AIPlanTask[];
   promptHistory: string[];
   promptSnippets: AIPromptSnippet[];
+  aiConversations: AIConversationSession[];
+  activeAIConversationIds: Partial<Record<AIConversationScope, string>>;
   snapshots: AIWorkspaceSnapshot[];
   events: AIWorkspaceEvent[];
   sessionTitle: string;
@@ -127,6 +146,19 @@ interface AIWorkspaceState {
   removePromptSnippet: (id: string) => void;
   updatePromptSnippet: (id: string, input: { title?: string; content?: string; pinned?: boolean }) => void;
   togglePromptSnippetPin: (id: string) => void;
+  createAIConversation: (input: {
+    scope: AIConversationScope;
+    title?: string;
+    messages?: AIMessage[];
+    activate?: boolean;
+  }) => AIConversationSession;
+  ensureAIConversation: (scope: AIConversationScope, title?: string) => AIConversationSession;
+  setActiveAIConversation: (scope: AIConversationScope, id: string) => boolean;
+  updateAIConversationMessages: (id: string, messages: AIMessage[], title?: string) => void;
+  renameAIConversation: (id: string, title: string) => void;
+  removeAIConversation: (id: string) => void;
+  toggleAIConversationPin: (id: string) => void;
+  clearAIConversations: (scope?: AIConversationScope) => void;
   createSnapshot: (title?: string) => AIWorkspaceSnapshot;
   restoreSnapshot: (id: string) => boolean;
   removeSnapshot: (id: string) => void;
@@ -165,6 +197,12 @@ function normalizePrompt(value: string): string {
   return value.replace(/\r\n/g, "\n").trim();
 }
 
+function deriveConversationTitle(messages: AIMessage[], fallback: string) {
+  const firstUserMessage = messages.find((message) => message.role === "user" && message.content.trim());
+  const source = firstUserMessage?.uiContent || firstUserMessage?.content || fallback;
+  return source.replace(/\s+/g, " ").trim().slice(0, 42) || fallback;
+}
+
 export const useAIWorkspaceStore = create<AIWorkspaceState>()(
   persist(
     (set, get) => ({
@@ -173,6 +211,8 @@ export const useAIWorkspaceStore = create<AIWorkspaceState>()(
       tasks: [],
       promptHistory: [],
       promptSnippets: [],
+      aiConversations: [],
+      activeAIConversationIds: {},
       snapshots: [],
       events: [],
       sessionTitle: "取证工作台",
@@ -484,6 +524,152 @@ export const useAIWorkspaceStore = create<AIWorkspaceState>()(
           ),
         }));
       },
+      createAIConversation: ({ scope, title, messages = [], activate = true }) => {
+        const now = Date.now();
+        const session: AIConversationSession = {
+          id: crypto.randomUUID(),
+          scope,
+          title: title?.trim() || deriveConversationTitle(messages, scope === "agent-general" ? "通用智能体会话" : "AI 会话"),
+          messages,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        set((state) => ({
+          aiConversations: [session, ...state.aiConversations].slice(0, 80),
+          activeAIConversationIds: activate
+            ? {
+                ...state.activeAIConversationIds,
+                [scope]: session.id,
+              }
+            : state.activeAIConversationIds,
+        }));
+        get().pushEvent({
+          type: "system",
+          title: `新建 AI 会话 路 ${session.title}`,
+          detail: scope,
+          source: "workspace",
+        });
+        return session;
+      },
+      ensureAIConversation: (scope, title) => {
+        const activeId = get().activeAIConversationIds[scope];
+        const active = activeId ? get().aiConversations.find((item) => item.id === activeId && item.scope === scope) : null;
+        if (active) {
+          return active;
+        }
+        const existing = get().aiConversations.find((item) => item.scope === scope);
+        if (existing) {
+          set((state) => ({
+            activeAIConversationIds: {
+              ...state.activeAIConversationIds,
+              [scope]: existing.id,
+            },
+          }));
+          return existing;
+        }
+        return get().createAIConversation({ scope, title, activate: true });
+      },
+      setActiveAIConversation: (scope, id) => {
+        const target = get().aiConversations.find((item) => item.id === id && item.scope === scope);
+        if (!target) {
+          return false;
+        }
+        set((state) => ({
+          activeAIConversationIds: {
+            ...state.activeAIConversationIds,
+            [scope]: id,
+          },
+        }));
+        return true;
+      },
+      updateAIConversationMessages: (id, messages, title) => {
+        const now = Date.now();
+        set((state) => ({
+          aiConversations: state.aiConversations
+            .map((item) =>
+              item.id === id
+                ? {
+                    ...item,
+                    messages,
+                    title: title?.trim() || deriveConversationTitle(messages, item.title),
+                    updatedAt: now,
+                  }
+                : item,
+            )
+            .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.updatedAt - a.updatedAt),
+        }));
+      },
+      renameAIConversation: (id, title) => {
+        const nextTitle = title.trim();
+        if (!nextTitle) {
+          return;
+        }
+        set((state) => ({
+          aiConversations: state.aiConversations.map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  title: nextTitle,
+                  updatedAt: Date.now(),
+                }
+              : item,
+          ),
+        }));
+      },
+      removeAIConversation: (id) => {
+        const target = get().aiConversations.find((item) => item.id === id);
+        if (!target) {
+          return;
+        }
+        set((state) => {
+          const remaining = state.aiConversations.filter((item) => item.id !== id);
+          const nextActiveIds = { ...state.activeAIConversationIds };
+          if (nextActiveIds[target.scope] === id) {
+            const nextActive = remaining.find((item) => item.scope === target.scope);
+            if (nextActive) {
+              nextActiveIds[target.scope] = nextActive.id;
+            } else {
+              delete nextActiveIds[target.scope];
+            }
+          }
+          return {
+            aiConversations: remaining,
+            activeAIConversationIds: nextActiveIds,
+          };
+        });
+      },
+      toggleAIConversationPin: (id) => {
+        set((state) => ({
+          aiConversations: state.aiConversations
+            .map((item) =>
+              item.id === id
+                ? {
+                    ...item,
+                    pinned: !item.pinned,
+                    updatedAt: Date.now(),
+                  }
+                : item,
+            )
+            .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.updatedAt - a.updatedAt),
+        }));
+      },
+      clearAIConversations: (scope) => {
+        set((state) => {
+          if (!scope) {
+            return {
+              aiConversations: [],
+              activeAIConversationIds: {},
+            };
+          }
+          const nextActiveIds = { ...state.activeAIConversationIds };
+          delete nextActiveIds[scope];
+          return {
+            aiConversations: state.aiConversations.filter((item) => item.scope !== scope),
+            activeAIConversationIds: nextActiveIds,
+          };
+        });
+      },
       createSnapshot: (title) => {
         const state = get();
         const snapshot: AIWorkspaceSnapshot = {
@@ -683,6 +869,8 @@ export const useAIWorkspaceStore = create<AIWorkspaceState>()(
           tasks: [],
           promptHistory: [],
           promptSnippets: [],
+          aiConversations: [],
+          activeAIConversationIds: {},
           snapshots: [],
           events: [],
           sessionTitle: "取证工作台",
@@ -702,6 +890,8 @@ export const useAIWorkspaceStore = create<AIWorkspaceState>()(
         tasks: state.tasks,
         promptHistory: state.promptHistory,
         promptSnippets: state.promptSnippets,
+        aiConversations: state.aiConversations,
+        activeAIConversationIds: state.activeAIConversationIds,
         snapshots: state.snapshots,
         events: state.events,
         sessionTitle: state.sessionTitle,

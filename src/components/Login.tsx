@@ -149,6 +149,7 @@ export default function Login({
     return "thirty_days";
   };
   const normalizedPlan = normalizePlan(licenseStatus?.license_plan);
+  const licenseTierClass = `license-tier-${normalizedPlan}`;
   const fallbackLabel =
     normalizedPlan === "permanent"
       ? "永久会员"
@@ -252,23 +253,26 @@ export default function Login({
       className={`relative flex w-full flex-col items-center justify-center overflow-hidden ${isModal ? "min-h-[720px]" : "h-full bg-transparent p-8"}`}
     >
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-0 bg-white/10 backdrop-blur-[2px]" />
+        <div className="absolute inset-0 bg-white/12 backdrop-blur-[2px]" />
+        <div className="absolute left-[12%] top-[12%] h-72 w-72 rounded-full bg-sky-200/30 blur-3xl" />
+        <div className="absolute bottom-[10%] right-[12%] h-72 w-72 rounded-full bg-emerald-200/20 blur-3xl" />
       </div>
 
       <motion.div
-        initial={{ opacity: 0, y: 10 }}
+        initial={{ opacity: 0, y: 18, scale: 0.98 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-        className="relative z-10 w-full max-w-md px-4"
+        className="relative z-10 w-full max-w-[460px] px-4"
       >
-        <div className="relative ui-shell p-8">
-          <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-black/5" />
+        <div className="fluent-hero-card relative overflow-visible p-7 md:p-8">
+          <div className="pointer-events-none absolute -right-14 -top-16 h-44 w-44 rounded-full bg-cyan-200/35 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-16 -left-12 h-40 w-40 rounded-full bg-sky-200/30 blur-3xl" />
           <button
             onClick={() => setShowProxySettings((v) => !v)}
-            className={`absolute left-5 top-5 inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-all ${
+            className={`absolute left-5 top-5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${
               proxyType === "direct"
-                ? "border-black/5 bg-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50"
-                : "border-black/10 bg-black/5 text-slate-800"
+                ? "border-slate-200/70 bg-white/50 text-slate-500 hover:bg-sky-50 hover:text-[#0078D4]"
+                : "border-sky-200 bg-sky-50 text-[#0078D4]"
             }`}
           >
             <SlidersHorizontal size={14} />
@@ -279,7 +283,7 @@ export default function Login({
           {onClose && (
             <button
               onClick={onClose}
-              className="absolute right-5 top-5 rounded-md border border-transparent bg-transparent p-1.5 text-slate-400 transition-all hover:bg-slate-50 hover:text-slate-600"
+              className="absolute right-5 top-5 rounded-2xl border border-transparent bg-white/40 p-1.5 text-slate-400 transition-all hover:bg-slate-50 hover:text-slate-600"
             >
               <X size={18} />
             </button>
@@ -291,13 +295,13 @@ export default function Login({
                 initial={{ opacity: 0, y: -4, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -4, scale: 0.98 }}
-                className="absolute left-4 right-4 top-16 z-30 rounded-lg border border-black/10 bg-white/80 backdrop-blur-xl p-4 shadow-xl"
+                className="absolute left-4 right-4 top-16 z-30 rounded-[24px] border border-white/70 bg-white/88 p-4 shadow-xl backdrop-blur-xl"
               >
                 <div className="grid grid-cols-3 gap-3">
                   <select
                     value={proxyType}
                     onChange={(e) => setProxyType(e.target.value as "direct" | "socks5" | "http")}
-                    className="col-span-1 px-3 py-2.5 bg-slate-50/60 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all"
+                    className="ui-input-base col-span-1 px-3 py-2.5 text-slate-700"
                   >
                     <option value="direct">直连</option>
                     <option value="socks5">SOCKS5</option>
@@ -309,7 +313,7 @@ export default function Login({
                     value={proxyHost}
                     onChange={(e) => setProxyHost(e.target.value)}
                     disabled={proxyType === "direct"}
-                    className="col-span-1 px-3 py-2.5 bg-slate-50/60 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all placeholder:text-slate-400 disabled:opacity-50"
+                    className="ui-input-base col-span-1 px-3 py-2.5 text-slate-700 placeholder:text-slate-400 disabled:opacity-50"
                   />
                   <input
                     type="text"
@@ -317,7 +321,7 @@ export default function Login({
                     value={proxyPort}
                     onChange={(e) => setProxyPort(e.target.value)}
                     disabled={proxyType === "direct"}
-                    className="col-span-1 px-3 py-2.5 bg-slate-50/60 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all placeholder:text-slate-400 disabled:opacity-50 text-center"
+                    className="ui-input-base col-span-1 px-3 py-2.5 text-center text-slate-700 placeholder:text-slate-400 disabled:opacity-50"
                   />
                 </div>
                 {proxyType !== "direct" && (
@@ -327,21 +331,21 @@ export default function Login({
                       placeholder="代理用户名(可选)"
                       value={proxyUser}
                       onChange={(e) => setProxyUser(e.target.value)}
-                      className="px-3 py-2.5 bg-slate-50/60 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all placeholder:text-slate-400"
+                      className="ui-input-base px-3 py-2.5 text-slate-700 placeholder:text-slate-400"
                     />
                     <input
                       type="password"
                       placeholder="代理密码(可选)"
                       value={proxyPass}
                       onChange={(e) => setProxyPass(e.target.value)}
-                      className="px-3 py-2.5 bg-slate-50/60 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all placeholder:text-slate-400"
+                      className="ui-input-base px-3 py-2.5 text-slate-700 placeholder:text-slate-400"
                     />
                   </div>
                 )}
                 <div className="flex justify-end mt-3">
                   <button
                     onClick={() => setShowProxySettings(false)}
-                    className="px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+                    className="ui-button px-3 py-1.5 text-xs"
                   >
                     收起
                   </button>
@@ -350,20 +354,22 @@ export default function Login({
             )}
           </AnimatePresence>
 
-          <div className="mb-8 text-center relative pt-4">
-            <div className="flex justify-center mb-6">
-              <motion.img
-                src={tauriLogo}
-                alt="Logo"
-                className="h-16 w-16 object-contain grayscale opacity-80"
-              />
+          <div className="relative mb-7 pt-8 text-center">
+            <div className="mb-6 flex justify-center">
+              <motion.div
+                animate={{ y: [0, -4, 0] }}
+                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                className="flex h-20 w-20 items-center justify-center rounded-[28px] border border-white bg-gradient-to-br from-white to-sky-50 shadow-[0_22px_44px_rgba(0,120,212,0.16)]"
+              >
+                <img src={tauriLogo} alt="Logo" className="h-14 w-14 object-contain" />
+              </motion.div>
             </div>
-            <div className="inline-flex items-center gap-1.5 rounded-md border border-black/10 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#0078D4]">
               <Activity size={10} strokeWidth={2.5} />
               Connection Secure
             </div>
-            <h2 className="mt-5 text-2xl font-semibold tracking-tight text-slate-900">Connect to Server</h2>
-            <p className="mt-1 text-sm text-slate-500">
+            <h2 className="mt-5 text-3xl font-bold tracking-tight text-slate-900">Connect to Server</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
               Enter your credentials to establish an SSH session
             </p>
           </div>
@@ -395,9 +401,9 @@ export default function Login({
           )}
 
           {licenseStatus?.valid && (
-            <div className={`mb-5 p-3 rounded-2xl border ${planCardClass}`}>
+            <div className={`license-tier-card ${licenseTierClass} mb-5 rounded-[24px] border p-3 ${planCardClass}`}>
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl overflow-hidden border border-sky-200 bg-white shrink-0">
+                <div className="license-tier-avatar h-12 w-12 shrink-0 overflow-hidden rounded-2xl border border-sky-200 bg-white">
                   {avatarSrc ? (
                     <img src={avatarSrc} alt="avatar" className="w-full h-full object-cover" />
                   ) : (
@@ -413,7 +419,7 @@ export default function Login({
                   <div className="text-xs text-slate-500 truncate">QQ: {licenseStatus.qq || "-"}</div>
                 </div>
                 <div
-                  className={`px-2.5 py-1 rounded-full text-xs font-semibold ${planBadgeClass}`}
+                  className={`license-tier-badge px-2.5 py-1 rounded-full text-xs font-semibold ${planBadgeClass}`}
                 >
                   {licenseStatus.license_label || fallbackLabel}
                 </div>
@@ -544,7 +550,7 @@ export default function Login({
             <div className="flex items-center gap-2 px-4 py-3">
                 <button
                   onClick={() => setRememberPassword(!rememberPassword)}
-                  className={`w-4 h-4 rounded-sm border flex items-center justify-center transition-all ${rememberPassword ? "bg-slate-900 border-slate-900" : "bg-white border-slate-300 hover:border-slate-400"}`}
+                  className={`flex h-4 w-4 items-center justify-center rounded-md border transition-all ${rememberPassword ? "border-[#0078D4] bg-[#0078D4]" : "border-slate-300 bg-white hover:border-[#0078D4]"}`}
                 >
                   {rememberPassword && (
                     <Check size={12} className="text-white" strokeWidth={3} />
@@ -567,7 +573,7 @@ export default function Login({
             <button
               onClick={handleLogin}
               disabled={loading}
-              className="mt-2 flex w-full items-center justify-center gap-2 ui-button-primary py-3.5"
+              className="ui-button-primary mt-2 flex w-full items-center justify-center gap-2 py-3.5"
             >
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -584,12 +590,12 @@ export default function Login({
               onClick={onLogin}
               whileHover={{ y: -1 }}
               whileTap={{ scale: 0.985, y: 0 }}
-              className="mt-3 group relative flex w-full items-center justify-center gap-2 glass-button py-3 text-slate-600 text-sm"
+              className="glass-button group relative mt-3 flex w-full items-center justify-center gap-2 py-3 text-sm text-slate-600"
             >
               <span className="relative text-[13px] font-medium tracking-[0.01em]">Continue Offline</span>
             </motion.button>
           </div>
-          <div className="mt-6 border-t border-slate-100 pt-4 text-center text-xs text-slate-400">
+          <div className="mt-6 border-t border-slate-200/60 pt-4 text-center text-xs text-slate-400">
             FUXI Server Forensics 客户端 v{APP_VERSION}
           </div>
         </div>

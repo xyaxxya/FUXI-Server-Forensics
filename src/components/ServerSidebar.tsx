@@ -1,11 +1,26 @@
-import React, { useState } from 'react';
-import { useCommandStore } from '../store/CommandContext';
-import { Server, Plus, CheckSquare, Square, LogOut, Trash2, Activity, Terminal, Edit2, Check, X, Crown, CalendarClock } from 'lucide-react';
-import { motion, AnimatePresence, Reorder } from 'framer-motion';
-import { cn } from '../lib/utils';
-import { translations, Language } from '../translations';
-import { APP_VERSION } from '../config/app';
-import { useToast } from './Toast';
+import React, { useState } from "react";
+import { useCommandStore } from "../store/CommandContext";
+import {
+  Activity,
+  CalendarClock,
+  Check,
+  CheckSquare,
+  Crown,
+  Edit2,
+  LogOut,
+  Plus,
+  Server,
+  ShieldCheck,
+  Square,
+  Terminal,
+  Trash2,
+  X,
+} from "lucide-react";
+import { AnimatePresence, motion, Reorder } from "framer-motion";
+import { cn } from "../lib/utils";
+import { translations, Language } from "../translations";
+import { APP_VERSION } from "../config/app";
+import { useToast } from "./Toast";
 
 interface ServerSidebarProps {
   onAddSession: () => void;
@@ -22,31 +37,49 @@ interface ServerSidebarProps {
   } | null;
 }
 
-// ------------------------------------------------------------------
-// Sub-component: Server Card (Clean Tech Style)
-// ------------------------------------------------------------------
-const ServerCard = ({ 
-  session, 
-  isSelected, 
-  isActive, 
-  onClick, 
-  onToggleSelect, 
+const normalizePlan = (rawPlan?: string | null) => {
+  const plan = String(rawPlan || "").trim().toLowerCase();
+  if (["one_year", "one-year", "oneyear", "1year", "一年", "一年套餐"].includes(plan)) {
+    return "one_year";
+  }
+  if (["half_year", "half-year", "halfyear", "半年", "半年套餐", "6m"].includes(plan)) {
+    return "half_year";
+  }
+  if (["permanent", "forever", "lifetime", "永久", "永久套餐"].includes(plan)) {
+    return "permanent";
+  }
+  return "thirty_days";
+};
+
+const planTotalDays: Record<string, number> = {
+  thirty_days: 30,
+  half_year: 183,
+  one_year: 365,
+  permanent: 365,
+};
+
+function ServerCard({
+  session,
+  isSelected,
+  isActive,
+  onClick,
+  onToggleSelect,
   onDelete,
   onUpdateNote,
-  language = 'en'
-}: { 
-  session: any, 
-  isSelected: boolean, 
-  isActive: boolean, 
-  onClick: () => void, 
-  onToggleSelect: (e: React.MouseEvent) => void,
-  onDelete: (e: React.MouseEvent) => void,
-  onUpdateNote: (note: string) => void,
-  language?: Language
-}) => {
+  language = "en",
+}: {
+  session: any;
+  isSelected: boolean;
+  isActive: boolean;
+  onClick: () => void;
+  onToggleSelect: (e: React.MouseEvent) => void;
+  onDelete: (e: React.MouseEvent) => void;
+  onUpdateNote: (note: string) => void;
+  language?: Language;
+}) {
   const [isHovered, setIsHovered] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [noteDraft, setNoteDraft] = useState(session.note || '');
+  const [noteDraft, setNoteDraft] = useState(session.note || "");
   const t = translations[language];
 
   const handleSaveNote = (e: React.MouseEvent | React.FormEvent) => {
@@ -57,102 +90,93 @@ const ServerCard = ({
 
   const handleCancelEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setNoteDraft(session.note || '');
+    setNoteDraft(session.note || "");
     setIsEditing(false);
   };
 
   return (
-    <div
+    <motion.div
+      layout
       className={cn(
-        "group relative flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200",
-        "border",
-        isActive 
-          ? "bg-slate-50 border-black/10 shadow-[0_1px_2px_rgba(0,0,0,0.02)] z-10" 
-          : "bg-transparent border-transparent hover:bg-slate-50/50 hover:border-black/5"
+        "group relative flex cursor-pointer items-center gap-3 overflow-hidden rounded-[22px] border p-3 transition-all duration-200",
+        isActive
+          ? "border-sky-200 bg-gradient-to-r from-sky-50 via-white to-cyan-50 shadow-[0_12px_26px_rgba(0,120,212,0.12)]"
+          : "border-white/70 bg-white/58 hover:border-sky-100 hover:bg-white/88 hover:shadow-[0_10px_22px_rgba(42,79,120,0.09)]",
       )}
+      whileHover={{ y: -1 }}
+      whileTap={{ scale: 0.99 }}
       onClick={!isEditing ? onClick : undefined}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Active Indicator (Left Border Glow) */}
       {isActive && (
-        <motion.div 
-          layoutId="active-indicator"
-          className="absolute left-0 top-2 bottom-2 w-1 rounded-r-md bg-slate-800" 
+        <motion.div
+          layoutId="active-server-indicator"
+          className="absolute left-0 top-4 bottom-4 w-1 rounded-r-full bg-gradient-to-b from-[#0078D4] to-[#50E6FF]"
         />
       )}
 
-      {/* Checkbox */}
       {!isEditing && (
-        <div 
+        <button
           onClick={onToggleSelect}
           className={cn(
-            "relative z-20 flex-shrink-0 transition-colors p-1 rounded-md",
-            isSelected ? "text-slate-800" : "text-slate-400 hover:text-slate-600"
+            "relative z-20 flex shrink-0 rounded-xl p-1 transition-colors",
+            isSelected ? "text-[#0078D4]" : "text-slate-400 hover:bg-sky-50 hover:text-[#0078D4]",
           )}
         >
           {isSelected ? (
-            <motion.div initial={{ scale: 0.8 }} animate={{ scale: 1 }}>
-              <CheckSquare size={16} className="drop-shadow-sm" />
+            <motion.div initial={{ scale: 0.82 }} animate={{ scale: 1 }}>
+              <CheckSquare size={17} />
             </motion.div>
           ) : (
-            <Square size={16} />
+            <Square size={17} />
           )}
-        </div>
+        </button>
       )}
 
-      {/* Server Info or Edit Mode */}
-      <div className="flex-1 min-w-0 flex flex-col gap-0.5 relative z-10">
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-white/80 bg-gradient-to-br from-[#0078D4] to-[#50E6FF] text-white shadow-[0_10px_20px_rgba(0,120,212,0.22)]">
+        <Server size={18} />
+      </div>
+
+      <div className="relative z-10 flex min-w-0 flex-1 flex-col gap-0.5">
         {isEditing ? (
-          <div className="flex items-center gap-1 w-full" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+          <div className="flex w-full items-center gap-1" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
             <input
               type="text"
               value={noteDraft}
               onChange={(e) => setNoteDraft(e.target.value)}
-              className="w-full min-w-0 text-xs px-2 py-1 rounded border border-sky-300 focus:outline-none focus:ring-1 focus:ring-sky-400 bg-white/80"
-              placeholder="Add a note..."
+              className="ui-input-base min-w-0 flex-1 px-2.5 py-1.5 text-xs"
+              placeholder={language === "zh" ? "添加备注" : "Add a note"}
               autoFocus
               onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSaveNote(e);
-                if (e.key === 'Escape') handleCancelEdit(e as any);
+                if (e.key === "Enter") handleSaveNote(e);
+                if (e.key === "Escape") handleCancelEdit(e as any);
               }}
             />
-            <button onClick={handleSaveNote} className="p-1 text-emerald-500 hover:bg-emerald-50 rounded">
+            <button onClick={handleSaveNote} className="rounded-xl p-1.5 text-emerald-600 hover:bg-emerald-50">
               <Check size={14} />
             </button>
-            <button onClick={handleCancelEdit} className="p-1 text-red-500 hover:bg-red-50 rounded">
+            <button onClick={handleCancelEdit} className="rounded-xl p-1.5 text-red-500 hover:bg-red-50">
               <X size={14} />
             </button>
           </div>
         ) : (
           <>
-            <div className={cn(
-              "font-medium text-[13px] truncate flex items-center gap-2 transition-colors",
-              isActive ? "text-slate-900" : "text-slate-700 group-hover:text-slate-900"
-            )}>
-              <span className="truncate tracking-tight">{session.user}@{session.ip}</span>
+            <div className={cn("flex items-center gap-2 truncate text-[13px] font-semibold", isActive ? "text-slate-900" : "text-slate-700")}>
+              <span className="truncate tracking-tight">
+                {session.user}@{session.ip}
+              </span>
             </div>
-            
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3 text-[10px] uppercase tracking-wider font-medium text-slate-400">
-                <div className="flex items-center gap-1.5">
-                  <span className="relative flex h-1.5 w-1.5">
-                    <span className={cn(
-                      "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
-                      isActive ? "bg-emerald-400" : "bg-slate-400"
-                    )}></span>
-                    <span className={cn(
-                      "relative inline-flex rounded-full h-1.5 w-1.5",
-                      isActive ? "bg-emerald-500" : "bg-slate-400"
-                    )}></span>
-                  </span>
-                  <span className={isActive ? "text-emerald-600 font-bold" : "text-slate-500"}>
-                    {isActive ? t.active_status : t.connected_status}
-                  </span>
-                </div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em]">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className={cn("absolute inline-flex h-full w-full animate-ping rounded-full opacity-70", isActive ? "bg-emerald-400" : "bg-slate-400")} />
+                  <span className={cn("relative inline-flex h-1.5 w-1.5 rounded-full", isActive ? "bg-emerald-500" : "bg-slate-400")} />
+                </span>
+                <span className={isActive ? "text-emerald-600" : "text-slate-400"}>{isActive ? t.active_status : t.connected_status}</span>
               </div>
               {session.note && (
-                <span className="text-[10px] text-slate-500 truncate max-w-[80px] bg-slate-100 px-1 rounded border border-slate-200" title={session.note}>
+                <span className="max-w-[96px] truncate rounded-full border border-slate-200 bg-white/72 px-2 py-0.5 text-[10px] text-slate-500" title={session.note}>
                   {session.note}
                 </span>
               )}
@@ -161,7 +185,6 @@ const ServerCard = ({
         )}
       </div>
 
-      {/* Actions (Slide In) */}
       <AnimatePresence>
         {isHovered && !isEditing && (
           <div className="flex items-center gap-1">
@@ -173,7 +196,7 @@ const ServerCard = ({
               initial={{ opacity: 0, x: 5 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 5 }}
-              className="relative z-20 p-1.5 text-slate-400 hover:text-sky-500 hover:bg-sky-50 rounded-lg transition-colors"
+              className="relative z-20 rounded-xl p-1.5 text-slate-400 transition-colors hover:bg-sky-50 hover:text-[#0078D4]"
               title="Edit Note"
             >
               <Edit2 size={14} />
@@ -183,7 +206,7 @@ const ServerCard = ({
               initial={{ opacity: 0, x: 5 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 5 }}
-              className="relative z-20 p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+              className="relative z-20 rounded-xl p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
               title={t.disconnect}
             >
               <LogOut size={14} />
@@ -191,66 +214,31 @@ const ServerCard = ({
           </div>
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
-};
+}
 
-// ------------------------------------------------------------------
-// Main Component
-// ------------------------------------------------------------------
-export default function ServerSidebar({ onAddSession, onDisconnect, language = 'en', licenseStatus = null }: ServerSidebarProps) {
-  const { 
-    sessions, 
-    switchSession, 
-    selectedSessionIds, 
+export default function ServerSidebar({ onAddSession, onDisconnect, language = "en", licenseStatus = null }: ServerSidebarProps) {
+  const {
+    sessions,
+    switchSession,
+    selectedSessionIds,
     toggleSessionSelection,
     setSessionSelection,
     updateSessionNote,
     reorderSessions,
-    currentSession
+    currentSession,
   } = useCommandStore();
-  
+
   const { showToast } = useToast();
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
   const [isSwitching, setIsSwitching] = useState(false);
   const [switchingToId, setSwitchingToId] = useState<string | null>(null);
-  
-  const sessionToDeleteObj = sessions.find(s => s.id === sessionToDelete);
+
+  const sessionToDeleteObj = sessions.find((s) => s.id === sessionToDelete);
   const t = translations[language];
-  const normalizePlan = (rawPlan?: string | null) => {
-    const plan = String(rawPlan || "").trim().toLowerCase();
-    if (
-      plan === "one_year" ||
-      plan === "one-year" ||
-      plan === "oneyear" ||
-      plan === "1year" ||
-      plan === "一年" ||
-      plan === "一年套餐"
-    ) {
-      return "one_year";
-    }
-    if (
-      plan === "half_year" ||
-      plan === "half-year" ||
-      plan === "halfyear" ||
-      plan === "半年" ||
-      plan === "半年套餐" ||
-      plan === "6m"
-    ) {
-      return "half_year";
-    }
-    if (
-      plan === "permanent" ||
-      plan === "forever" ||
-      plan === "lifetime" ||
-      plan === "永久" ||
-      plan === "永久套餐"
-    ) {
-      return "permanent";
-    }
-    return "thirty_days";
-  };
   const plan = normalizePlan(licenseStatus?.license_plan);
+  const licenseTierClass = `license-tier-${plan}`;
   const avatarSrc =
     licenseStatus?.avatar && licenseStatus.avatar.trim().length > 0
       ? licenseStatus.avatar.startsWith("data:")
@@ -265,98 +253,58 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
     licenseStatus?.expires_at && plan !== "permanent"
       ? Math.max(0, Math.ceil((licenseStatus.expires_at * 1000 - Date.now()) / (1000 * 60 * 60 * 24)))
       : null;
+  const progressValue =
+    plan === "permanent"
+      ? 100
+      : remainingDays === null
+        ? 72
+        : Math.max(4, Math.min(100, Math.round((remainingDays / planTotalDays[plan]) * 100)));
   const fallbackLabel =
     plan === "permanent"
-      ? "永久会员"
+      ? language === "zh"
+        ? "永久会员"
+        : "Lifetime"
       : plan === "one_year"
-      ? "一年会员"
-      : plan === "half_year"
-      ? "半年会员"
-      : "30天会员";
-  const planCardStyle =
-    plan === "permanent"
-      ? {
-          borderColor: "rgba(245,158,11,0.35)",
-          background:
-            "linear-gradient(140deg, rgba(255,251,235,0.95), rgba(255,237,213,0.92), rgba(255,255,255,0.96))",
-        }
-      : plan === "one_year"
-      ? {
-          borderColor: "rgba(139,92,246,0.35)",
-          background:
-            "linear-gradient(140deg, rgba(245,243,255,0.95), rgba(237,233,254,0.92), rgba(255,255,255,0.96))",
-        }
-      : plan === "half_year"
-      ? {
-          borderColor: "rgba(16,185,129,0.35)",
-          background:
-            "linear-gradient(140deg, rgba(236,253,245,0.95), rgba(209,250,229,0.92), rgba(255,255,255,0.96))",
-        }
-      : {
-          borderColor: "rgba(14,165,233,0.32)",
-          background:
-            "linear-gradient(140deg, rgba(239,246,255,0.95), rgba(224,242,254,0.9), rgba(255,255,255,0.96))",
-        };
-  const planGlowClass =
-    plan === "permanent"
-      ? "bg-amber-300/40"
-      : plan === "one_year"
-      ? "bg-violet-300/40"
-      : plan === "half_year"
-      ? "bg-emerald-300/40"
-      : "bg-sky-300/40";
-  const planBadgeClass =
-    plan === "permanent"
-      ? "bg-amber-100/90 text-amber-700 border-amber-200"
-      : plan === "one_year"
-      ? "bg-violet-100/90 text-violet-700 border-violet-200"
-      : plan === "half_year"
-      ? "bg-emerald-100/90 text-emerald-700 border-emerald-200"
-      : "bg-sky-100/90 text-sky-700 border-sky-200";
-  const planRemainClass =
-    plan === "one_year"
-      ? "text-violet-600"
-      : plan === "half_year"
-      ? "text-emerald-600"
-      : "text-sky-600";
+        ? language === "zh"
+          ? "一年会员"
+          : "Annual"
+        : plan === "half_year"
+          ? language === "zh"
+            ? "半年会员"
+            : "Half-year"
+          : language === "zh"
+            ? "30天会员"
+            : "30 days";
   const planStatusText =
     plan === "permanent"
-      ? "尊享身份已激活"
-      : plan === "one_year"
-      ? "一年会员运行中"
-      : plan === "half_year"
-      ? "半年会员运行中"
-      : "30天会员运行中";
+      ? language === "zh"
+        ? "永久授权已激活"
+        : "Lifetime license active"
+      : language === "zh"
+        ? "授权周期运行中"
+        : "License cycle active";
 
-  // Handle switching with visual feedback
   const handleSessionClick = async (sessionId: string) => {
-    const targetSession = sessions.find(s => s.id === sessionId);
+    const targetSession = sessions.find((s) => s.id === sessionId);
     if (!targetSession) return;
-    
+
     try {
       setIsSwitching(true);
       setSwitchingToId(sessionId);
-      
       await switchSession(sessionId);
-      
-      // 成功提示
       showToast(
-        'success', 
-        language === 'zh' 
-          ? `已切换到 ${targetSession.user}@${targetSession.ip}` 
+        "success",
+        language === "zh"
+          ? `已切换到 ${targetSession.user}@${targetSession.ip}`
           : `Switched to ${targetSession.user}@${targetSession.ip}`,
-        2000
+        2000,
       );
     } catch (error) {
       console.error("Failed to switch session:", error);
-      
-      // 失败提示
       showToast(
-        'error',
-        language === 'zh'
-          ? `切换失败：${String(error)}`
-          : `Switch failed: ${String(error)}`,
-        4000
+        "error",
+        language === "zh" ? `切换失败：${String(error)}` : `Switch failed: ${String(error)}`,
+        4000,
       );
     } finally {
       setTimeout(() => {
@@ -382,234 +330,190 @@ export default function ServerSidebar({ onAddSession, onDisconnect, language = '
     if (selectedSessionIds.length === sessions.length) {
       setSessionSelection([]);
     } else {
-      setSessionSelection(sessions.map(s => s.id));
+      setSessionSelection(sessions.map((s) => s.id));
     }
   };
 
   return (
-    <div className="w-full h-full flex flex-col relative z-30 font-sans ui-shell border-r transition-colors duration-300">
-      
-      {/* Content Layer */}
-      <div className="relative flex flex-col h-full z-10">
-        
-        {/* Header Section */}
-        <div className="p-4 pb-2 border-b border-slate-100">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
-              <div className="bg-slate-50 p-2 rounded-lg border border-slate-200 text-slate-800">
-                <Terminal size={16} />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-slate-800 tracking-tight">{t.servers_title}</h2>
-                <div className="text-[11px] text-slate-500 font-medium">
-                  {t.connected_count.replace('{0}', sessions.length.toString())}
+    <aside className="server-sidebar-compact relative z-30 flex h-full w-full flex-col overflow-hidden rounded-[28px] border border-sky-100/80 bg-white/92 font-sans shadow-[0_22px_52px_rgba(0,91,158,0.1)] backdrop-blur-[34px]">
+      <div className="px-3.5 pt-3.5">
+        <div className="relative overflow-hidden rounded-[24px] border border-sky-100/80 bg-white/94 p-3 shadow-[0_14px_34px_rgba(0,91,158,0.08)] backdrop-blur-2xl">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="license-tier-avatar h-12 w-12 shrink-0 overflow-hidden rounded-2xl border border-white bg-white shadow-[0_10px_22px_rgba(42,79,120,0.14)]">
+              {avatarSrc ? (
+                <img src={avatarSrc} alt="avatar" className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-sky-50 text-[10px] font-bold text-[#0078D4]">
+                  USER
                 </div>
-              </div>
+              )}
             </div>
-            
-            <motion.button 
-              whileHover={{ scale: 1.05, y: -1 }}
-              whileTap={{ scale: 0.95 }}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <h2 className="truncate text-base font-bold tracking-tight text-slate-900">
+                  {licenseStatus?.nickname || (language === "zh" ? "授权用户" : "Licensed User")}
+                </h2>
+                <span className={`license-tier-badge ${licenseTierClass} inline-flex max-w-[78px] shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold shadow-none`}>
+                  <Crown size={10} className="license-tier-badge-icon shrink-0" />
+                  <span className="truncate">{licenseStatus?.license_label || fallbackLabel}</span>
+                </span>
+              </div>
+              <div className="mt-1 truncate text-[11px] font-medium text-slate-500">QQ: {licenseStatus?.qq || "-"}</div>
+            </div>
+            <motion.button
+              whileHover={{ y: -1 }}
+              whileTap={{ scale: 0.96 }}
               onClick={onAddSession}
-              className="p-1.5 rounded-md bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 transition-all shadow-sm"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-sky-200 bg-sky-50 text-[#0078D4] shadow-sm"
               title={t.new_connection}
             >
               <Plus size={16} />
             </motion.button>
           </div>
 
-          {/* Bulk Actions Bar */}
-          <div className="flex items-center justify-between px-2 py-1.5 rounded-md bg-slate-50 border border-slate-100 mb-2">
-             <button 
-              onClick={toggleSelectAll}
-              className="flex items-center gap-2 text-[11px] font-medium text-slate-500 hover:text-slate-800 transition-colors group"
-            >
-              {selectedSessionIds.length === sessions.length && sessions.length > 0 ? (
-                <CheckSquare size={14} className="text-slate-800" />
+          <div className="mt-3 rounded-2xl border border-sky-100/80 bg-sky-50/48 px-3 py-2">
+            <div className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="truncate font-semibold text-slate-600">{planStatusText}</span>
+              <span className="inline-flex shrink-0 items-center gap-1 font-bold text-slate-800">
+                <ShieldCheck size={12} className="text-[#0078D4]" />
+                {plan === "permanent" ? "100%" : remainingDays !== null ? `${remainingDays}d` : "Active"}
+              </span>
+            </div>
+            <div className="mt-2 h-1.5 fluent-progress-track">
+              <motion.div className={`license-tier-progress-fill ${licenseTierClass} h-full fluent-progress-fill`} initial={{ width: 0 }} animate={{ width: `${progressValue}%` }} />
+            </div>
+            <div className="mt-1.5 flex items-center justify-between text-[10px] text-slate-400">
+              <span>FUXI FORENSICS</span>
+              {expiresText ? (
+                <span className="inline-flex items-center gap-1">
+                  <CalendarClock size={10} />
+                  {expiresText}
+                </span>
               ) : (
-                <Square size={14} className="text-slate-400 group-hover:text-slate-600" />
+                <span>{language === "zh" ? "永久授权" : "Lifetime"}</span>
               )}
-              <span>{t.select_all_context}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between px-5 pb-3 pt-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-sky-100/80 bg-white/88 text-[#0078D4] shadow-[0_8px_18px_rgba(0,91,158,0.06)]">
+            <Terminal size={17} />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-800">{t.servers_title}</h3>
+            <div className="text-[11px] font-medium text-slate-500">{t.connected_count.replace("{0}", sessions.length.toString())}</div>
+          </div>
+        </div>
+        <button
+          onClick={toggleSelectAll}
+          className="rounded-full border border-sky-100/80 bg-white/84 px-3 py-1.5 text-[11px] font-semibold text-slate-500 transition-colors hover:border-sky-200 hover:bg-sky-50 hover:text-[#0078D4]"
+        >
+          {selectedSessionIds.length === sessions.length && sessions.length > 0 ? (language === "zh" ? "取消全选" : "Clear") : t.select_all_context}
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 pb-4 custom-scrollbar">
+        {sessions.length === 0 ? (
+          <div className="flex h-56 flex-col items-center justify-center rounded-[28px] border border-dashed border-sky-200 bg-sky-50/42 p-5 text-center text-slate-400">
+            <div className="flex h-16 w-16 items-center justify-center rounded-[24px] border border-white bg-white/82 text-[#0078D4] shadow-sm">
+              <Server size={26} />
+            </div>
+            <p className="mt-4 text-sm font-bold text-slate-700">{t.no_connections}</p>
+            <p className="mt-1 max-w-[180px] text-xs leading-5 text-slate-500">{t.add_server_hint}</p>
+            <button onClick={onAddSession} className="ui-button-primary mt-4 px-5 py-2.5 text-xs">
+              {t.connect_server_btn}
             </button>
           </div>
+        ) : (
+          <Reorder.Group axis="y" values={sessions.map((s) => s.id)} onReorder={reorderSessions} className="space-y-2">
+            <AnimatePresence mode="popLayout">
+              {sessions.map((session) => (
+                <Reorder.Item key={session.id} value={session.id} className="list-none">
+                  <ServerCard
+                    session={session}
+                    isActive={session.is_current || currentSession?.id === session.id}
+                    isSelected={selectedSessionIds.includes(session.id)}
+                    onClick={() => handleSessionClick(session.id)}
+                    onToggleSelect={(e) => {
+                      e.stopPropagation();
+                      toggleSessionSelection(session.id);
+                    }}
+                    onDelete={(e) => handleDeleteClick(e, session.id)}
+                    onUpdateNote={(note) => updateSessionNote(session.id, note)}
+                    language={language}
+                  />
+                </Reorder.Item>
+              ))}
+            </AnimatePresence>
+          </Reorder.Group>
+        )}
+      </div>
 
+      <footer className="border-t border-sky-100/70 px-5 py-3">
+        <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+          <span>Control Center</span>
+          <span className="rounded-full bg-sky-50 px-2 py-1 text-sky-700">v{APP_VERSION}</span>
         </div>
+      </footer>
 
-        {/* Scrollable Server List */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar px-3 py-2 space-y-2">
-          {sessions.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 text-slate-400 space-y-3">
-              <div className="p-4 rounded-full bg-slate-100/50 border border-slate-200/50">
-                <Server size={24} className="opacity-50" />
-              </div>
-              <div className="text-center">
-                <p className="text-sm font-semibold text-slate-600">{t.no_connections}</p>
-                <p className="text-xs text-slate-500 mt-1 max-w-[150px]">{t.add_server_hint}</p>
-              </div>
-              <button 
-                onClick={onAddSession}
-                className="mt-1 px-4 py-2 ui-button-primary text-xs font-bold transition-all"
-              >
-                {t.connect_server_btn}
-              </button>
-            </div>
-          ) : (
-            <Reorder.Group axis="y" values={sessions.map(s => s.id)} onReorder={reorderSessions} className="space-y-2">
-              <AnimatePresence mode='popLayout'>
-                {sessions.map(session => (
-                  <Reorder.Item key={session.id} value={session.id}>
-                    <ServerCard 
-                      session={session}
-                      isActive={session.is_current || currentSession?.id === session.id}
-                      isSelected={selectedSessionIds.includes(session.id)}
-                      onClick={() => handleSessionClick(session.id)}
-                      onToggleSelect={(e) => {
-                        e.stopPropagation();
-                        toggleSessionSelection(session.id);
-                      }}
-                      onDelete={(e) => handleDeleteClick(e, session.id)}
-                      onUpdateNote={(note) => updateSessionNote(session.id, note)}
-                      language={language}
-                    />
-                  </Reorder.Item>
-                ))}
-              </AnimatePresence>
-            </Reorder.Group>
-          )}
-        </div>
-
-        {/* Footer Info */}
-        <div className="p-3 border-t border-white/20 bg-white/10 space-y-3">
-          {licenseStatus?.valid && (
+      <AnimatePresence>
+        {sessionToDelete && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/32 p-4 backdrop-blur-md">
             <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35 }}
-              className="relative rounded-2xl border overflow-hidden p-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]"
-              style={planCardStyle}
+              initial={{ scale: 0.92, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.92, opacity: 0, y: 10 }}
+              className="glass-heavy w-full max-w-[260px] rounded-[28px] p-5"
             >
-              <motion.div
-                animate={{ opacity: [0.15, 0.35, 0.15] }}
-                transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
-                className={`absolute -top-10 -right-10 w-28 h-28 rounded-full blur-2xl ${planGlowClass}`}
-              />
-              <div className="relative flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl overflow-hidden border border-white/90 bg-white shadow-sm shrink-0">
-                  {avatarSrc ? (
-                    <img src={avatarSrc} alt="avatar" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-[10px] text-slate-600 font-bold">
-                      USER
-                    </div>
-                  )}
+              <div className="flex flex-col items-center gap-3 text-center">
+                <div className="rounded-2xl bg-red-50 p-3 text-red-500">
+                  <Trash2 size={21} />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-semibold text-slate-800 truncate tracking-wide">
-                    {licenseStatus.nickname || "授权用户"}
-                  </div>
-                  <div className="text-[10px] text-slate-500 truncate mt-0.5">QQ: {licenseStatus.qq || "-"}</div>
+                <div>
+                  <h3 className="mb-1 text-sm font-bold text-slate-800">{t.disconnect_confirm_title}</h3>
+                  <p className="text-xs leading-relaxed text-slate-500">
+                    {t.disconnect_confirm_desc}
+                    <br />
+                    <span className="mt-1 inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-slate-700">
+                      {sessionToDeleteObj?.ip}
+                    </span>
+                  </p>
                 </div>
-                <motion.div
-                  animate={plan === "permanent" ? { scale: [1, 1.08, 1] } : undefined}
-                  transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold border backdrop-blur-sm ${planBadgeClass}`}
-                >
-                  <Crown size={10} />
-                  {licenseStatus.license_label || fallbackLabel}
-                </motion.div>
-              </div>
-
-              <div className="relative mt-2.5 flex items-center justify-between gap-2">
-                <div className="text-[10px] text-slate-500 font-medium">
-                  {planStatusText}
+                <div className="mt-1 grid w-full grid-cols-2 gap-2">
+                  <button onClick={() => setSessionToDelete(null)} className="ui-button px-3 py-2 text-xs">
+                    {t.cancel}
+                  </button>
+                  <button onClick={confirmDelete} className="ui-button-danger px-3 py-2 text-xs">
+                    {t.disconnect}
+                  </button>
                 </div>
-                {expiresText ? (
-                  <div className="inline-flex items-center gap-1.5 text-[10px] text-slate-600 bg-white/70 border border-white rounded-full px-2 py-1">
-                    <CalendarClock size={10} />
-                    {expiresText}
-                    {remainingDays !== null && <span className={`${planRemainClass} font-semibold`}>剩余{remainingDays}天</span>}
-                  </div>
-                ) : (
-                  <div className="text-[10px] text-amber-700 font-semibold bg-amber-50/80 border border-amber-200 rounded-full px-2 py-1">
-                    永久授权
-                  </div>
-                )}
               </div>
             </motion.div>
-          )}
-          <div className="flex items-center justify-between text-[10px] font-medium text-slate-400">
-            <span>FUXI FORENSICS</span>
-            <span className="bg-slate-200/50 px-1.5 py-0.5 rounded text-slate-500">v{APP_VERSION}</span>
           </div>
-        </div>
-
-        {/* Delete Confirmation Modal */}
-        <AnimatePresence>
-          {sessionToDelete && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/20 backdrop-blur-sm p-4">
-              <motion.div 
-                initial={{ scale: 0.9, opacity: 0, y: 10 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.9, opacity: 0, y: 10 }}
-                className="bg-white/90 border border-white/60 rounded-2xl p-5 shadow-xl shadow-slate-200/50 w-full max-w-[240px] relative overflow-hidden glass-heavy"
-              >
-                <div className="flex flex-col items-center text-center gap-3">
-                  <div className="p-2 bg-red-50 rounded-full text-red-500 shadow-sm">
-                    <Trash2 size={20} />
-                  </div>
-                  
-                  <div>
-                    <h3 className="font-bold text-slate-800 text-sm mb-1">{t.disconnect_confirm_title}</h3>
-                    <p className="text-xs text-slate-500 leading-relaxed">
-                      {t.disconnect_confirm_desc} <br/>
-                      <span className="text-slate-700 font-mono bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                        {sessionToDeleteObj?.ip}
-                      </span>?
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 w-full mt-1">
-                    <button 
-                      onClick={() => setSessionToDelete(null)}
-                      className="px-2 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                    >
-                      {t.cancel}
-                    </button>
-                    <button 
-                      onClick={confirmDelete}
-                      className="px-2 py-1.5 text-xs font-bold bg-red-500 hover:bg-red-600 text-white rounded-lg shadow-md shadow-red-500/20 transition-all"
-                    >
-                      {t.disconnect}
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-      </div>
-      
-      {/* Global Loading Overlay for Sidebar */}
-      <AnimatePresence>
-        {isSwitching && switchingToId && (
-           <motion.div 
-             initial={{ opacity: 0 }}
-             animate={{ opacity: 1 }}
-             exit={{ opacity: 0 }}
-             className="absolute inset-0 z-40 bg-white/30 backdrop-blur-[2px] cursor-wait flex items-center justify-center"
-           >
-             <div className="bg-white/95 px-4 py-3 rounded-2xl shadow-xl border border-sky-200/50 flex items-center gap-3">
-               <Activity className="animate-spin text-sky-500" size={20} />
-               <div className="text-sm font-medium text-slate-700">
-                 {language === 'zh' ? '正在切换到' : 'Switching to'}{' '}
-                 <span className="font-mono text-sky-600">
-                   {sessions.find(s => s.id === switchingToId)?.ip}
-                 </span>
-               </div>
-             </div>
-           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+
+      <AnimatePresence>
+        {isSwitching && switchingToId && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-40 flex cursor-wait items-center justify-center bg-white/36 backdrop-blur-[3px]"
+          >
+            <div className="flex items-center gap-3 rounded-[24px] border border-sky-200/70 bg-white/94 px-4 py-3 shadow-xl">
+              <Activity className="animate-spin text-[#0078D4]" size={20} />
+              <div className="text-sm font-semibold text-slate-700">
+                {language === "zh" ? "正在切换到" : "Switching to"}{" "}
+                <span className="font-mono text-[#0078D4]">{sessions.find((s) => s.id === switchingToId)?.ip}</span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </aside>
   );
 }

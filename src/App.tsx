@@ -300,7 +300,7 @@ function MainApp() {
     : "启动中：准备完成";
 
   return (
-    <div className={`relative w-full h-screen overflow-hidden text-slate-800 font-sans selection:bg-indigo-100 selection:text-indigo-900 bg-transparent`}>
+    <div className="relative h-screen w-full overflow-hidden bg-transparent font-sans text-slate-800 selection:bg-[#cfe4fa] selection:text-[#003e73]">
       <ModernBackground />
       
       <AnimatePresence mode="wait">
@@ -340,18 +340,18 @@ function MainApp() {
               />
             ) : (
               <>
-                <div className="relative z-10 flex h-full p-2 gap-2">
+                <div className="relative z-10 flex h-full gap-4 p-4">
                   <motion.div
                     animate={{
-                      width: showServerSidebar ? 280 : 0,
+                      width: showServerSidebar ? 340 : 0,
                       opacity: showServerSidebar ? 1 : 0,
-                      marginRight: showServerSidebar ? 0 : -8,
+                      marginRight: showServerSidebar ? 0 : -16,
                     }}
                     transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                    className="h-full overflow-hidden flex-none rounded-2xl"
+                    className="h-full flex-none overflow-hidden rounded-[32px]"
                     style={{ willChange: "width, opacity" }}
                   >
-                    <div className="h-full w-[280px]">
+                    <div className="h-full w-[340px]">
                       <ServerSidebar 
                         onAddSession={() => setShowLoginModal(true)}
                         onDisconnect={handleDisconnect}
@@ -362,7 +362,7 @@ function MainApp() {
                   </motion.div>
 
                   {/* Main Navigation Sidebar */}
-                  <div className="h-full flex-none rounded-2xl overflow-hidden z-20">
+                  <aside className="z-20 h-full flex-none overflow-hidden rounded-[30px]">
                      <Sidebar 
                        activeTab={activeTab}
                        onTabChange={setActiveTab}
@@ -374,10 +374,10 @@ function MainApp() {
                        isCollapsed={sidebarCollapsed}
                        onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
                      />
-                  </div>
+                  </aside>
 
                   {/* Main Content Area */}
-                  <main className="flex-1 h-full overflow-hidden rounded-2xl relative z-10">
+                  <main className="fluent-app-frame fluent-watermark relative z-10 h-full flex-1 overflow-hidden">
                     <Dashboard 
                       activeTab={activeTab}
                       onTabChange={setActiveTab}
@@ -402,7 +402,7 @@ function MainApp() {
 
                 {/* Login Modal for adding new sessions */}
                 {isConnected && showLoginModal && (
-                  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm">
+                  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/18 p-4 backdrop-blur-md">
                     <div className="w-full max-w-md">
                       <Login 
                         onLogin={() => {
@@ -418,7 +418,7 @@ function MainApp() {
                 )}
 
                 {showStartupUpdatePrompt && startupUpdateInfo?.has_update && (
-                  <div className="fixed right-6 top-6 z-[120] max-w-sm rounded-2xl border border-blue-200 bg-white shadow-2xl p-4">
+                  <div className="fixed right-6 top-6 z-[120] max-w-sm ui-shell p-4">
                     <div className="text-sm font-semibold text-slate-800">
                       发现新版本 v{startupUpdateInfo.latest_version}
                     </div>
@@ -431,14 +431,14 @@ function MainApp() {
                       {!startupUpdateInfo.force_update && (
                         <button
                           onClick={() => setShowStartupUpdatePrompt(false)}
-                          className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs"
+                          className="ui-button px-3 py-1.5 text-xs"
                         >
                           稍后
                         </button>
                       )}
                       <button
                         onClick={handleStartupUpdateNow}
-                        className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs"
+                        className="ui-button-primary px-3 py-1.5 text-xs"
                       >
                         去更新
                       </button>

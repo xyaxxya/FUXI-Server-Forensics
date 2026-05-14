@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
-import { Bot, BookOpenText, BrainCircuit, ClipboardList, FileSearch, Loader2, Send, Square, Trash2, Wand2 } from "lucide-react";
+import { Bot, BrainCircuit, ClipboardList, FileSearch, History, Loader2, Send, Square, Trash2, Wand2 } from "lucide-react";
 import { useCommandStore } from "../../store/CommandContext";
 import { AIMessage, AISettings, ToolCall, buildServerForensicsToolExecution, buildToolDisplayText, shouldTreatAssistantMessageAsThinking } from "../../lib/ai";
 import { buildContextSections, buildServerContextSummary, buildWorkspacePromptContext } from "../../lib/aiContext";
@@ -13,11 +13,11 @@ import { SKILL_REGISTRY, buildSkillPackPrompt, detectAutoSkillRouting, getSkillB
 import { ChatTranscriptMessage } from "./ChatTranscriptMessage";
 import ThinkingProcess, { ThinkingStep } from "./ThinkingProcess";
 import SkillPanel from "./SkillPanel";
+import { ConversationHistoryPanel } from "./AgentRightSidebar";
 import {
   FloatingContextMenu,
   PlannerPanel,
   PreviewDialog,
-  PromptDeck,
   SlashCommandMenu,
   WorkspaceHeader,
   getSlashCommandCompletion,
@@ -41,7 +41,7 @@ type DisplayItem =
   | { type: "message"; message: AIMessage }
   | { type: "thinking"; steps: ThinkingStep[]; isFinished: boolean };
 
-type InspectorTab = "skills" | "plan" | "prompts" | "clues";
+type InspectorTab = "history" | "skills" | "plan" | "clues";
 
 interface RemoteSession {
   id: string;
@@ -172,8 +172,8 @@ export default function GeneralAgent({
   const { currentSession, sessions, selectedSessionIds } = useCommandStore();
   const records = useAIWorkspaceStore((state) => state.records);
   const tasks = useAIWorkspaceStore((state) => state.tasks);
-  const promptHistory = useAIWorkspaceStore((state) => state.promptHistory);
-  const promptSnippets = useAIWorkspaceStore((state) => state.promptSnippets);
+  const aiConversations = useAIWorkspaceStore((state) => state.aiConversations);
+  const activeAIConversationIds = useAIWorkspaceStore((state) => state.activeAIConversationIds);
   const sessionTitle = useAIWorkspaceStore((state) => state.sessionTitle);
   const manualSkillIds = useAIWorkspaceStore((state) => state.manualSkillIds);
   const autoSkillIds = useAIWorkspaceStore((state) => state.autoSkillIds);
@@ -186,8 +186,13 @@ export default function GeneralAgent({
   const clearTasks = useAIWorkspaceStore((state) => state.clearTasks);
   const addPromptHistory = useAIWorkspaceStore((state) => state.addPromptHistory);
   const savePromptSnippet = useAIWorkspaceStore((state) => state.savePromptSnippet);
-  const removePromptSnippet = useAIWorkspaceStore((state) => state.removePromptSnippet);
-  const togglePromptSnippetPin = useAIWorkspaceStore((state) => state.togglePromptSnippetPin);
+  const createAIConversation = useAIWorkspaceStore((state) => state.createAIConversation);
+  const ensureAIConversation = useAIWorkspaceStore((state) => state.ensureAIConversation);
+  const setActiveAIConversation = useAIWorkspaceStore((state) => state.setActiveAIConversation);
+  const updateAIConversationMessages = useAIWorkspaceStore((state) => state.updateAIConversationMessages);
+  const renameAIConversation = useAIWorkspaceStore((state) => state.renameAIConversation);
+  const removeAIConversation = useAIWorkspaceStore((state) => state.removeAIConversation);
+  const toggleAIConversationPin = useAIWorkspaceStore((state) => state.toggleAIConversationPin);
   const setAutoSkillIds = useAIWorkspaceStore((state) => state.setAutoSkillIds);
   const enableSkill = useAIWorkspaceStore((state) => state.enableSkill);
   const toggleSkill = useAIWorkspaceStore((state) => state.toggleSkill);
@@ -198,7 +203,7 @@ export default function GeneralAgent({
   const [status, setStatus] = useState("");
   const [cluePreview, setCluePreview] = useState<{ title: string; content: string } | null>(null);
   const [clueMenu, setClueMenu] = useState<{ x: number; y: number; actions: Array<{ label: string; onClick: () => void; danger?: boolean }> } | null>(null);
-  const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTab>("skills");
+  const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTab>("history");
   const abortControllerRef = useRef<AbortController | null>(null);
   const listEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -206,10 +211,33 @@ export default function GeneralAgent({
   const config = aiSettings.configs[aiSettings.activeProvider];
   const activeSkills = useMemo(() => getSkillsByIds(activeSkillIds), [activeSkillIds]);
   const activeSkillNames = useMemo(() => activeSkills.map((skill) => skill.name.zh), [activeSkills]);
+  const generalConversations = useMemo(
+    () => aiConversations.filter((session) => session.scope === "agent-general"),
+    [aiConversations],
+  );
+  const activeConversationId = activeAIConversationIds["agent-general"];
 
   useEffect(() => {
     listEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [displayItems.length, loading, messages.length, status]);
+
+  useEffect(() => {
+    const activeSession = ensureAIConversation(
+      "agent-general",
+      language === "zh" ? "通用智能体会话" : "General Agent Session",
+    );
+    setMessages(activeSession.messages);
+  }, [ensureAIConversation, language]);
+
+  useEffect(() => {
+    if (!activeConversationId) {
+      return;
+    }
+    const activeSession = aiConversations.find((session) => session.id === activeConversationId);
+    if (activeSession) {
+      setMessages(activeSession.messages);
+    }
+  }, [activeConversationId, aiConversations]);
 
   useEffect(() => {
     const routing = detectAutoSkillRouting(messages, generalInfo);
@@ -327,6 +355,9 @@ export default function GeneralAgent({
       return;
     }
     setMessages([]);
+    if (activeConversationId) {
+      updateAIConversationMessages(activeConversationId, [], language === "zh" ? "空白会话" : "Blank Session");
+    }
     setStatus("");
   };
 
@@ -459,6 +490,29 @@ export default function GeneralAgent({
   const resolvedSlashInput = useMemo(() => resolveSlashCommandInput(input, slashCommands), [input, slashCommands]);
   const canSend = !!input.trim() && !loading && (!input.trim().startsWith("/") || !!resolvedSlashInput.matchedCommand);
 
+  const handleCreateConversation = () => {
+    const session = createAIConversation({
+      scope: "agent-general",
+      title: language === "zh" ? "新的智能体窗口" : "New Agent Window",
+      activate: true,
+    });
+    setMessages(session.messages);
+    setInput("");
+    setStatus("");
+    setActiveInspectorTab("history");
+  };
+
+  const handleOpenConversation = (id: string) => {
+    if (loading) {
+      return;
+    }
+    if (setActiveAIConversation("agent-general", id)) {
+      const session = generalConversations.find((item) => item.id === id);
+      setMessages(session?.messages || []);
+      setStatus("");
+    }
+  };
+
   const handleSend = async (rawInput = input) => {
     const trimmedInput = rawInput.trim();
     if (!trimmedInput || loading) {
@@ -492,6 +546,10 @@ export default function GeneralAgent({
     addPromptHistory(trimmedInput);
     const nextHistory = [...messages, nextUserMessage];
     setMessages(nextHistory);
+    const conversation = activeConversationId
+      ? generalConversations.find((session) => session.id === activeConversationId) || ensureAIConversation("agent-general")
+      : ensureAIConversation("agent-general");
+    updateAIConversationMessages(conversation.id, nextHistory);
     setInput("");
     setLoading(true);
     setStatus(language === "zh" ? "智能体正在分析..." : "Agent is analyzing...");
@@ -525,9 +583,11 @@ export default function GeneralAgent({
         callbacks: {
           onAssistantMessage: (_, history) => {
             setMessages(history);
+            updateAIConversationMessages(conversation.id, history);
           },
           onToolResult: (_, __, history) => {
             setMessages(history);
+            updateAIConversationMessages(conversation.id, history);
             setStatus(language === "zh" ? "正在处理工具结果..." : "Processing tool output...");
           },
           onUsage: (usage) => {
@@ -536,6 +596,7 @@ export default function GeneralAgent({
         },
       });
       setMessages(finalHistory);
+      updateAIConversationMessages(conversation.id, finalHistory);
       finalizeTasks("all");
       setStatus(language === "zh" ? "分析完成" : "Done");
     } catch (error) {
@@ -769,9 +830,9 @@ export default function GeneralAgent({
         <div className="border-b border-slate-200/70 p-3">
           <div className="grid grid-cols-4 gap-1 rounded-[1.2rem] bg-slate-100/70 p-1">
             {[
+              { id: "history" as const, label: language === "zh" ? "历史" : "History", icon: History, count: generalConversations.length },
               { id: "skills" as const, label: language === "zh" ? "技能" : "Skills", icon: BrainCircuit, count: activeSkillIds.length },
               { id: "plan" as const, label: language === "zh" ? "计划" : "Plan", icon: ClipboardList, count: tasks.length },
-              { id: "prompts" as const, label: language === "zh" ? "提示" : "Prompts", icon: BookOpenText, count: promptSnippets.length },
               { id: "clues" as const, label: language === "zh" ? "线索" : "Clues", icon: FileSearch, count: records.length },
             ].map((tab) => {
               const Icon = tab.icon;
@@ -794,6 +855,19 @@ export default function GeneralAgent({
         </div>
 
         <div className="custom-scrollbar min-h-0 flex-1 overflow-auto p-3">
+          {activeInspectorTab === "history" && (
+            <ConversationHistoryPanel
+              language={language}
+              sessions={generalConversations}
+              activeSessionId={activeConversationId}
+              onCreate={handleCreateConversation}
+              onOpen={handleOpenConversation}
+              onDelete={removeAIConversation}
+              onRename={renameAIConversation}
+              onTogglePin={toggleAIConversationPin}
+            />
+          )}
+
           {activeInspectorTab === "skills" && (
             <SkillPanel
               language={language}
@@ -821,22 +895,100 @@ export default function GeneralAgent({
             />
           )}
 
-          {activeInspectorTab === "prompts" && (
-            <PromptDeck
-              language={language}
+          {/*
+            <div />
+          )}
+
+          {false && (
+            <div />
+          )}
+
+          {false && activeInspectorTab === "clues" && (
+            <div />
+          )}
+
+          {false && (
+            <div />
+          )}
+
+          {false && (
+            <div />
+          )}
+
+          {false && (
+            <div className="ui-shell min-h-0 rounded-[2rem] overflow-hidden flex flex-col">
+              <div className="border-b border-slate-200/70 px-5 py-4">
+                <h3 className="text-base font-bold text-slate-900">
+                  {language === "zh" ? "共享线索池" : "Shared Clue Pool"}
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  {language === "zh"
+                    ? "所有 AI 面板都会把有效信息沉淀到这里，并自动参与后续推理。"
+                    : "All AI panels retain useful findings here for later reasoning."}
+                </p>
+              </div>
+              <div className="flex-1 overflow-auto p-4 space-y-3">
+                {records.length === 0 && (
+                  <div className="rounded-[1.4rem] border border-dashed border-slate-300 bg-white/80 p-5 text-sm text-slate-500">
+                    {language === "zh" ? "暂时还没有沉淀线索。分析过程中可调用 update_context_info 自动写入。" : "No clues yet. The agent can write findings here while analyzing."}
+                  </div>
+                )}
+                {records.map((record) => (
+                  <motion.div
+                    key={record.id}
+                    whileHover={{ y: -2 }}
+                    onDoubleClick={() => setCluePreview({ title: record.title, content: record.content })}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setClueMenu({
+                        x: event.clientX,
+                        y: event.clientY,
+                        actions: [
+                          {
+                            label: language === "zh" ? "查看详情" : "Preview",
+                            onClick: () => setCluePreview({ title: record.title, content: record.content }),
+                          },
+                          {
+                            label: language === "zh" ? "复制内容" : "Copy",
+                            onClick: () => void navigator.clipboard.writeText(record.content),
+                          },
+                          {
+                            label: language === "zh" ? "存为提示词模板" : "Save as Prompt Snippet",
+                            onClick: () => savePromptSnippet({ content: record.content, title: record.title, pinned: false }),
+                          },
+                          {
+                            label: language === "zh" ? "发送到输入框" : "Send to Input",
+                            onClick: () => setInput(record.content),
+                          },
+                        ],
+                      });
+                    }}
+                    className="ui-subtle-surface rounded-[1.4rem] p-4"
+                  >
+                    <div className="text-sm font-semibold text-slate-900">{record.title}</div>
+                    <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{record.content}</div>
+                    <div className="mt-3 text-xs text-slate-400">
+                      {language === "zh" ? "??" : "Source"} ? {record.source}
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {false && (
+            <div
+              data-disabled="prompt-deck"
+              data-title="Prompt Deck"
+              data-language={language}
               title={language === "zh" ? "提示词面板" : "Prompt Deck"}
-              promptHistory={promptHistory}
-              promptSnippets={promptSnippets}
-              currentInput={input}
-              onUsePrompt={(value) => setInput(value)}
-              onSaveCurrent={() => {
-                savePromptSnippet({ content: input, pinned: true });
-              }}
-              onSaveHistoryPrompt={(value) => savePromptSnippet({ content: value, pinned: false })}
-              onRemoveSnippet={removePromptSnippet}
-              onTogglePin={togglePromptSnippetPin}
+              data-prompt-history={0}
+              data-prompt-snippets={0}
+              data-current-input={input}
             />
           )}
+
+          */}
 
           {activeInspectorTab === "clues" && (
             <div className="ui-shell min-h-0 rounded-[2rem] overflow-hidden flex flex-col">
@@ -891,7 +1043,7 @@ export default function GeneralAgent({
                     <div className="text-sm font-semibold text-slate-900">{record.title}</div>
                     <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{record.content}</div>
                     <div className="mt-3 text-xs text-slate-400">
-                      {language === "zh" ? "来源" : "Source"} · {record.source}
+                      {language === "zh" ? "??" : "Source"} ? {record.source}
                     </div>
                   </motion.div>
                 ))}

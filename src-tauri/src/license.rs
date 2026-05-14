@@ -7,6 +7,8 @@ use rsa::sha2::Sha256;
 use rsa::signature::Verifier;
 use rsa::RsaPublicKey;
 use serde::{Deserialize, Serialize};
+#[cfg(windows)]
+use sha2::{Digest, Sha256 as Sha256Hasher};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
@@ -84,10 +86,126 @@ pub fn get_machine_code() -> Result<String, String> {
         .output()
         .map_err(|e| e.to_string())?;
     let uuid = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !is_valid_machine_identifier(&uuid) {
+        return build_windows_fallback_machine_code();
+    }
     if uuid.is_empty() {
         return Err("无法获取机器码".to_string());
     }
     Ok(uuid)
+}
+
+#[cfg(windows)]
+fn run_hidden_powershell(command: &str) -> Result<String, String> {
+    use std::os::windows::process::CommandExt;
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", command])
+        .creation_flags(0x08000000)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            "Failed to run PowerShell while reading machine code".to_string()
+        } else {
+            stderr
+        });
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[cfg(windows)]
+fn is_valid_machine_identifier(value: &str) -> bool {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    let lowered = trimmed.to_ascii_lowercase();
+    if [
+        "none",
+        "null",
+        "unknown",
+        "default string",
+        "not specified",
+        "not available",
+        "to be filled by o.e.m.",
+        "system serial number",
+    ]
+    .iter()
+    .any(|placeholder| lowered == *placeholder || lowered.contains(placeholder))
+    {
+        return false;
+    }
+
+    let compact: String = trimmed
+        .chars()
+        .filter(|ch| ch.is_ascii_hexdigit())
+        .map(|ch| ch.to_ascii_uppercase())
+        .collect();
+    if compact.is_empty() {
+        return false;
+    }
+
+    if compact.chars().all(|ch| ch == 'F') || compact.chars().all(|ch| ch == '0') {
+        return false;
+    }
+
+    true
+}
+
+#[cfg(windows)]
+fn collect_windows_machine_identifiers() -> Vec<String> {
+    let script = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+$values = @()
+$machineGuid = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Cryptography').MachineGuid
+if ($machineGuid) { $values += "MachineGuid=$machineGuid" }
+$csProduct = Get-CimInstance -Class Win32_ComputerSystemProduct
+if ($csProduct.IdentifyingNumber) { $values += "ComputerSystemProduct.IdentifyingNumber=$($csProduct.IdentifyingNumber)" }
+$bios = Get-CimInstance -Class Win32_BIOS
+if ($bios.SerialNumber) { $values += "BIOS.SerialNumber=$($bios.SerialNumber)" }
+$baseBoard = Get-CimInstance -Class Win32_BaseBoard
+if ($baseBoard.SerialNumber) { $values += "BaseBoard.SerialNumber=$($baseBoard.SerialNumber)" }
+$processor = Get-CimInstance -Class Win32_Processor | Select-Object -First 1
+if ($processor.ProcessorId) { $values += "Processor.ProcessorId=$($processor.ProcessorId)" }
+$disk = Get-CimInstance -Class Win32_DiskDrive | Where-Object { $_.SerialNumber } | Select-Object -First 1
+if ($disk.SerialNumber) { $values += "DiskDrive.SerialNumber=$($disk.SerialNumber)" }
+$values | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+"#;
+
+    run_hidden_powershell(script)
+        .map(|output| {
+            output
+                .lines()
+                .map(str::trim)
+                .filter(|value| {
+                    let raw_value = value.split_once('=').map(|(_, raw)| raw).unwrap_or(value);
+                    is_valid_machine_identifier(raw_value)
+                })
+                .map(ToOwned::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[cfg(windows)]
+fn build_windows_fallback_machine_code() -> Result<String, String> {
+    let identifiers = collect_windows_machine_identifiers();
+    if identifiers.is_empty() {
+        return Err("Failed to collect stable Windows machine identifiers".to_string());
+    }
+
+    let payload = identifiers.join("|").to_ascii_uppercase();
+    let digest = Sha256Hasher::digest(payload.as_bytes());
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        hex.push_str(&format!("{:02X}", byte));
+    }
+
+    Ok(format!("WIN-{}", &hex[..32]))
 }
 
 #[cfg(target_os = "linux")]
@@ -277,5 +395,32 @@ pub fn get_license_status() -> Result<LicenseStatus, String> {
             license_plan: None,
             license_label: None,
         }),
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::is_valid_machine_identifier;
+
+    #[test]
+    fn rejects_windows_placeholder_machine_identifiers() {
+        assert!(!is_valid_machine_identifier(
+            "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF"
+        ));
+        assert!(!is_valid_machine_identifier(
+            "00000000-0000-0000-0000-000000000000"
+        ));
+        assert!(!is_valid_machine_identifier("To Be Filled By O.E.M."));
+        assert!(!is_valid_machine_identifier("System Serial Number"));
+    }
+
+    #[test]
+    fn accepts_normal_windows_machine_identifiers() {
+        assert!(is_valid_machine_identifier(
+            "7F7B80D2-2C7B-4F22-9A74-92B6AF04C1C1"
+        ));
+        assert!(is_valid_machine_identifier(
+            "MachineGuid=1f20c6c0-c393-4568-8e70-7405d66a8235"
+        ));
     }
 }

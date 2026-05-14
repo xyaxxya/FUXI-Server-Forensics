@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
-import { CheckCircle2, ListChecks, Loader2, Play, Square, Trash2, Wand2 } from "lucide-react";
+import { BookOpenText, CheckCircle2, ClipboardList, ListChecks, Loader2, Play, Square, Trash2, Wand2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Language } from "../../translations";
@@ -186,6 +186,7 @@ export default function AgentPanel({
   const [items, setItems] = useState<BatchItem[]>([]);
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState("");
+  const [activeSidebarTab, setActiveSidebarTab] = useState<"plan" | "prompts">("plan");
   const [preview, setPreview] = useState<{ title: string; content: string } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; actions: Array<{ label: string; onClick: () => void; danger?: boolean }> } | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -477,7 +478,7 @@ export default function AgentPanel({
   );
 
   return (
-    <div className="h-full grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
+    <div className="h-full min-h-0 grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="ui-shell h-full rounded-[2rem] overflow-hidden flex flex-col" data-context-scope="agent-batch">
       <WorkspaceHeader
         language={language}
@@ -723,7 +724,31 @@ export default function AgentPanel({
         })}
       </div>
       </div>
-      <aside className="custom-scrollbar max-h-full overflow-auto pr-1 space-y-4">
+      <aside className="agent-sidebar-tabs flex h-full min-h-0 flex-col gap-4 overflow-hidden rounded-[2rem] border border-white/70 bg-white/76 p-3 shadow-[0_30px_80px_-52px_rgba(15,23,42,0.45)] backdrop-blur-[34px]">
+        <div className="grid shrink-0 grid-cols-2 gap-1 rounded-[1.2rem] bg-slate-100/70 p-1">
+          {[
+            { id: "plan" as const, label: language === "zh" ? "计划" : "Plan", icon: ClipboardList, count: tasks.length },
+            { id: "prompts" as const, label: language === "zh" ? "提示词" : "Prompts", icon: BookOpenText, count: promptSnippets.length },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const active = activeSidebarTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveSidebarTab(tab.id)}
+                className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-[0.95rem] px-2 py-2 text-xs font-semibold transition ${active ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+              >
+                <span className="inline-flex max-w-full items-center gap-1 truncate">
+                  <Icon size={14} />
+                  <span className="truncate">{tab.label}</span>
+                </span>
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-slate-900 text-white" : "bg-white/80 text-slate-500"}`}>{tab.count}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="custom-scrollbar min-h-0 flex-1 overflow-auto">
+        <div className={activeSidebarTab === "plan" ? "block" : "hidden"}>
         <PlannerPanel
           language={language}
           tasks={tasks}
@@ -737,6 +762,8 @@ export default function AgentPanel({
             updateTaskContent(id, content);
           }}
         />
+        </div>
+        <div className={activeSidebarTab === "prompts" ? "block" : "hidden"}>
         <PromptDeck
           language={language}
           title={language === "zh" ? "批量提示词库" : "Batch Prompt Deck"}
@@ -755,6 +782,8 @@ export default function AgentPanel({
             updatePromptSnippet(id, next);
           }}
         />
+        </div>
+        </div>
       </aside>
       <FloatingContextMenu menu={menu} onClose={() => setMenu(null)} />
       {preview && <PreviewDialog title={preview.title} content={preview.content} onClose={() => setPreview(null)} />}

@@ -77,6 +77,7 @@ export default function LicenseGate({ initialLicenseStatus = null, onAuthorized 
     return "thirty_days";
   };
   const normalizedPlan = normalizePlan(licenseStatus?.license_plan);
+  const licenseTierClass = `license-tier-${normalizedPlan}`;
   const fallbackLabel =
     normalizedPlan === "permanent"
       ? "永久会员"
@@ -211,40 +212,49 @@ export default function LicenseGate({ initialLicenseStatus = null, onAuthorized 
   }, []);
 
   return (
-    <div className="relative w-full h-full p-8 flex items-center justify-center">
+    <div className="relative flex h-full w-full items-center justify-center overflow-hidden p-8">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute left-[16%] top-[12%] h-80 w-80 rounded-full bg-sky-200/32 blur-3xl" />
+        <div className="absolute bottom-[10%] right-[14%] h-80 w-80 rounded-full bg-emerald-200/22 blur-3xl" />
+      </div>
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 20, scale: 0.98 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-lg relative z-10"
+        className="relative z-10 w-full max-w-xl"
       >
-        <div className="bg-white/85 backdrop-blur-xl rounded-3xl p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-white/60">
-          <div className="text-center mb-6">
-            <div className="flex justify-center mb-4">
-              <motion.img
-                src={tauriLogo}
-                alt="Logo"
-                className="w-24 h-24 object-contain drop-shadow-lg"
+        <div className="fluent-hero-card relative overflow-hidden p-8">
+          <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-cyan-200/35 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-20 -left-12 h-48 w-48 rounded-full bg-sky-200/30 blur-3xl" />
+          <div className="relative mb-7 text-center">
+            <div className="mb-5 flex justify-center">
+              <motion.div
                 animate={{ rotate: [0, 4, 0, -4, 0], scale: [1, 1.03, 1] }}
                 transition={{
                   rotate: { duration: 6, repeat: Infinity, ease: "easeInOut" },
                   scale: { duration: 3, repeat: Infinity, ease: "easeInOut" },
                 }}
-              />
+                className="flex h-24 w-24 items-center justify-center rounded-[32px] border border-white bg-gradient-to-br from-white to-sky-50 shadow-[0_24px_52px_rgba(0,120,212,0.18)]"
+              >
+                <img src={tauriLogo} alt="Logo" className="h-[72px] w-[72px] object-contain drop-shadow-lg" />
+              </motion.div>
             </div>
-            <h2 className="text-2xl font-bold text-slate-800">软件授权验证</h2>
-            <p className="text-slate-500 text-sm mt-1">请先完成授权再进入 SSH 登录</p>
+            <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#0078D4]">
+              Fluent License Gate
+            </div>
+            <h2 className="text-3xl font-bold tracking-tight text-slate-900">软件授权验证</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">请先完成授权，再进入 SSH 登录与取证工作区</p>
           </div>
 
-          <div className="space-y-4">
+          <div className="relative space-y-4">
             {licenseStatus?.valid && (
-              <div className={`rounded-2xl p-4 border ${planCardClass}`}>
+              <div className={`license-tier-card ${licenseTierClass} rounded-[24px] border p-4 ${planCardClass}`}>
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl overflow-hidden bg-white border border-emerald-200 shrink-0">
+                  <div className="license-tier-avatar h-12 w-12 shrink-0 overflow-hidden rounded-2xl border border-emerald-200 bg-white">
                     {avatarSrc ? (
                       <img src={avatarSrc} alt="avatar" className="w-full h-full object-cover" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-emerald-600 text-xs font-bold">
+                      <div className="flex h-full w-full items-center justify-center text-xs font-bold text-emerald-600">
                         已授权
                       </div>
                     )}
@@ -256,7 +266,7 @@ export default function LicenseGate({ initialLicenseStatus = null, onAuthorized 
                     <div className="text-xs text-slate-500">QQ: {licenseStatus.qq || "-"}</div>
                   </div>
                   <div
-                    className={`px-3 py-1 rounded-full text-xs font-semibold ${planBadgeClass}`}
+                    className={`license-tier-badge px-3 py-1 rounded-full text-xs font-semibold ${planBadgeClass}`}
                   >
                     {licenseStatus.license_label || fallbackLabel}
                   </div>
@@ -269,15 +279,15 @@ export default function LicenseGate({ initialLicenseStatus = null, onAuthorized 
               </div>
             )}
 
-            <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-200">
-              <div className="text-xs font-semibold text-slate-600 mb-2">当前机器码</div>
-              <div className="text-xs text-slate-500 break-all">
+            <div className="rounded-[20px] border border-white/70 bg-white/68 p-3 shadow-sm">
+              <div className="mb-2 text-xs font-semibold text-slate-600">当前机器码</div>
+              <div className="break-all rounded-2xl bg-slate-50 px-3 py-2 font-mono text-xs text-slate-500">
                 {licenseStatus?.machine_code || "读取中..."}
               </div>
             </div>
 
             <div
-              className={`text-xs px-3 py-2 rounded-lg inline-flex ${
+              className={`inline-flex rounded-full px-3 py-2 text-xs font-semibold ${
                 licenseStatus?.valid
                   ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                   : "bg-amber-50 text-amber-700 border border-amber-200"
@@ -323,16 +333,16 @@ export default function LicenseGate({ initialLicenseStatus = null, onAuthorized 
                 setDragActive(false);
                 void readDroppedLicense(event);
               }}
-              className={`relative rounded-2xl border transition-all ${
+              className={`relative rounded-[26px] border transition-all ${
                 dragActive
-                  ? "border-blue-400 bg-blue-50/70 shadow-[0_20px_36px_-26px_rgba(59,130,246,0.35)]"
-                  : "border-slate-200 bg-slate-50/70"
+                  ? "border-[#0078D4] bg-sky-50/76 shadow-[0_20px_36px_-26px_rgba(0,120,212,0.35)]"
+                  : "border-white/74 bg-white/64"
               }`}
             >
               {dragActive && (
-                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl border-2 border-dashed border-blue-400 bg-blue-500/8 backdrop-blur-[1px]">
-                  <div className="rounded-2xl border border-blue-200 bg-white/92 px-5 py-4 text-center shadow-[0_24px_40px_-28px_rgba(59,130,246,0.35)]">
-                    <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[26px] border-2 border-dashed border-[#0078D4] bg-sky-500/8 backdrop-blur-[1px]">
+                  <div className="rounded-[24px] border border-sky-200 bg-white/92 px-5 py-4 text-center shadow-[0_24px_40px_-28px_rgba(0,120,212,0.35)]">
+                    <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 text-[#0078D4]">
                       <FileUp size={22} />
                     </div>
                     <div className="text-sm font-semibold text-slate-800">松开导入授权文件</div>
@@ -348,7 +358,7 @@ export default function LicenseGate({ initialLicenseStatus = null, onAuthorized 
               >
                 <div
                   className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
-                    dragActive ? "border-blue-200 bg-white text-blue-600" : "border-slate-200 bg-white text-slate-500"
+                    dragActive ? "border-sky-200 bg-white text-[#0078D4]" : "border-slate-200 bg-white text-slate-500"
                   }`}
                 >
                   {loadedFileName ? <CheckCircle2 size={18} /> : dragActive ? <FileUp size={18} /> : <Upload size={18} />}
@@ -375,7 +385,7 @@ export default function LicenseGate({ initialLicenseStatus = null, onAuthorized 
                     }
                   }}
                   placeholder="粘贴 license 内容，或拖入授权文件"
-                  className="w-full min-h-28 rounded-xl bg-white border border-slate-200 px-3 py-2 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                  className="ui-input-base min-h-28 w-full px-3 py-2 text-xs text-slate-700"
                 />
               </div>
             </div>
@@ -383,7 +393,7 @@ export default function LicenseGate({ initialLicenseStatus = null, onAuthorized 
             <button
               onClick={handleActivate}
               disabled={activating}
-              className="w-full py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-sm font-medium transition-all disabled:opacity-70"
+              className="ui-button-primary w-full py-3 text-sm disabled:opacity-70"
             >
               {activating ? "激活中..." : "激活许可证"}
             </button>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
-import { Cpu, Database, Globe, Loader2, Send, Square, Trash2 } from "lucide-react";
+import { BookOpenText, ClipboardList, Cpu, Database, FileSearch, Globe, Loader2, Send, Square, Trash2 } from "lucide-react";
 import { Language } from "../../translations";
 import { AIMessage, AISettings, ToolCall, buildServerForensicsToolExecution, buildToolDisplayText, shouldTreatAssistantMessageAsThinking } from "../../lib/ai";
 import { buildContextSections, buildServerContextSummary, buildWorkspacePromptContext } from "../../lib/aiContext";
@@ -95,7 +95,6 @@ const quickActions: QuickAction[] = [
 完成后输出结构化结论，并将可复用的数据库凭据调用 update_context_info 沉淀到共享线索池。`,
   },
 ];
-
 function byLanguage(language: Language, text: { zh: string; en: string }) {
   return language === "zh" ? text.zh : text.en;
 }
@@ -213,6 +212,7 @@ export default function GeneralInfoPanel({
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
+  const [activeSidebarTab, setActiveSidebarTab] = useState<"plan" | "prompts" | "clues">("plan");
   const [cluePreview, setCluePreview] = useState<{ title: string; content: string } | null>(null);
   const [clueMenu, setClueMenu] = useState<{ x: number; y: number; actions: Array<{ label: string; onClick: () => void; danger?: boolean }> } | null>(null);
   const listEndRef = useRef<HTMLDivElement | null>(null);
@@ -479,7 +479,7 @@ export default function GeneralInfoPanel({
   }, [handleSend]);
 
   return (
-    <div className="h-full grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
+    <div className="h-full min-h-0 grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
       <section className="ui-shell order-1 min-h-0 rounded-[2rem] flex flex-col overflow-hidden" data-context-scope="agent-context">
         <WorkspaceHeader
           language={language}
@@ -654,7 +654,31 @@ export default function GeneralInfoPanel({
         </div>
       </section>
 
-      <aside className="order-2 min-h-0 custom-scrollbar overflow-auto pr-1 flex flex-col gap-4">
+      <aside className="agent-sidebar-tabs order-2 flex h-full min-h-0 flex-col gap-4 overflow-hidden rounded-[2rem] border border-white/70 bg-white/76 p-3 shadow-[0_30px_80px_-52px_rgba(15,23,42,0.45)] backdrop-blur-[34px]">
+        <div className="grid shrink-0 grid-cols-3 gap-1 rounded-[1.2rem] bg-slate-100/70 p-1">
+          {[
+            { id: "plan" as const, label: language === "zh" ? "计划" : "Plan", icon: ClipboardList, count: tasks.length },
+            { id: "prompts" as const, label: language === "zh" ? "提示词" : "Prompts", icon: BookOpenText, count: promptSnippets.length },
+            { id: "clues" as const, label: language === "zh" ? "线索" : "Clues", icon: FileSearch, count: records.length },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const active = activeSidebarTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveSidebarTab(tab.id)}
+                className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-[0.95rem] px-2 py-2 text-xs font-semibold transition ${active ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+              >
+                <span className="inline-flex max-w-full items-center gap-1 truncate">
+                  <Icon size={14} />
+                  <span className="truncate">{tab.label}</span>
+                </span>
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-slate-900 text-white" : "bg-white/80 text-slate-500"}`}>{tab.count}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className={activeSidebarTab === "plan" ? "block" : "hidden"}>
         <PlannerPanel
           language={language}
           tasks={tasks}
@@ -662,6 +686,8 @@ export default function GeneralInfoPanel({
           onUpdateTaskStatus={updateTaskStatus}
           onRemoveTask={removeTask}
         />
+        </div>
+        <div className={activeSidebarTab === "prompts" ? "block" : "hidden"}>
         <PromptDeck
           language={language}
           title={language === "zh" ? "上下文提示词库" : "Context Prompt Deck"}
@@ -674,6 +700,8 @@ export default function GeneralInfoPanel({
           onRemoveSnippet={removePromptSnippet}
           onTogglePin={togglePromptSnippetPin}
         />
+        </div>
+        <div className={activeSidebarTab === "clues" ? "block" : "hidden"}>
         <div className="ui-shell min-h-0 rounded-[2rem] overflow-hidden flex flex-col">
         <div className="border-b border-slate-200/70 px-5 py-4">
           <div className="flex items-center justify-between gap-3">
@@ -754,6 +782,7 @@ export default function GeneralInfoPanel({
               </div>
             </motion.div>
           ))}
+        </div>
         </div>
         </div>
         <FloatingContextMenu menu={clueMenu} onClose={() => setClueMenu(null)} />

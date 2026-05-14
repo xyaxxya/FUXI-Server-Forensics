@@ -5,6 +5,7 @@ import {
   ChevronDown,
   Database,
   Edit3,
+  FileSearch,
   History,
   Loader2,
   Pin,
@@ -12,6 +13,7 @@ import {
   Plug,
   Plus,
   Send,
+  Sparkles,
   Square,
   Table2,
   Trash2,
@@ -845,6 +847,24 @@ export default function DatabaseAgent({
     });
   };
 
+  const setAiDraft = (prompt: string) => {
+    setWorkspaceMode("ai");
+    setAiInput(prompt);
+  };
+
+  const explainActiveSql = () => {
+    setAiDraft(`Explain this read-only SQL and identify useful forensic evidence.\n\n${activeTab.sql || "-- empty SQL tab"}`);
+  };
+
+  const optimizeActiveSql = () => {
+    setAiDraft(`Optimize this read-only SQL for clarity and performance. Keep it safe.\n\n${activeTab.sql || "-- empty SQL tab"}`);
+  };
+
+  const generateInvestigationSql = () => {
+    const target = selection ? `${selection.database}.${selection.objectName}` : activeDatabase || activeConnection?.database || "current database";
+    setAiDraft(`Generate 5 safe read-only investigation SQL queries for ${target}. Focus on admin accounts, secrets, auth tokens, suspicious transactions, and recent changes.`);
+  };
+
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -871,9 +891,47 @@ export default function DatabaseAgent({
     window.addEventListener("fuxi-scope-context-action", handler as EventListener);
     return () => window.removeEventListener("fuxi-scope-context-action", handler as EventListener);
   }, [handleSendAi]);
+
+  const databaseAiAssistant = (
+    <div className="navicat-ai-card rounded-[1.6rem] p-4">
+      <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+        <Sparkles size={16} className="text-[#0078D4]" />
+        AI Query Assistant
+      </div>
+      <div className="mt-1 text-xs text-slate-500">Generate, explain and optimize read-only SQL.</div>
+      <div className="mt-3 grid grid-cols-1 gap-2">
+        <button onClick={generateInvestigationSql} className="navicat-ai-action">
+          <FileSearch size={15} />
+          Generate investigation SQL
+        </button>
+        <button onClick={explainActiveSql} className="navicat-ai-action">
+          <Sparkles size={15} />
+          Explain current SQL
+        </button>
+        <button onClick={optimizeActiveSql} className="navicat-ai-action">
+          <Pin size={15} />
+          Optimize current SQL
+        </button>
+      </div>
+      <div className="mt-3 rounded-[1.1rem] border border-slate-200/70 bg-white/70 p-3">
+        <div className="text-xs font-semibold text-slate-700">AI draft</div>
+        <textarea
+          value={aiInput}
+          onChange={(event) => setAiInput(event.target.value)}
+          className="ui-input-base mt-2 min-h-[96px] w-full resize-none rounded-xl px-3 py-2 text-xs"
+          placeholder="Describe the evidence you want to query..."
+        />
+        <button onClick={() => void handleSendAi()} disabled={!canSendAi} className="ui-button-primary mt-2 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs disabled:bg-slate-300">
+          {aiLoading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+          Send to AI
+        </button>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="h-full grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_300px] 2xl:grid-cols-[280px_300px_minmax(0,1fr)]">
-      <section className="ui-shell order-1 min-h-0 overflow-hidden rounded-[2rem] 2xl:order-3" data-context-scope="agent-database">
+    <div className="navicat-workbench h-full min-h-0 grid grid-cols-1 gap-4 rounded-[2rem] xl:grid-cols-[minmax(0,1fr)_300px] 2xl:grid-cols-[280px_300px_minmax(0,1fr)]">
+      <section className="ui-shell navicat-pane order-1 min-h-0 overflow-hidden rounded-[1.6rem] 2xl:order-3" data-context-scope="agent-database">
         <WorkspaceHeader
           language={language}
           icon={Database}
@@ -1088,6 +1146,7 @@ export default function DatabaseAgent({
               </div>
 
               <div className="flex min-h-0 flex-col gap-4">
+                {databaseAiAssistant}
                 <div className="ui-surface rounded-[1.6rem] p-4">
                   <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                     <History size={16} />
@@ -1276,7 +1335,7 @@ export default function DatabaseAgent({
         )}
       </section>
 
-      <aside className="ui-shell order-2 min-h-0 overflow-hidden rounded-[2rem] xl:order-3 2xl:order-2">
+      <aside className="ui-shell navicat-pane order-2 min-h-0 overflow-hidden rounded-[1.6rem] xl:order-3 2xl:order-2">
         <div className="border-b border-slate-200/70 px-5 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-100 via-white to-blue-50 text-slate-700 shadow-[0_16px_28px_-22px_rgba(15,23,42,0.16)]">
@@ -1366,7 +1425,7 @@ export default function DatabaseAgent({
         </div>
       </aside>
 
-      <aside className="ui-shell order-3 min-h-0 overflow-hidden rounded-[2rem] xl:order-2 2xl:order-1">
+      <aside className="ui-shell navicat-pane order-3 min-h-0 overflow-hidden rounded-[1.6rem] xl:order-2 2xl:order-1">
         <div className="border-b border-slate-200/70 px-5 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>

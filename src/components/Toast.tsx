@@ -75,10 +75,10 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: (id: string) => 
   };
 
   const styles = {
-    success: "bg-emerald-50 border-emerald-200 text-emerald-800",
-    error: "bg-red-50 border-red-200 text-red-800",
-    warning: "bg-amber-50 border-amber-200 text-amber-800",
-    info: "bg-sky-50 border-sky-200 text-sky-800"
+    success: "border-emerald-200/80 text-emerald-800",
+    error: "border-red-200/80 text-red-800",
+    warning: "border-amber-200/80 text-amber-800",
+    info: "border-sky-200/80 text-sky-800"
   };
 
   const iconColors = {
@@ -93,7 +93,7 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: (id: string) => 
       initial={{ opacity: 0, y: -20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, x: 100, scale: 0.95 }}
-      className={`${styles[toast.type]} border rounded-xl shadow-lg px-4 py-3 flex items-center gap-3 min-w-[320px] max-w-md pointer-events-auto backdrop-blur-sm`}
+      className={`${styles[toast.type]} pointer-events-auto flex min-w-[320px] max-w-md items-center gap-3 rounded-[22px] border bg-white/86 px-4 py-3 shadow-[0_18px_38px_rgba(42,79,120,0.14)] backdrop-blur-xl`}
     >
       <div className={iconColors[toast.type]}>
         {icons[toast.type]}

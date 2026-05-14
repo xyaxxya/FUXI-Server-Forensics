@@ -616,6 +616,263 @@ ${topRemoteRows}
     }
   };
 
+  const starNodes = [
+    { label: "CPU", value: `${cpu.toFixed(1)}%`, className: "left-[18%] top-[24%]", active: isCpuAlert },
+    { label: "MEM", value: `${mem.toFixed(1)}%`, className: "right-[18%] top-[24%]", active: isMemAlert },
+    { label: "NET", value: `${(rxKb + txKb).toFixed(1)}K`, className: "left-[12%] bottom-[24%]", active: isTrafficAlert },
+    { label: "CONN", value: `${conn}`, className: "right-[12%] bottom-[24%]", active: isConnAlert },
+    { label: "IP", value: `${suspiciousRemoteIps.length}`, className: "left-[43%] top-[10%]", active: suspiciousRemoteIps.length > 0 },
+    { label: "PROC", value: `${suspiciousProcesses.length}`, className: "left-[43%] bottom-[10%]", active: suspiciousProcesses.length > 0 },
+  ];
+
+  return (
+    <div className="startrace-shell custom-scrollbar relative h-full overflow-y-auto rounded-[2rem] border border-cyan-100/70 bg-slate-950 p-3 text-slate-100 shadow-[0_30px_90px_rgba(8,20,40,0.22)] xl:overflow-hidden">
+      <div className="startrace-aurora" />
+      <div className="startrace-grid" />
+
+      <div className="relative z-10 flex min-h-full flex-col gap-3 xl:h-full xl:min-h-0">
+        <header className="startrace-panel shrink-0 rounded-[1.6rem] px-4 py-3">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-cyan-200/80">
+                <ShieldAlert size={14} />
+                StarTrace Incident Command
+              </div>
+              <h2 className="mt-1 truncate text-2xl font-semibold tracking-tight text-white">{t.response_title}</h2>
+              <p className="mt-1 text-xs text-slate-300">{t.response_subtitle}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/8 px-3 py-2">
+                <span className="text-xs text-slate-300">{language === "zh" ? "刷新" : "Interval"}</span>
+                <select
+                  value={refreshInterval}
+                  onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                  className="bg-transparent text-xs font-semibold text-white outline-none"
+                >
+                  <option className="bg-slate-900" value={1000}>1s</option>
+                  <option className="bg-slate-900" value={2000}>2s</option>
+                  <option className="bg-slate-900" value={5000}>5s</option>
+                  <option className="bg-slate-900" value={10000}>10s</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/8 px-3 py-2 text-xs text-slate-300">
+                <span className={`h-2 w-2 rounded-full ${isMonitoring ? "animate-pulse bg-emerald-300" : "bg-slate-500"}`} />
+                {getTimeAgo(lastUpdateTime)}
+              </div>
+              <button
+                onClick={() => (isMonitoring ? stopMonitoring() : startMonitoring(MONITOR_COMMANDS, refreshInterval))}
+                className={`ui-pressable inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold text-white ${
+                  isMonitoring ? "bg-red-500 hover:bg-red-600" : "bg-gradient-to-r from-[#0078D4] to-[#50E6FF]"
+                }`}
+              >
+                {isMonitoring ? <Pause size={14} /> : <Play size={14} />}
+                {isMonitoring ? t.stop_monitoring : t.start_monitoring}
+              </button>
+              <button onClick={exportJson} className="startrace-button">
+                <Download size={13} />
+                JSON
+              </button>
+              <button onClick={exportMarkdown} className="startrace-button">
+                <Download size={13} />
+                MD
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[300px_minmax(0,1fr)_330px]">
+          <aside className="flex min-h-0 flex-col gap-3">
+            <section className="grid grid-cols-2 gap-3">
+              {[
+                { label: t.response_upstream, value: `${txKb.toFixed(1)} KB/s`, icon: Network, alert: isTrafficAlert },
+                { label: t.response_downstream, value: `${rxKb.toFixed(1)} KB/s`, icon: Activity, alert: isTrafficAlert },
+                { label: t.response_conn_count, value: String(conn), icon: ShieldCheck, alert: isConnAlert },
+                { label: t.response_host_usage, value: `${cpu.toFixed(0)} / ${mem.toFixed(0)}%`, icon: Cpu, alert: isCpuAlert || isMemAlert },
+              ].map((metric) => {
+                const Icon = metric.icon;
+                return (
+                  <motion.div key={metric.label} whileHover={{ y: -3 }} className={`startrace-panel rounded-[1.35rem] p-3 ${metric.alert ? "ring-1 ring-red-300/50" : ""}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="rounded-xl bg-white/10 p-2 text-cyan-200">
+                        <Icon size={15} />
+                      </div>
+                      {metric.alert && <span className="rounded-full bg-red-400/20 px-2 py-0.5 text-[10px] font-semibold text-red-100">ALERT</span>}
+                    </div>
+                    <div className="mt-3 text-[11px] text-slate-400">{metric.label}</div>
+                    <div className="mt-1 truncate text-lg font-semibold text-white">{metric.value}</div>
+                  </motion.div>
+                );
+              })}
+            </section>
+
+            <section id="resp-section-thresholds" className="startrace-panel min-h-0 rounded-[1.5rem] p-4">
+              <button onClick={() => toggleSection("thresholds")} className="flex w-full items-center justify-between text-left text-sm font-semibold text-white">
+                {t.response_nav_thresholds}
+                {collapsedSections.thresholds ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+              </button>
+              {!collapsedSections.thresholds && (
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {[
+                    { id: "resp-threshold_cpu", label: "CPU", value: cpuThreshold, set: setCpuThreshold, alert: isCpuAlert, max: 100 },
+                    { id: "resp-threshold_mem", label: "MEM", value: memThreshold, set: setMemThreshold, alert: isMemAlert, max: 100 },
+                    { id: "resp-threshold_conn", label: "CONN", value: connThreshold, set: setConnThreshold, alert: isConnAlert, max: 99999 },
+                    { id: "resp-threshold_traffic", label: "KB/S", value: trafficThresholdKb, set: setTrafficThresholdKb, alert: isTrafficAlert, max: 99999 },
+                  ].map((item) => (
+                    <label key={item.id} id={item.id} className={`rounded-2xl border p-2 ${item.alert || focusedTarget === item.id.replace("resp-", "") ? "border-red-300/60 bg-red-400/10" : "border-white/10 bg-white/7"}`}>
+                      <span className="text-[10px] font-bold tracking-[0.14em] text-slate-400">{item.label}</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={item.max}
+                        value={item.value}
+                        onChange={(e) => item.set(Number(e.target.value) || item.value)}
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/45 px-2 py-1.5 text-sm font-semibold text-white outline-none focus:border-cyan-300"
+                      />
+                    </label>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section id="resp-section-rules" className="startrace-panel rounded-[1.5rem] p-4">
+              <button onClick={() => toggleSection("rules")} className="flex w-full items-center justify-between text-left text-sm font-semibold text-white">
+                {t.response_nav_rules}
+                {collapsedSections.rules ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+              </button>
+              {!collapsedSections.rules && (
+                <div className="mt-3 space-y-2">
+                  <input value={blacklistInput} onChange={(e) => setBlacklistInput(e.target.value)} className="startrace-input" placeholder="Blacklist IPs" />
+                  <input value={whitelistInput} onChange={(e) => setWhitelistInput(e.target.value)} className="startrace-input" placeholder="Whitelist IPs" />
+                  <input value={suspiciousKeywordsInput} onChange={(e) => setSuspiciousKeywordsInput(e.target.value)} className="startrace-input" placeholder="Process keywords" />
+                </div>
+              )}
+            </section>
+          </aside>
+
+          <section className="flex min-h-0 flex-col gap-3">
+            <div id="resp-section-overview" className="startrace-map relative min-h-[420px] flex-1 overflow-hidden rounded-[1.8rem] border border-cyan-200/20 bg-slate-950/60 p-5">
+              <div className="absolute inset-6 rounded-full border border-cyan-300/10" />
+              <div className="absolute inset-16 rounded-full border border-cyan-300/10" />
+              <div className="absolute left-1/2 top-1/2 h-[72%] w-[72%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-cyan-300/15" />
+              <div className="startrace-radar" />
+              <div className="absolute left-1/2 top-1/2 z-20 flex h-32 w-32 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border border-cyan-200/40 bg-cyan-300/10 text-center shadow-[0_0_60px_rgba(80,230,255,0.18)] backdrop-blur-xl">
+                <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-100">Risk Core</div>
+                <div className="mt-1 text-4xl font-semibold text-white">{warnings.length}</div>
+                <div className="text-[11px] text-slate-300">C {criticalAlertCount} / H {highAlertCount}</div>
+              </div>
+              {starNodes.map((node) => (
+                <motion.div
+                  key={node.label}
+                  className={`startrace-node absolute z-30 ${node.className} ${node.active ? "startrace-node-alert" : ""}`}
+                  animate={{ y: [0, -5, 0], opacity: [0.86, 1, 0.86] }}
+                  transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
+                >
+                  <div className="text-[10px] font-bold tracking-[0.18em]">{node.label}</div>
+                  <div className="mt-0.5 text-sm font-semibold">{node.value}</div>
+                </motion.div>
+              ))}
+              <div className="absolute bottom-4 left-4 right-4 z-30 flex flex-wrap gap-2">
+                {sectionNav.map((item) => (
+                  <button key={item.id} onClick={() => scrollToSection(item.id)} className="rounded-full border border-white/10 bg-white/8 px-3 py-1.5 text-[11px] font-semibold text-slate-200 hover:border-cyan-300/50 hover:text-cyan-100">
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div id="resp-section-trends" className="grid shrink-0 grid-cols-1 gap-3 2xl:grid-cols-2">
+              <div className="startrace-panel rounded-[1.4rem] p-3">
+                <ChartDisplay data={networkChart} title={t.response_rate_chart} yAxisLabel="KB/s" unit="KB/s" />
+              </div>
+              <div className="startrace-panel rounded-[1.4rem] p-3">
+                <ChartDisplay data={connChart} title={t.response_conn_chart} yAxisLabel={t.response_conn_count} unit="" />
+              </div>
+            </div>
+          </section>
+
+          <aside className="flex min-h-0 flex-col gap-3">
+            <section id="resp-section-alerts" className="startrace-panel min-h-0 flex-1 rounded-[1.5rem] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-semibold text-white">{t.response_warning_title}</div>
+                <span className="rounded-full bg-red-400/20 px-2 py-1 text-xs font-semibold text-red-100">{warnings.length}</span>
+              </div>
+              <div className="custom-scrollbar mt-3 max-h-[28vh] space-y-2 overflow-auto pr-1">
+                {warnings.length === 0 && <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-3 text-xs text-emerald-100">{t.response_no_warning}</div>}
+                {warnings.map((warning, index) => (
+                  <button key={`${warning.target}-${index}`} onClick={() => jumpToTarget(warning.target)} className="w-full rounded-2xl border border-red-300/20 bg-red-400/10 p-3 text-left text-xs text-red-50 hover:border-red-200/50">
+                    <div className="font-semibold">{warning.parameter}</div>
+                    <div className="mt-1 leading-5 text-red-100/80">{warning.message}</div>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="startrace-panel rounded-[1.5rem] p-4">
+              <div className="text-sm font-semibold text-white">{t.response_proc_signal}</div>
+              <div className="mt-3 space-y-2">
+                {suspiciousProcesses.slice(0, 3).map((item, index) => (
+                  <div key={`${item.pid}-${index}`} className="rounded-2xl border border-white/10 bg-white/7 p-3">
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="truncate font-semibold text-white">{item.process}</span>
+                      <span className="rounded-full bg-amber-300/20 px-2 py-0.5 text-amber-100">{severityLabels[item.severity]}</span>
+                    </div>
+                    <div className="mt-1 text-[11px] text-slate-400">PID {item.pid} / CPU {item.cpu.toFixed(1)} / MEM {item.mem.toFixed(1)}</div>
+                  </div>
+                ))}
+                {suspiciousProcesses.length === 0 && <div className="text-xs text-slate-400">{t.response_no_warning}</div>}
+              </div>
+            </section>
+
+            <section id="resp-section-actions" className="startrace-panel rounded-[1.5rem] p-4">
+              <div className="text-sm font-semibold text-white">{t.response_action_title}</div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <input value={operator} onChange={(e) => setOperator(e.target.value)} className="startrace-input" placeholder={t.response_action_operator} />
+                <select value={actionTemplate} onChange={(e) => setActionTemplate(e.target.value)} className="startrace-input">
+                  <option className="bg-slate-900" value="block_ip">{t.response_action_block_ip}</option>
+                  <option className="bg-slate-900" value="kill_process">{t.response_action_kill_process}</option>
+                  <option className="bg-slate-900" value="lock_user">{t.response_action_lock_user}</option>
+                </select>
+                <input value={actionTarget} onChange={(e) => setActionTarget(e.target.value)} className="startrace-input col-span-2" placeholder={t.response_action_target} />
+              </div>
+              <label className="mt-3 flex items-center gap-2 text-xs text-slate-300">
+                <input type="checkbox" checked={confirmAction} onChange={(e) => setConfirmAction(e.target.checked)} />
+                {t.response_action_confirm}
+              </label>
+              <button onClick={executeActionTemplate} disabled={!confirmAction || !actionTarget.trim() || executingAction} className="mt-3 w-full rounded-2xl bg-red-500 px-4 py-2.5 text-sm font-semibold text-white disabled:bg-slate-600">
+                {executingAction ? t.processing_status : t.response_action_execute}
+              </button>
+            </section>
+          </aside>
+        </main>
+
+        <section id="resp-section-flows" className="grid shrink-0 grid-cols-1 gap-3 xl:grid-cols-3">
+          <div id="resp-ip_aggregate" className={`startrace-panel rounded-[1.4rem] p-3 ${focusedTarget === "ip_aggregate" ? "ring-1 ring-red-300" : ""}`}>
+            <SectionTitle icon={<ShieldAlert size={15} />} title={t.response_ip_agg_table} />
+            <div className="custom-scrollbar max-h-48 overflow-auto">
+              {suspiciousRemoteIps.length > 0 ? suspiciousRemoteIps.map((item, index) => (
+                <div key={`${item.ip}-${index}`} className="mb-2 rounded-2xl border border-white/10 bg-white/7 p-3 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono font-semibold text-white">{item.ip}</span>
+                    <span className="text-amber-100">{item.tag}</span>
+                  </div>
+                  <div className="mt-1 text-slate-400">{t.response_hits} {item.count} / {item.ports.slice(0, 4).join(", ") || "-"}</div>
+                </div>
+              )) : <div className="text-xs text-slate-400">{t.response_no_warning}</div>}
+            </div>
+          </div>
+          <div id="resp-flow_table" className={`startrace-panel rounded-[1.4rem] p-3 ${focusedTarget === "flow_table" ? "ring-1 ring-red-300" : ""}`}>
+            <SectionTitle icon={<Network size={15} />} title={t.response_flow_table} />
+            <CompactTable data={topFlows} />
+          </div>
+          <div id="resp-cpu_table" className={`startrace-panel rounded-[1.4rem] p-3 ${focusedTarget === "cpu_table" ? "ring-1 ring-red-300" : ""}`}>
+            <SectionTitle icon={<Cpu size={15} />} title={t.response_cpu_table} />
+            <CompactTable data={topCpu} />
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+
   return (
     <div className="relative h-full overflow-y-auto custom-scrollbar p-6 bg-white/90 rounded-3xl border border-slate-200/70 shadow-[0_10px_40px_rgba(15,23,42,0.06)]">
       <div className="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-sky-200/20 blur-3xl pointer-events-none" />

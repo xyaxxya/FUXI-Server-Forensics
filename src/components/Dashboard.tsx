@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity,
+  CalendarDays,
+  Filter,
   RefreshCw,
   Play,
   Pause,
@@ -17,6 +19,7 @@ import {
   Cpu,
   Server,
   Layout,
+  ShieldCheck,
   WrapText,
   Copy,
   CheckCheck
@@ -1084,20 +1087,20 @@ function CommandCard({
   let content;
   if (!data && !loading) {
     content = (
-      <div className="flex flex-col items-center justify-center min-h-[200px] text-center gap-4">
-        <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center group-hover:bg-blue-50 transition-colors">
+      <div className="flex min-h-[200px] flex-col items-center justify-center gap-4 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-[22px] border border-white bg-sky-50 text-[#0078D4] shadow-sm transition-colors group-hover:bg-cyan-50">
           <Globe
-            className="text-slate-400 group-hover:text-blue-500 transition-colors"
+            className="transition-colors"
             size={24}
           />
         </div>
         <div>
-          <h3 className="text-slate-800 font-medium mb-1">{title}</h3>
+          <h3 className="mb-1 font-semibold text-slate-800">{title}</h3>
           <p className="text-slate-400 text-sm">{t.noData}</p>
         </div>
         <button
           onClick={onRefresh}
-          className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-all flex items-center gap-2"
+          className="ui-button flex items-center gap-2 px-4 py-2 text-sm"
         >
           <RefreshCw size={14} />
           {t.load_data}
@@ -1106,9 +1109,11 @@ function CommandCard({
     );
   } else if (loading) {
     content = (
-      <div className="flex flex-col items-center justify-center h-48 gap-3">
-        <div className="w-8 h-8 border-2 border-blue-100 border-t-blue-500 rounded-full animate-spin" />
-        <span className="text-slate-400 text-sm">{t.fetching_data}</span>
+      <div className="flex h-48 flex-col items-center justify-center gap-4">
+        <div className="relative flex h-14 w-14 items-center justify-center rounded-[22px] bg-sky-50">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-sky-100 border-t-[#0078D4]" />
+        </div>
+        <span className="text-sm font-medium text-slate-500">{t.fetching_data}</span>
       </div>
     );
   } else if (data) {
@@ -1233,16 +1238,17 @@ function CommandCard({
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      whileHover={{ y: -2 }}
-      className={`ui-surface overflow-visible relative z-0 hover:z-30 transition-all duration-300 flex flex-col group ${
+      initial={{ opacity: 0, y: 12, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      whileHover={{ y: -4 }}
+      transition={{ duration: 0.28, ease: [0.25, 0.46, 0.45, 0.94] }}
+      className={`fluent-card spotlight-card group relative z-0 flex flex-col overflow-visible transition-all duration-300 hover:z-30 ${
         className || ""
       }`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <div className="h-1 w-full bg-gradient-to-r from-sky-500/70 via-indigo-500/40 to-transparent" />
+      <div className="h-1.5 w-full rounded-t-[24px] bg-gradient-to-r from-[#0078D4] via-[#50E6FF] to-[#11A36A]" />
 
       {/* Tooltip */}
       <AnimatePresence>
@@ -1251,7 +1257,7 @@ function CommandCard({
             initial={{ opacity: 0, y: 10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            className="absolute z-50 left-0 right-0 -top-16 mx-4 p-3 bg-slate-800 text-white text-xs rounded-xl shadow-xl border border-slate-700 pointer-events-none"
+            className="pointer-events-none absolute left-0 right-0 -top-16 z-50 mx-4 rounded-2xl border border-slate-700 bg-slate-900 p-3 text-xs text-white shadow-xl"
           >
             <div className="font-semibold mb-0.5 flex items-center gap-2">
               <Info size={12} className="text-blue-400" />
@@ -1264,15 +1270,15 @@ function CommandCard({
         )}
       </AnimatePresence>
 
-      <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-transparent">
+      <div className="flex items-center justify-between border-b border-slate-200/60 bg-white/24 px-5 py-4">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-800 border border-slate-200">
+          <div className="flex h-11 w-11 items-center justify-center rounded-[18px] border border-white/80 bg-gradient-to-br from-sky-50 to-cyan-50 text-[#0078D4] shadow-sm">
             <CardIcon size={16} />
           </div>
           <div className="flex flex-col leading-tight">
-            <span className="font-medium text-slate-800 tracking-tight">{title}</span>
+            <span className="font-semibold tracking-tight text-slate-900">{title}</span>
             {data?.ts && (
-              <span className="text-[10px] text-slate-400">
+              <span className="mt-1 text-[10px] font-medium uppercase tracking-[0.12em] text-slate-400">
                 Updated {new Date(data.ts).toLocaleTimeString()}
               </span>
             )}
@@ -1285,13 +1291,13 @@ function CommandCard({
           />
           <button
             onClick={onRefresh}
-            className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-all"
+            className="rounded-2xl border border-slate-200/70 bg-white/70 p-2 text-slate-400 transition-all hover:border-sky-200 hover:bg-sky-50 hover:text-[#0078D4]"
           >
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           </button>
         </div>
       </div>
-      <div className="p-6">{content}</div>
+      <div className="p-5">{content}</div>
     </motion.div>
   );
 }
@@ -1411,6 +1417,23 @@ export default function Dashboard({
     : "";
 
   const t = translations[language];
+  const activeTitle = String(t[activeTab as keyof typeof t] || activeTab);
+  const activeIconMap: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+    system: Cpu,
+    network: Globe,
+    services: Server,
+    docker: Layout,
+    database: Database,
+    security: ShieldCheck,
+    web: Globe,
+  };
+  const ActiveIcon = activeIconMap[activeTab] || Activity;
+  const completedCount = tabCommands.filter((command) => !!getCommandData(command.id)).length;
+  const runningCount = tabCommands.filter((command) => !!loading[command.id]).length;
+  const todayText = new Date().toLocaleDateString(language === "zh" ? "zh-CN" : "en-US", {
+    month: "short",
+    day: "numeric",
+  });
 
   // Monitoring handlers
   const handleStartMonitoring = (commandId: string) => {
@@ -1439,7 +1462,7 @@ export default function Dashboard({
   return (
     <>
       {/* General Agent View */}
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col ui-shell overflow-hidden relative ${!isGeneralAgent ? 'hidden' : ''}`}>
+      <div className={`relative flex h-full flex-1 flex-col overflow-hidden rounded-[30px] p-4 md:p-6 ${!isGeneralAgent ? 'hidden' : ''}`}>
         <GeneralAgent 
           language={language} 
           aiSettings={aiSettings} 
@@ -1452,7 +1475,7 @@ export default function Dashboard({
       </div>
 
       {/* Agent Panel View */}
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col ui-shell overflow-hidden relative ${!isAgentPanel ? 'hidden' : ''}`}>
+      <div className={`relative flex h-full flex-1 flex-col overflow-hidden rounded-[30px] p-4 md:p-6 ${!isAgentPanel ? 'hidden' : ''}`}>
         <AgentPanel
           language={language}
           aiSettings={aiSettings}
@@ -1463,7 +1486,7 @@ export default function Dashboard({
       </div>
 
       {/* General Info Context Panel */}
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col ui-shell overflow-hidden relative ${!isContextPanel ? 'hidden' : ''}`}>
+      <div className={`relative flex h-full flex-1 flex-col overflow-hidden rounded-[30px] p-4 md:p-6 ${!isContextPanel ? 'hidden' : ''}`}>
           <div className="h-full ui-surface overflow-y-auto custom-scrollbar">
              <GeneralInfoPanel
                 language={language}
@@ -1476,7 +1499,7 @@ export default function Dashboard({
       </div>
 
       {/* Database Agent View */}
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col ui-shell overflow-hidden relative ${!isDatabaseAgent ? 'hidden' : ''}`}>
+      <div className={`relative flex h-full flex-1 flex-col overflow-hidden rounded-[30px] p-4 md:p-6 ${!isDatabaseAgent ? 'hidden' : ''}`}>
         <DatabaseAgent 
           language={language} 
           aiSettings={aiSettings} 
@@ -1486,26 +1509,159 @@ export default function Dashboard({
         />
       </div>
 
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col ui-shell overflow-hidden relative ${!isResponsePanel ? 'hidden' : ''}`}>
+      <div className={`relative flex h-full flex-1 flex-col overflow-hidden rounded-[30px] p-4 md:p-6 ${!isResponsePanel ? 'hidden' : ''}`}>
         <ResponsePanel language={language} active={isResponsePanel} />
       </div>
 
       {/* Terminal View */}
-      <div className={`flex-1 h-full p-6 flex flex-col glass-dark overflow-hidden relative ${!isTerminal ? 'hidden' : ''}`}>
-        <div className="flex-1 bg-black/80 backdrop-blur-md rounded-xl overflow-hidden border border-white/10 shadow-2xl relative z-10 ring-1 ring-white/5">
+      <div className={`relative flex h-full flex-1 flex-col overflow-hidden rounded-[30px] p-6 ${!isTerminal ? 'hidden' : ''}`}>
+        <div className="relative z-10 flex-1 overflow-hidden rounded-[26px] border border-white/10 bg-black/80 shadow-2xl ring-1 ring-white/5 backdrop-blur-md">
           <TerminalXterm onClose={() => {}} language={language} />
         </div>
       </div>
 
-      <div className={`flex-1 h-full p-4 md:p-6 flex flex-col ui-shell overflow-hidden relative ${!isPentest ? 'hidden' : ''}`}>
+      <div className={`relative flex h-full flex-1 flex-col overflow-hidden rounded-[30px] p-4 md:p-6 ${!isPentest ? 'hidden' : ''}`}>
         <PentestPanel language={language} />
       </div>
 
       {/* Main Dashboard Metrics View */}
-      <div className={`flex-1 flex flex-col h-screen overflow-hidden ui-shell relative ${!isMetrics ? 'hidden' : ''}`}>
+      <div className={`fluent-workspace relative flex h-full flex-1 flex-col overflow-hidden ${!isMetrics ? 'hidden' : ''}`}>
       
+      <div className="relative z-20 m-4 mb-0 rounded-[28px] border border-white/74 bg-white/72 px-5 py-4 shadow-[0_18px_38px_rgba(42,79,120,0.11)] backdrop-blur-[28px] md:m-5 md:mb-0 md:px-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="min-w-0">
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              <div className="flex items-start gap-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] bg-gradient-to-br from-[#0078D4] to-[#50E6FF] text-white shadow-[0_16px_34px_rgba(0,120,212,0.24)]">
+                  <ActiveIcon size={26} />
+                </div>
+                <div className="min-w-0">
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#0078D4]">
+                      Control Center
+                    </span>
+                    {currentSession && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-700">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+                        {currentSession.user}@{currentSession.ip}
+                      </span>
+                    )}
+                  </div>
+                  <h1 className="truncate text-2xl font-bold capitalize tracking-tight text-slate-900 md:text-3xl">
+                    {activeTitle}
+                  </h1>
+                </div>
+              </div>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">
+                {language === "zh"
+                  ? "实时查看核心指标与取证结果，保持搜索、筛选、采集和分析动作集中在同一个 Fluent 工作区。"
+                  : "Realtime metrics and forensic outputs with search, filtering, collection and analysis in one Fluent workspace."}
+              </p>
+              {isMetrics && subcategoryOptions.length > 1 && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {subcategoryOptions.map((option) => {
+                    const isActive = option.key === activeSubcategory;
+                    return (
+                      <motion.button
+                        key={option.key}
+                        layout
+                        whileHover={{ y: -1 }}
+                        whileTap={{ scale: 0.985 }}
+                        onClick={() => setActiveSubcategories((prev) => ({ ...prev, [activeTab]: option.key }))}
+                        className={`relative overflow-hidden px-4 py-2 text-sm transition-all ${
+                          isActive ? "ui-chip-active" : "ui-chip"
+                        }`}
+                      >
+                        {isActive && (
+                          <motion.span
+                            layoutId="dashboard-subcategory-active-pill-v2"
+                            className="absolute inset-0 rounded-full bg-gradient-to-br from-[#0078D4] to-[#50E6FF]"
+                            transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                          />
+                        )}
+                        <span className="relative z-10">{option.label}</span>
+                      </motion.button>
+                    );
+                  })}
+                </div>
+              )}
+            </motion.div>
+          </div>
+
+          <div className="flex flex-col gap-3 xl:items-end">
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-2xl border border-white/72 bg-white/64 px-3 py-2 text-right shadow-sm">
+                <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{language === "zh" ? "命令" : "Commands"}</div>
+                <div className="text-lg font-bold text-slate-900">{tabCommands.length}</div>
+              </div>
+              <div className="rounded-2xl border border-white/72 bg-white/64 px-3 py-2 text-right shadow-sm">
+                <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{language === "zh" ? "完成" : "Done"}</div>
+                <div className="text-lg font-bold text-[#0078D4]">{completedCount}</div>
+              </div>
+              <div className="rounded-2xl border border-white/72 bg-white/64 px-3 py-2 text-right shadow-sm">
+                <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{language === "zh" ? "运行" : "Live"}</div>
+                <div className="text-lg font-bold text-emerald-600">{runningCount}</div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {progress < 100 && progress > 0 && (
+                <div className="flex min-w-[190px] flex-col items-end rounded-2xl border border-sky-100 bg-sky-50/80 px-3 py-2">
+                  <div className="mb-1 flex items-center gap-2">
+                    <div className="h-3 w-3 animate-spin rounded-full border-2 border-[#0078D4] border-t-transparent" />
+                    <span className="text-xs font-bold text-[#0078D4]">
+                      {t.running}: {currentTaskTitle}
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-36 fluent-progress-track">
+                    <motion.div className="h-full fluent-progress-fill" initial={{ width: 0 }} animate={{ width: `${progress}%` }} />
+                  </div>
+                </div>
+              )}
+
+              {isMonitoring && (
+                <div className="hidden items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 md:flex">
+                  <Activity size={14} className="animate-pulse text-emerald-600" />
+                  <span className="text-xs font-semibold text-emerald-700">
+                    {t.monitoring_metrics.replace('{0}', monitoredCommandIds.length.toString())}
+                  </span>
+                </div>
+              )}
+
+              <div className="relative group">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 transition-colors" size={16} />
+                <input
+                  type="text"
+                  placeholder={t.search_metrics}
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="ui-input-base w-52 py-2.5 pl-9 pr-4 md:w-64"
+                />
+              </div>
+
+              <button className="glass-button hidden items-center gap-2 px-3 py-2.5 text-xs text-slate-500 md:flex">
+                <Filter size={15} />
+                {activeSubcategory === "all" ? (language === "zh" ? "全部" : "All") : activeSubcategory}
+              </button>
+
+              <button className="glass-button hidden items-center gap-2 px-3 py-2.5 text-xs text-slate-500 md:flex">
+                <CalendarDays size={15} />
+                {todayText}
+              </button>
+
+              <button onClick={() => setShowAbout(true)} className="glass-button flex h-10 w-10 items-center justify-center text-slate-500">
+                <HelpCircle size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Top Bar */}
-      <div className="px-8 md:px-10 py-8 flex items-center justify-between relative z-20">
+      <div className="hidden">
         <div>
           <motion.div
             initial={{ opacity: 0, x: -20 }}
@@ -1707,12 +1863,12 @@ export default function Dashboard({
       </AnimatePresence>
 
       {/* Content Area */}
-      <div className="flex-1 overflow-y-auto px-6 md:px-8 pb-8 custom-scrollbar relative z-10">
+      <div className="relative z-10 flex-1 overflow-y-auto px-5 pb-8 pt-5 custom-scrollbar md:px-6">
         {activeTab === "database" && (
           <div className="mb-6 flex justify-end">
             <button
               onClick={() => onTabChange("agent-database")}
-              className="flex items-center gap-2 px-4 py-2 ui-button-primary transition-all text-sm transform"
+              className="ui-button-primary flex items-center gap-2 px-4 py-2.5 text-sm transition-all"
             >
               <Database size={16} />
               <span>{language === 'zh' ? '数据库智查与管理' : 'Database AI & Management'}</span>
@@ -1722,11 +1878,11 @@ export default function Dashboard({
 
         {/* Command Cards */}
         {visibleCommands.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-            <div className="w-24 h-24 rounded-[16px] bg-white border border-slate-200 shadow-sm flex items-center justify-center mb-6">
-              <Cloud className="text-slate-400" size={32} />
+          <div className="fluent-orbit flex h-[58vh] flex-col items-center justify-center text-center">
+            <div className="mb-6 flex h-28 w-28 items-center justify-center rounded-[36px] border border-white/80 bg-white/82 shadow-[0_24px_54px_rgba(42,79,120,0.14)] backdrop-blur-xl">
+              <Cloud className="text-[#0078D4]" size={36} />
             </div>
-            <h3 className="text-xl font-semibold text-slate-800 mb-2 tracking-tight">
+            <h3 className="mb-2 text-2xl font-bold tracking-tight text-slate-900">
               {searchTerm
                 ? (language === "zh" ? "没有匹配结果" : "No Matching Results")
                 : !hasDefinitionsInScope
@@ -1735,7 +1891,7 @@ export default function Dashboard({
                     ? (language === "zh" ? "等待采集" : "Waiting For Collection")
                     : t.no_metrics_title}
             </h3>
-            <p className="text-slate-500 max-w-md mx-auto mb-8 text-sm">
+            <p className="mx-auto mb-8 max-w-md text-sm leading-6 text-slate-500">
               {searchTerm
                 ? (language === "zh" ? "当前筛选条件下没有匹配的命令，请尝试更换关键词。" : "No commands match the current search. Try a different keyword.")
                 : !hasDefinitionsInScope
@@ -1751,7 +1907,7 @@ export default function Dashboard({
                     void fetchAll(ids, true);
                   }
                 }}
-                className="px-6 py-3 ui-button-primary transition-all flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
+                className="ui-button-primary flex items-center gap-2 px-6 py-3 transition-all disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={!hasDefinitionsInScope}
               >
                 <RefreshCw size={16} />
@@ -1765,11 +1921,11 @@ export default function Dashboard({
             variants={{
                 visible: {
                     transition: {
-                        staggerChildren: 0.1
+                        staggerChildren: 0.075
                     }
                 }
             }}
-            className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-24"
+            className="grid grid-cols-1 gap-5 pb-24 xl:grid-cols-2"
           >
             {visibleCommands.map((cmd) => (
               <CommandCard
