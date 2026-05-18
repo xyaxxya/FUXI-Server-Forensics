@@ -67,7 +67,7 @@ export const DEFAULT_SETTINGS: AISettings = {
   enablePlanning: false,
   maxLoops: 300, // Default to 300
   maxConcurrentTasks: 3, // Default to 3
-  maxTokens: 128000, // Default max tokens (GPT-5.3-Codex max output tokens)
+  maxTokens: 128000, // Default max tokens (GPT-5.5 max output tokens)
   tokenUsage: {
     prompt_tokens: 0,
     completion_tokens: 0,
@@ -77,9 +77,9 @@ export const DEFAULT_SETTINGS: AISettings = {
     fuxi: {
       id: "fuxi",
       name: "伏羲畅饮",
-      apiKey: "sk-PHRYmaW8O2NJf5erJVc1DjKoM68M5fuviqw1iaQXtFUYIF8L",
-      baseUrl: "https://linkapi.ai/v1",
-      model: "gpt-5.3-codex",
+      apiKey: "sk-7r7XvtrDY0ItKrBQhfsz7v35WUpmi192XnEy2RHKYeIOcUoV",
+      baseUrl: "https://codeworksta.com/v1",
+      model: "gpt-5.5",
     },
     zhipu: {
       id: "zhipu",
@@ -550,6 +550,8 @@ export function getToolDisplayName(toolName: string) {
   if (toolName === "search_web") return "Web Search";
   if (toolName === "fetch_webpage") return "Fetch";
   if (toolName === "web_recon_batch") return "Web Recon";
+  if (toolName === "local_web_request") return "Local Web";
+  if (toolName === "analyze_html_artifacts") return "HTML Analyze";
   if (toolName === "run_shell_command") return "Shell";
   return toolName;
 }

@@ -245,6 +245,18 @@ function MainApp() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isConnected, showKeyboardShortcuts, showSettingsModal, showTaskModal, showLoginModal]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const customEvent = event as CustomEvent<{ type?: string; value?: string }>;
+      if (customEvent.detail?.type === "open-tab" && customEvent.detail.value) {
+        setActiveTab(customEvent.detail.value);
+      }
+    };
+
+    window.addEventListener("fuxi-ui-action", handler as EventListener);
+    return () => window.removeEventListener("fuxi-ui-action", handler as EventListener);
+  }, []);
   
   const { fetchAll, clearData, disconnectSSH } = useCommandStore();
 

@@ -3,13 +3,14 @@ use base64::Engine as _;
 use chrono;
 use mysql::prelude::*;
 use mysql::{OptsBuilder, Pool, PoolConstraints, PoolOpts};
+use reqwest::header::{COOKIE, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
 use socks::Socks5Stream;
 use ssh2::Session;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::{IpAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -80,6 +81,7 @@ struct AppState {
     pty_sessions: Mutex<HashMap<String, PtySession>>,
     current_session_id: Mutex<Option<String>>,
     db_connections: Mutex<HashMap<String, DbConnection>>,
+    local_web_sessions: Mutex<HashMap<String, HashMap<String, String>>>,
 }
 
 #[derive(Serialize)]
@@ -153,6 +155,30 @@ struct WebPageResult {
     url: String,
     title: String,
     content: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalWebHeader {
+    name: String,
+    value: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalWebRequestResult {
+    request_url: String,
+    final_url: String,
+    method: String,
+    status: u16,
+    redirected: bool,
+    title: Option<String>,
+    content_type: Option<String>,
+    headers: Vec<LocalWebHeader>,
+    body_excerpt: String,
+    text_excerpt: String,
+    truncated: bool,
+    cookie_names: Vec<String>,
 }
 
 fn decode_html_entities(input: &str) -> String {
@@ -240,6 +266,135 @@ fn extract_first_paragraph(input: &str) -> Option<String> {
     Some(strip_html_tags(
         &paragraph[content_start..content_start + content_end],
     ))
+}
+
+fn is_private_or_local_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(addr) => {
+            addr.is_private()
+                || addr.is_loopback()
+                || addr.is_link_local()
+                || addr.is_unspecified()
+        }
+        IpAddr::V6(addr) => {
+            addr.is_loopback()
+                || addr.is_unspecified()
+                || addr.is_unique_local()
+                || addr.is_unicast_link_local()
+        }
+    }
+}
+
+fn looks_like_local_lab_host(host: &str) -> bool {
+    let normalized = host.trim().trim_matches(['[', ']']).to_ascii_lowercase();
+    if normalized.is_empty() {
+        return false;
+    }
+    if normalized == "localhost"
+        || normalized == "::1"
+        || normalized == "host.docker.internal"
+        || normalized.ends_with(".local")
+        || normalized.ends_with(".localhost")
+        || normalized.ends_with(".test")
+        || normalized.ends_with(".internal")
+        || normalized.ends_with(".lan")
+    {
+        return true;
+    }
+    if let Ok(ip) = normalized.parse::<IpAddr>() {
+        return is_private_or_local_ip(ip);
+    }
+
+    !normalized.contains('.')
+        && normalized
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+}
+
+fn host_resolves_to_local_only(host: &str, port: u16) -> bool {
+    let Ok(addrs) = (host, port).to_socket_addrs() else {
+        return false;
+    };
+
+    let mut found = false;
+    for addr in addrs {
+        found = true;
+        if !is_private_or_local_ip(addr.ip()) {
+            return false;
+        }
+    }
+
+    found
+}
+
+fn normalize_local_web_url(input: &str) -> Result<url::Url, String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err("Local web request URL is empty".to_string());
+    }
+
+    let candidate = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        trimmed.to_string()
+    } else {
+        format!("http://{trimmed}")
+    };
+
+    let url = url::Url::parse(&candidate).map_err(|e| format!("Invalid URL: {e}"))?;
+    match url.scheme() {
+        "http" | "https" => {}
+        other => return Err(format!("Unsupported scheme for local web request: {other}")),
+    }
+
+    let host = url
+        .host_str()
+        .ok_or_else(|| "Local web request URL has no host".to_string())?;
+    let port = url.port_or_known_default().unwrap_or(80);
+    if looks_like_local_lab_host(host) || host_resolves_to_local_only(host, port) {
+        return Ok(url);
+    }
+
+    Err(format!(
+        "Target host {host} is outside local/private lab scope"
+    ))
+}
+
+fn parse_cookie_assignment(value: &str) -> Option<(String, String)> {
+    let cookie_pair = value.split(';').next()?.trim();
+    let (name, raw_value) = cookie_pair.split_once('=')?;
+    let cookie_name = name.trim();
+    if cookie_name.is_empty() {
+        return None;
+    }
+    Some((cookie_name.to_string(), raw_value.trim().to_string()))
+}
+
+fn build_cookie_header(
+    persisted: &HashMap<String, String>,
+    manual: &HashMap<String, String>,
+) -> Option<String> {
+    let mut merged = persisted.clone();
+    for (name, value) in manual {
+        if !name.trim().is_empty() {
+            merged.insert(name.trim().to_string(), value.trim().to_string());
+        }
+    }
+
+    if merged.is_empty() {
+        return None;
+    }
+
+    let mut pairs = merged
+        .into_iter()
+        .filter(|(name, _)| !name.trim().is_empty())
+        .collect::<Vec<_>>();
+    pairs.sort_by(|a, b| a.0.cmp(&b.0));
+    Some(
+        pairs
+            .into_iter()
+            .map(|(name, value)| format!("{name}={value}"))
+            .collect::<Vec<_>>()
+            .join("; "),
+    )
 }
 
 fn is_search_result_url(url: &str) -> bool {
@@ -798,6 +953,16 @@ fn ensure_license_valid() -> Result<(), String> {
     license::verify_local_license().map(|_| ())
 }
 
+async fn ensure_license_valid_async() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(ensure_license_valid)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn install_rustls_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 #[tauri::command]
 fn get_machine_code() -> Result<String, String> {
     license::get_machine_code()
@@ -843,7 +1008,7 @@ fn get_ai_benefit_config() -> Result<Option<BenefitAiConfig>, String> {
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
         })
-        .unwrap_or_else(|| "https://linkapi.ai/v1".to_string());
+        .unwrap_or_else(|| "https://codeworksta.com/v1".to_string());
 
     let model = option_env!("FUXI_FREE_MODEL")
         .map(|value| value.trim().to_string())
@@ -854,7 +1019,7 @@ fn get_ai_benefit_config() -> Result<Option<BenefitAiConfig>, String> {
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
         })
-        .unwrap_or_else(|| "gpt-5.3-codex".to_string());
+        .unwrap_or_else(|| "gpt-5.5".to_string());
 
     let provider_id = option_env!("FUXI_FREE_PROVIDER_ID")
         .map(|value| value.trim().to_string())
@@ -1614,7 +1779,7 @@ async fn exec_command_stream(
     cmd: String,
     session_id: Option<String>,
 ) -> Result<String, String> {
-    ensure_license_valid()?;
+    ensure_license_valid_async().await?;
     // Get session to use
     let id_to_use = session_id.or_else(|| state.current_session_id.lock().unwrap().clone());
 
@@ -1854,7 +2019,7 @@ async fn exec_command(
     session_id: Option<String>,
     timeout: Option<u32>,
 ) -> Result<CommandResult, String> {
-    ensure_license_valid()?;
+    ensure_license_valid_async().await?;
     let id_to_use = session_id.or_else(|| state.current_session_id.lock().unwrap().clone());
 
     if let Some(id) = id_to_use {
@@ -1887,7 +2052,7 @@ async fn batch_exec_command(
     session_id: Option<String>,
     timeout: Option<u32>,
 ) -> Result<HashMap<String, CommandResult>, String> {
-    ensure_license_valid()?;
+    ensure_license_valid_async().await?;
     let id_to_use = session_id.or_else(|| state.current_session_id.lock().unwrap().clone());
 
     if let Some(id) = id_to_use {
@@ -2173,7 +2338,7 @@ async fn connect_db(
     database: String,
     ssh_config: Option<SshConfig>,
 ) -> Result<String, String> {
-    ensure_license_valid()?;
+    ensure_license_valid_async().await?;
     println!(
         "[Connect DB] ID: {}, Host: {}, Port: {}, User: {}, DB: {}",
         id, host, port, user, database
@@ -2465,7 +2630,7 @@ async fn exec_sql(
 
 #[tauri::command]
 async fn exec_local_command(cmd: String) -> Result<String, String> {
-    ensure_license_valid()?;
+    ensure_license_valid_async().await?;
     tauri::async_runtime::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
         let output = std::process::Command::new("powershell")
@@ -2498,7 +2663,7 @@ async fn exec_local_command(cmd: String) -> Result<String, String> {
 
 #[tauri::command]
 async fn web_search(query: String) -> Result<Vec<WebSearchItem>, String> {
-    ensure_license_valid()?;
+    ensure_license_valid_async().await?;
     tauri::async_runtime::spawn_blocking(move || {
         let normalized_query = normalize_search_query(&query);
         let intent = detect_search_intent(&normalized_query);
@@ -2550,7 +2715,7 @@ async fn web_search(query: String) -> Result<Vec<WebSearchItem>, String> {
 
 #[tauri::command]
 async fn fetch_webpage(url: String) -> Result<WebPageResult, String> {
-    ensure_license_valid()?;
+    ensure_license_valid_async().await?;
     tauri::async_runtime::spawn_blocking(move || {
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(20))
@@ -2576,6 +2741,168 @@ async fn fetch_webpage(url: String) -> Result<WebPageResult, String> {
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn local_web_request(
+    state: State<'_, AppState>,
+    url: String,
+    method: Option<String>,
+    headers: Option<HashMap<String, String>>,
+    body: Option<String>,
+    cookies: Option<HashMap<String, String>>,
+    session_key: Option<String>,
+    follow_redirects: Option<bool>,
+    max_body_bytes: Option<usize>,
+) -> Result<LocalWebRequestResult, String> {
+    ensure_license_valid_async().await?;
+
+    let normalized_url = normalize_local_web_url(&url)?.to_string();
+    let request_method = method.unwrap_or_else(|| "GET".to_string()).trim().to_ascii_uppercase();
+    let request_headers = headers.unwrap_or_default();
+    let manual_cookies = cookies.unwrap_or_default();
+    let persisted_session_key = session_key
+        .and_then(|value| {
+            let trimmed = value.trim().to_string();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        });
+    let persisted_cookies = persisted_session_key
+        .as_ref()
+        .and_then(|key| state.local_web_sessions.lock().unwrap().get(key).cloned())
+        .unwrap_or_default();
+    let should_follow_redirects = follow_redirects.unwrap_or(false);
+    let body_limit = max_body_bytes.unwrap_or(24 * 1024).clamp(1024, 256 * 1024);
+
+    let (result, updated_cookie_jar) = tauri::async_runtime::spawn_blocking(
+        move || -> Result<(LocalWebRequestResult, HashMap<String, String>), String> {
+        let redirect_policy = if should_follow_redirects {
+            reqwest::redirect::Policy::limited(10)
+        } else {
+            reqwest::redirect::Policy::none()
+        };
+
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(20))
+            .redirect(redirect_policy)
+            .danger_accept_invalid_certs(true)
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) FUXI-WebLab/1.0")
+            .build()
+            .map_err(|e| e.to_string())?;
+
+        let method = reqwest::Method::from_bytes(request_method.as_bytes())
+            .map_err(|e| format!("Invalid HTTP method: {e}"))?;
+        let mut request = client.request(method.clone(), &normalized_url);
+
+        for (name, value) in &request_headers {
+            let header_name = HeaderName::from_bytes(name.trim().as_bytes())
+                .map_err(|e| format!("Invalid header name {name}: {e}"))?;
+            let header_value = HeaderValue::from_str(value.trim())
+                .map_err(|e| format!("Invalid header value for {name}: {e}"))?;
+            request = request.header(header_name, header_value);
+        }
+
+        if let Some(cookie_header) = build_cookie_header(&persisted_cookies, &manual_cookies) {
+            request = request.header(COOKIE, cookie_header);
+        }
+
+        if let Some(request_body) = body {
+            request = request.body(request_body);
+        }
+
+        let response = request.send().map_err(|e| e.to_string())?;
+        let status = response.status().as_u16();
+        let final_url = response.url().to_string();
+        let redirected = final_url != normalized_url;
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.to_string());
+
+        let headers = response
+            .headers()
+            .iter()
+            .map(|(name, value)| LocalWebHeader {
+                name: name.to_string(),
+                value: value.to_str().unwrap_or_default().to_string(),
+            })
+            .collect::<Vec<_>>();
+
+        let mut cookie_jar = persisted_cookies.clone();
+        for (name, value) in &manual_cookies {
+            if !name.trim().is_empty() {
+                cookie_jar.insert(name.trim().to_string(), value.trim().to_string());
+            }
+        }
+
+        let mut cookie_names = Vec::new();
+        for set_cookie in response.headers().get_all("set-cookie").iter() {
+            if let Ok(value) = set_cookie.to_str() {
+                if let Some((name, cookie_value)) = parse_cookie_assignment(value) {
+                    cookie_names.push(name.clone());
+                    cookie_jar.insert(name, cookie_value);
+                }
+            }
+        }
+        cookie_names.sort();
+        cookie_names.dedup();
+
+        let mut limited_body = Vec::new();
+        response
+            .take((body_limit + 1) as u64)
+            .read_to_end(&mut limited_body)
+            .map_err(|e| e.to_string())?;
+        let truncated = limited_body.len() > body_limit;
+        if truncated {
+            limited_body.truncate(body_limit);
+        }
+
+        let body_excerpt = String::from_utf8_lossy(&limited_body).to_string();
+        let title = {
+            let extracted = extract_html_title(&body_excerpt);
+            if extracted.is_empty() {
+                None
+            } else {
+                Some(extracted)
+            }
+        };
+        let text_excerpt = truncate_text(strip_html_tags(&body_excerpt), 12_000);
+
+            Ok((
+                LocalWebRequestResult {
+                    request_url: normalized_url,
+                    final_url,
+                    method: method.as_str().to_string(),
+                    status,
+                    redirected,
+                    title,
+                    content_type,
+                    headers,
+                    body_excerpt,
+                    text_excerpt,
+                    truncated,
+                    cookie_names,
+                },
+                cookie_jar,
+            ))
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())??;
+
+    if let Some(key) = persisted_session_key {
+        state
+            .local_web_sessions
+            .lock()
+            .unwrap()
+            .insert(key, updated_cookie_jar);
+    }
+
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -2658,7 +2985,7 @@ async fn cleanup_ssh_log_for_user(
     state: State<'_, AppState>,
     session_id: String,
 ) -> Result<String, String> {
-    ensure_license_valid()?;
+    ensure_license_valid_async().await?;
 
     let session_arc = {
         let sessions = state.sessions.lock().unwrap();
@@ -2709,7 +3036,7 @@ async fn cleanup_current_user_history(
     state: State<'_, AppState>,
     session_id: String,
 ) -> Result<String, String> {
-    ensure_license_valid()?;
+    ensure_license_valid_async().await?;
 
     let session_arc = {
         let sessions = state.sessions.lock().unwrap();
@@ -2758,6 +3085,7 @@ async fn cleanup_current_user_history(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     println!("Tauri App Starting...");
+    install_rustls_crypto_provider();
     tauri::Builder::default()
         .setup(|app| {
             app.manage(AppState {
@@ -2766,6 +3094,7 @@ pub fn run() {
                 pty_sessions: Mutex::new(HashMap::new()),
                 current_session_id: Mutex::new(None),
                 db_connections: Mutex::new(HashMap::new()),
+                local_web_sessions: Mutex::new(HashMap::new()),
             });
             Ok(())
         })
@@ -2790,6 +3119,7 @@ pub fn run() {
             exec_local_command,
             web_search,
             fetch_webpage,
+            local_web_request,
             web_recon_batch,
             list_sessions,
             update_session_note,

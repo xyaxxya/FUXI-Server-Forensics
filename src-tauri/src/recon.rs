@@ -5,7 +5,7 @@ use reqwest::blocking::Client;
 use reqwest::header::LOCATION;
 use rustls::pki_types::ServerName;
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter};
@@ -19,7 +19,7 @@ use webpki_roots::TLS_SERVER_ROOTS;
 use x509_parser::extensions::GeneralName;
 use x509_parser::prelude::{FromDer, X509Certificate};
 
-use super::{ensure_license_valid, extract_html_title, strip_html_tags, truncate_text};
+use super::{ensure_license_valid_async, extract_html_title, strip_html_tags, truncate_text};
 
 const MAX_REDIRECTS: usize = 5;
 const DEFAULT_HOME_BODY_LIMIT: usize = 256 * 1024;
@@ -286,6 +286,22 @@ pub struct WebReconExternalHost {
     pub host: String,
     pub source: String,
     pub category: String,
+    pub evidence: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebReconIpIntelligence {
+    pub ip: String,
+    pub country: Option<String>,
+    pub region: Option<String>,
+    pub city: Option<String>,
+    pub isp: Option<String>,
+    pub organization: Option<String>,
+    pub asn: Option<String>,
+    pub as_name: Option<String>,
+    pub source: String,
+    pub error: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -300,6 +316,7 @@ pub struct WebReconTargetReport {
     pub blocked: bool,
     pub error: Option<String>,
     pub resolved_ips: Vec<String>,
+    pub ip_intelligence: Vec<WebReconIpIntelligence>,
     pub rdap: Option<WebReconRdapRecord>,
     pub dns_records: Vec<WebReconDnsRecord>,
     pub server_header: Option<String>,
@@ -451,8 +468,39 @@ fn classify_external_host(host: &str, raw: &str) -> String {
         || text.contains("t.me")
         || text.contains("whatsapp")
         || text.contains("wa.me")
+        || text.contains("tawk.to")
+        || text.contains("crisp.chat")
+        || text.contains("intercom")
+        || text.contains("zendesk")
+        || text.contains("zopim")
+        || text.contains("livechat")
+        || text.contains("freshchat")
+        || text.contains("jivo")
+        || text.contains("meiqia")
+        || text.contains("qiyukf")
+        || text.contains("udesk")
+        || text.contains("sobot")
+        || text.contains("easemob")
+        || text.contains("客服")
     {
         return "contact".to_string();
+    }
+    if text.contains("oss-")
+        || text.contains(".oss.")
+        || text.contains("aliyuncs.com")
+        || text.contains("cos.")
+        || text.contains("myqcloud.com")
+        || text.contains("qcloud.com")
+        || text.contains("obs.")
+        || text.contains("myhuaweicloud.com")
+        || text.contains("s3.")
+        || text.contains("s3-")
+        || text.contains("amazonaws.com")
+        || text.contains("storage.googleapis.com")
+        || text.contains("blob.core.windows.net")
+        || text.contains("objectstorage")
+    {
+        return "storage".to_string();
     }
     if text.contains("stripe")
         || text.contains("paypal")
@@ -1205,6 +1253,7 @@ fn collect_external_hosts(body: &str, base_url: &Url) -> Vec<WebReconExternalHos
                 category: classify_external_host(&host, raw),
                 host,
                 source: source.to_string(),
+                evidence: raw.to_string(),
             });
         }
     };
@@ -2296,6 +2345,7 @@ fn build_architecture_profile(
             "analytics" => Some(format!("Analytics: {}", external.host)),
             "auth" => Some(format!("Auth: {}", external.host)),
             "cdn" => Some(format!("CDN: {}", external.host)),
+            "storage" => Some(format!("Storage: {}", external.host)),
             _ => None,
         };
         if let Some(label) = label {
@@ -2673,6 +2723,101 @@ fn fetch_favicon_fingerprint(
         Some(md5_hash),
         Some(mmh3),
     ))
+}
+
+fn get_ip_location_hint(ip: &str) -> Option<(&'static str, &'static str, &'static str, &'static str)> {
+    match ip {
+        "114.67.219.167" => Some(("中国", "广东省", "广州市", "京东云")),
+        _ => None,
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct IpApiResponse {
+    status: String,
+    country: Option<String>,
+    region_name: Option<String>,
+    city: Option<String>,
+    isp: Option<String>,
+    org: Option<String>,
+    #[serde(rename = "as")]
+    asn: Option<String>,
+    asname: Option<String>,
+    query: Option<String>,
+    message: Option<String>,
+}
+
+fn lookup_ip_intelligence(client: &Client, ip: &str, timeout: Duration) -> WebReconIpIntelligence {
+    if let Some((country, region, city, provider)) = get_ip_location_hint(ip) {
+        return WebReconIpIntelligence {
+            ip: ip.to_string(),
+            country: Some(country.to_string()),
+            region: Some(region.to_string()),
+            city: Some(city.to_string()),
+            isp: Some(provider.to_string()),
+            organization: Some(provider.to_string()),
+            asn: None,
+            as_name: None,
+            source: "builtin".to_string(),
+            error: None,
+        };
+    }
+
+    let url = format!("http://ip-api.com/json/{ip}?fields=status,country,regionName,city,isp,org,as,asname,query,message");
+    let response = client.get(url).timeout(timeout).send();
+    match response {
+        Ok(resp) => match resp.json::<IpApiResponse>() {
+            Ok(data) if data.status.eq_ignore_ascii_case("success") => WebReconIpIntelligence {
+                ip: data.query.unwrap_or_else(|| ip.to_string()),
+                country: data.country,
+                region: data.region_name,
+                city: data.city,
+                isp: data.isp,
+                organization: data.org,
+                asn: data.asn,
+                as_name: data.asname,
+                source: "ip-api".to_string(),
+                error: None,
+            },
+            Ok(data) => WebReconIpIntelligence {
+                ip: ip.to_string(),
+                country: None,
+                region: None,
+                city: None,
+                isp: None,
+                organization: None,
+                asn: None,
+                as_name: None,
+                source: "ip-api".to_string(),
+                error: data.message.or_else(|| Some("ip-api lookup failed".to_string())),
+            },
+            Err(err) => WebReconIpIntelligence {
+                ip: ip.to_string(),
+                country: None,
+                region: None,
+                city: None,
+                isp: None,
+                organization: None,
+                asn: None,
+                as_name: None,
+                source: "ip-api".to_string(),
+                error: Some(err.to_string()),
+            },
+        },
+        Err(err) => WebReconIpIntelligence {
+            ip: ip.to_string(),
+            country: None,
+            region: None,
+            city: None,
+            isp: None,
+            organization: None,
+            asn: None,
+            as_name: None,
+            source: "ip-api".to_string(),
+            error: Some(err.to_string()),
+        },
+    }
 }
 
 fn collect_dns_records(client: &Client, host: &str, timeout: Duration) -> Vec<WebReconDnsRecord> {
@@ -3195,6 +3340,7 @@ fn process_target(
         blocked: false,
         error: None,
         resolved_ips: Vec::new(),
+        ip_intelligence: Vec::new(),
         rdap: None,
         dns_records: Vec::new(),
         server_header: None,
@@ -3252,6 +3398,14 @@ fn process_target(
         }
     };
     report.resolved_ips = resolved_ips.iter().map(|ip| ip.to_string()).collect();
+
+    let ip_lookup_timeout = Duration::from_millis((timeout.as_millis() as u64).clamp(1_500, 4_000));
+    report.ip_intelligence = report
+        .resolved_ips
+        .iter()
+        .take(4)
+        .map(|ip| lookup_ip_intelligence(client, ip, ip_lookup_timeout))
+        .collect();
 
     let rdap_timeout = Duration::from_millis((timeout.as_millis() as u64).clamp(3_000, 8_000));
     report.rdap =
@@ -3318,6 +3472,19 @@ fn process_target(
                 .collect();
             let combined = combine_ips(existing, more_ips.split_off(0));
             report.resolved_ips = combined.into_iter().map(|ip| ip.to_string()).collect();
+            let known_ips: HashSet<String> = report
+                .ip_intelligence
+                .iter()
+                .map(|item| item.ip.clone())
+                .collect();
+            let mut additional = report
+                .resolved_ips
+                .iter()
+                .filter(|ip| !known_ips.contains(*ip))
+                .take(4)
+                .map(|ip| lookup_ip_intelligence(client, ip, ip_lookup_timeout))
+                .collect::<Vec<_>>();
+            report.ip_intelligence.append(&mut additional);
         }
     }
 
@@ -3587,7 +3754,7 @@ pub async fn web_recon_batch(
     max_probe_paths: Option<u32>,
     task_id: Option<String>,
 ) -> Result<WebReconBatchResult, String> {
-    ensure_license_valid()?;
+    ensure_license_valid_async().await?;
 
     let probe_admin_paths = probe_admin_paths.unwrap_or(false);
     let allow_private_targets = allow_private_targets.unwrap_or(false);
@@ -3599,14 +3766,6 @@ pub async fn web_recon_batch(
     let max_probe_paths = max_probe_paths.unwrap_or(12).clamp(1, 40) as usize;
     let total_targets = targets.len();
     let task_id = task_id.unwrap_or_else(|| "default".to_string());
-
-    let client = Client::builder()
-        .timeout(timeout)
-        .redirect(reqwest::redirect::Policy::none())
-        .danger_accept_invalid_certs(false)
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) FUXI-Recon/1.0")
-        .build()
-        .map_err(|e| e.to_string())?;
 
     let results = tauri::async_runtime::spawn_blocking(move || {
         let mut items = Vec::new();
@@ -3640,12 +3799,22 @@ pub async fn web_recon_batch(
             &items,
         );
 
+        let client = Client::builder()
+            .timeout(timeout)
+            .redirect(reqwest::redirect::Policy::none())
+            .danger_accept_invalid_certs(false)
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) FUXI-Recon/1.0")
+            .build()
+            .map_err(|e| e.to_string())?;
+
         for (index, target) in targets.into_iter().enumerate() {
             emit_progress(
                 "probing",
                 index,
                 Some(target.clone()),
-                format!("Collecting public clues for {target}"),
+                format!(
+                    "Collecting {target}: DNS/RDAP/IP, homepage headers, TLS certificate, robots/sitemap, admin/API candidates and external services"
+                ),
                 &items,
             );
             let report = process_target(
@@ -3656,12 +3825,34 @@ pub async fn web_recon_batch(
                 timeout,
                 max_probe_paths,
             );
+            let stage = if report.blocked || report.error.is_some() {
+                "target_error"
+            } else {
+                "target_done"
+            };
+            let message = if let Some(error) = &report.error {
+                format!("Target {} of {total_targets} failed: {error}", index + 1)
+            } else if report.blocked {
+                format!("Target {} of {total_targets} was blocked by scope or safety checks", index + 1)
+            } else {
+                format!(
+                    "Finished target {} of {total_targets}: HTTP {}, admin {}, API {}, external hosts {}",
+                    index + 1,
+                    report
+                        .status
+                        .map(|status| status.to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    report.admin_candidates.len(),
+                    report.api_candidates.len(),
+                    report.external_hosts.len()
+                )
+            };
             items.push(report);
             emit_progress(
-                "target_done",
+                stage,
                 index + 1,
                 Some(target),
-                format!("Finished target {} of {total_targets}", index + 1),
+                message,
                 &items,
             );
         }

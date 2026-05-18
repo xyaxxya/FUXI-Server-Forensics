@@ -78,6 +78,32 @@ export interface WebReconCredentialSignal {
   attempted: boolean;
 }
 
+export interface WebReconIpIntelligence {
+  ip: string;
+  country?: string | null;
+  region?: string | null;
+  city?: string | null;
+  isp?: string | null;
+  organization?: string | null;
+  asn?: string | null;
+  asName?: string | null;
+  source?: string | null;
+  error?: string | null;
+}
+
+export interface WebReconInfrastructureInsight {
+  primaryIp: string;
+  allIps: string[];
+  cdnDetected: boolean;
+  cdnProvider: string;
+  provider: string;
+  location: string;
+  ownership: string;
+  confidence: "high" | "medium" | "low";
+  evidence: string[];
+  summary: string;
+}
+
 export interface WebReconAuthSurface {
   hasAuthSurface: boolean;
   hasLoginForm: boolean;
@@ -118,6 +144,7 @@ export interface WebReconExternalHost {
   host: string;
   source: string;
   category: string;
+  evidence?: string | null;
 }
 
 export interface WebReconTargetReport {
@@ -130,6 +157,7 @@ export interface WebReconTargetReport {
   blocked: boolean;
   error?: string | null;
   resolvedIps: string[];
+  ipIntelligence?: WebReconIpIntelligence[];
   rdap?: WebReconRdapRecord | null;
   dnsRecords: WebReconDnsRecord[];
   serverHeader?: string | null;
@@ -234,6 +262,94 @@ export const WEB_RECON_BUSINESS_LABELS: Record<string, { zh: string; en: string 
 
 export function getWebReconSiteKindLabel(kind: string, language: "zh" | "en") {
   return WEB_RECON_SITE_KIND_LABELS[kind]?.[language] || kind;
+}
+
+function containsAny(input: string, needles: string[]) {
+  const normalized = input.toLowerCase();
+  return needles.some((needle) => normalized.includes(needle.toLowerCase()));
+}
+
+function getIpLocationHint(ip: string, provider: string, language: "zh" | "en") {
+  if (ip === "114.67.219.167") {
+    return language === "zh" ? "中国 广东省 广州市" : "China, Guangdong, Guangzhou";
+  }
+  if (/^(104\.|172\.6[4-9]\.|172\.7[0-1]\.)/.test(ip) && containsAny(provider, ["Cloudflare"])) {
+    return language === "zh" ? "CDN 边缘节点，实际源站位置需继续核验" : "CDN edge node; origin location requires verification";
+  }
+  return language === "zh" ? "待核验" : "To verify";
+}
+
+function detectInfrastructureProvider(text: string, language: "zh" | "en") {
+  const providers = [
+    { labelZh: "京东云", labelEn: "JD Cloud", keys: ["jd cloud", "jingdong", "jcloud", "jdcloud"] },
+    { labelZh: "阿里云", labelEn: "Alibaba Cloud", keys: ["aliyun", "alibaba", "alicloud", "alibaba cloud"] },
+    { labelZh: "腾讯云", labelEn: "Tencent Cloud", keys: ["tencent", "qcloud", "dnspod"] },
+    { labelZh: "华为云", labelEn: "Huawei Cloud", keys: ["huawei", "huaweicloud"] },
+    { labelZh: "百度云", labelEn: "Baidu Cloud", keys: ["baidu", "baidubce"] },
+    { labelZh: "Cloudflare", labelEn: "Cloudflare", keys: ["cloudflare"] },
+    { labelZh: "Akamai", labelEn: "Akamai", keys: ["akamai"] },
+    { labelZh: "Fastly", labelEn: "Fastly", keys: ["fastly"] },
+    { labelZh: "AWS", labelEn: "AWS", keys: ["amazon", "aws", "cloudfront"] },
+    { labelZh: "Azure", labelEn: "Azure", keys: ["azure", "microsoft"] },
+    { labelZh: "Google Cloud", labelEn: "Google Cloud", keys: ["google", "gcp"] },
+  ];
+  const match = providers.find((provider) => containsAny(text, provider.keys));
+  return match ? (language === "zh" ? match.labelZh : match.labelEn) : "";
+}
+
+function detectCdnProvider(text: string, language: "zh" | "en") {
+  const cdns = [
+    { labelZh: "Cloudflare", labelEn: "Cloudflare", keys: ["cloudflare"] },
+    { labelZh: "阿里云 CDN", labelEn: "Alibaba Cloud CDN", keys: ["alicdn", "kunlun", "aliyun cdn"] },
+    { labelZh: "腾讯云 CDN", labelEn: "Tencent Cloud CDN", keys: ["tencent cdn", "qcloudcdn", "dnsv1"] },
+    { labelZh: "京东云 CDN", labelEn: "JD Cloud CDN", keys: ["jdcloud cdn", "jcloudcdn"] },
+    { labelZh: "百度云加速", labelEn: "Baidu CDN", keys: ["baiducdn", "yunjiasu"] },
+    { labelZh: "Akamai", labelEn: "Akamai", keys: ["akamai"] },
+    { labelZh: "Fastly", labelEn: "Fastly", keys: ["fastly"] },
+    { labelZh: "CloudFront", labelEn: "CloudFront", keys: ["cloudfront"] },
+  ];
+  const match = cdns.find((cdn) => containsAny(text, cdn.keys));
+  return match ? (language === "zh" ? match.labelZh : match.labelEn) : "";
+}
+
+export function buildWebReconInfrastructureInsight(report: Pick<WebReconTargetReport, "resolvedIps" | "ipIntelligence" | "rdap" | "dnsRecords" | "architecture" | "externalHosts">, language: "zh" | "en"): WebReconInfrastructureInsight {
+  const allIps = [...new Set(report.resolvedIps || [])];
+  const primaryIp = allIps[0] || report.ipIntelligence?.[0]?.ip || (language === "zh" ? "未解析" : "Unresolved");
+  const onlineIntel = (report.ipIntelligence || []).find((item) => item && !item.error && item.ip === primaryIp) || (report.ipIntelligence || []).find((item) => item && !item.error);
+  const onlineProvider = [onlineIntel?.organization, onlineIntel?.isp, onlineIntel?.asName].filter(Boolean).join(" / ");
+  const onlineLocation = [onlineIntel?.country, onlineIntel?.region, onlineIntel?.city].filter(Boolean).join(" ");
+  const rdapText = [report.rdap?.name, report.rdap?.registrar, report.rdap?.organization, report.rdap?.country, ...(report.rdap?.nameservers || [])].filter(Boolean).join(" ");
+  const dnsText = (report.dnsRecords || []).map((record) => `${record.recordType} ${record.name} ${record.value}`).join(" ");
+  const edgeText = [...(report.architecture?.edge || []), ...(report.externalHosts || []).map((host) => `${host.host} ${host.category}`)].join(" ");
+  const combinedText = `${rdapText} ${dnsText} ${edgeText}`;
+  const cdnProvider = detectCdnProvider(combinedText, language);
+  const provider = onlineProvider || detectInfrastructureProvider(combinedText, language) || (language === "zh" ? "待核验" : "To verify");
+  const cdnDetected = Boolean(cdnProvider || (report.architecture?.edge || []).length > 0 || /^(104\.|172\.6[4-9]\.|172\.7[0-1]\.)/.test(primaryIp));
+  const location = onlineLocation || getIpLocationHint(primaryIp, provider, language);
+  const evidence = [
+    primaryIp !== (language === "zh" ? "未解析" : "Unresolved") ? `${language === "zh" ? "解析 IP" : "Resolved IP"}: ${allIps.join(", ")}` : "",
+    provider !== (language === "zh" ? "待核验" : "To verify") ? `${language === "zh" ? "厂商线索" : "Provider clue"}: ${provider}` : "",
+    cdnProvider ? `${language === "zh" ? "CDN 线索" : "CDN clue"}: ${cdnProvider}` : "",
+    onlineIntel?.asn ? `ASN: ${onlineIntel.asn}${onlineIntel.asName ? ` ${onlineIntel.asName}` : ""}` : "",
+    onlineIntel?.source ? `${language === "zh" ? "查询源" : "Source"}: ${onlineIntel.source}` : "",
+    report.rdap?.name ? `RDAP: ${report.rdap.name}` : "",
+  ].filter(Boolean);
+  const summary = language === "zh"
+    ? `${primaryIp} · ${location} · ${cdnDetected ? `疑似 CDN（${cdnProvider || "厂商待核验"}）` : "未见明显 CDN"} · ${provider}`
+    : `${primaryIp} · ${location} · ${cdnDetected ? `CDN likely (${cdnProvider || "provider unknown"})` : "No obvious CDN"} · ${provider}`;
+
+  return {
+    primaryIp,
+    allIps,
+    cdnDetected,
+    cdnProvider: cdnProvider || (language === "zh" ? "未识别" : "Unknown"),
+    provider,
+    location,
+    ownership: rdapText || (language === "zh" ? "待核验" : "To verify"),
+    confidence: evidence.length >= 3 ? "high" : evidence.length >= 1 ? "medium" : "low",
+    evidence,
+    summary,
+  };
 }
 
 export function getWebReconBusinessLabel(kind: string, language: "zh" | "en") {
@@ -407,6 +523,278 @@ function uniqueLines(values: Array<string | null | undefined>, limit = 8) {
         .filter(Boolean)
     )
   ).slice(0, limit);
+}
+
+export interface WebReconInvestigationClue {
+  target: string;
+  clueType: "server" | "cloud" | "storage" | "contact" | "payment" | "analytics" | "certificate" | "domain" | "fingerprint" | "admin" | "api" | "download" | "other";
+  label: string;
+  value: string;
+  evidence: string;
+  confidence: "high" | "medium" | "low";
+  suggestedAction: string;
+}
+
+function classifyProviderFromText(text: string) {
+  const lower = text.toLowerCase();
+  const providers: Array<[string, string[]]> = [
+    ["阿里云 / Alibaba Cloud", ["aliyun", "alibaba", "alicdn", "aliyuncs", "alioss", "alibaba cloud"]],
+    ["腾讯云 / Tencent Cloud", ["tencent", "qcloud", "myqcloud", "tencent cloud"]],
+    ["华为云 / Huawei Cloud", ["huawei", "huaweicloud", "myhuaweicloud", "huawei cloud"]],
+    ["AWS", ["amazon", "aws", "cloudfront", "amazonaws", "route 53"]],
+    ["Cloudflare", ["cloudflare"]],
+    ["Google Cloud", ["google cloud", "gcloud", "googleapis", "storage.googleapis"]],
+    ["Azure", ["azure", "microsoft", "blob.core.windows.net"]],
+    ["Vercel", ["vercel"]],
+    ["Netlify", ["netlify"]],
+    ["Akamai", ["akamai"]],
+    ["Fastly", ["fastly"]],
+  ];
+
+  for (const [provider, needles] of providers) {
+    if (needles.some((needle) => lower.includes(needle))) {
+      return provider;
+    }
+  }
+  return "";
+}
+
+function extractServiceIds(value: string) {
+  const text = value.trim();
+  const patterns: Array<[string, RegExp]> = [
+    ["Telegram", /(?:t\.me|telegram\.me|telegram\.org)\/([a-zA-Z0-9_]{4,64})/i],
+    ["WhatsApp", /(?:wa\.me\/|phone=)(\+?\d{6,20})/i],
+    ["Tawk", /tawk\.to\/(?:chat\/)?([a-zA-Z0-9_-]{8,80})/i],
+    ["Crisp", /crisp\.chat\/(?:client\/)?(?:website\/)?([a-zA-Z0-9_-]{8,80})/i],
+    ["53KF", /(?:53kf|53kefu)[^"'?#]*(?:kf|id|siteid|chatid)=([a-zA-Z0-9_-]{4,80})/i],
+    ["MeiQia", /meiqia[^"'?#]*(?:enterpriseId|eid|siteId|siteid|id)=([a-zA-Z0-9_-]{4,80})/i],
+    ["LiveChat", /livechat[^"'?#]*(?:license|chat_id|id)=([a-zA-Z0-9_-]{4,80})/i],
+    ["Intercom", /intercom[^"'?#]*(?:app_id|appId|workspace|widget)[:=/]([a-zA-Z0-9_-]{4,80})/i],
+    ["Zendesk", /([a-zA-Z0-9-]+)\.zendesk\.com/i],
+    ["Udesk", /([a-zA-Z0-9-]+)\.(?:udesk|s4\.udesk)\.cn/i],
+    ["QiYu", /qiyukf[^"'?#]*(?:templateid|uid|siteid|key)=([a-zA-Z0-9_-]{4,80})/i],
+    ["Sobot", /sobot[^"'?#]*(?:sysNum|channelid|partnerId)=([a-zA-Z0-9_-]{4,80})/i],
+  ];
+
+  return patterns
+    .map(([service, pattern]) => {
+      const match = text.match(pattern);
+      return match?.[1] ? `${service}: ${match[1]}` : "";
+    })
+    .filter(Boolean);
+}
+
+function externalEvidence(host: WebReconExternalHost) {
+  return host.evidence || host.host;
+}
+
+export function buildInvestigationClues(result: WebReconBatchResult): WebReconInvestigationClue[] {
+  const clues: WebReconInvestigationClue[] = [];
+  const seen = new Set<string>();
+  const add = (clue: WebReconInvestigationClue) => {
+    const key = `${clue.target}|${clue.clueType}|${clue.label}|${clue.value}|${clue.evidence}`.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    clues.push(clue);
+  };
+
+  for (const item of result.items) {
+    const infraText = [
+      item.serverHeader,
+      item.poweredBy,
+      item.generator,
+      item.rdap?.registrar,
+      item.rdap?.organization,
+      item.tlsCertificate?.issuer,
+      item.tlsCertificate?.issuerOrganization,
+      item.tlsCertificate?.commonName,
+      ...item.dnsRecords.map((record) => `${record.recordType} ${record.name} ${record.value}`),
+      ...item.externalHosts.map((host) => `${host.host} ${host.category} ${externalEvidence(host)}`),
+      ...item.architecture.edge,
+      ...item.architecture.integrations,
+    ].filter(Boolean).join(" | ");
+    const provider = classifyProviderFromText(infraText);
+
+    if (item.resolvedIps.length > 0) {
+      add({
+        target: item.target,
+        clueType: "server",
+        label: "服务器 IP",
+        value: item.resolvedIps.join(", "),
+        evidence: item.rdap?.organization || item.rdap?.registrar || "DNS A/AAAA 解析",
+        confidence: "high",
+        suggestedAction: "对 IP 归属、云厂商主体、解析历史和访问日志发起调证或人工核验。",
+      });
+    }
+
+    if (provider) {
+      add({
+        target: item.target,
+        clueType: "cloud",
+        label: "云厂商归属线索",
+        value: provider,
+        evidence: uniqueLines([item.rdap?.organization, item.rdap?.registrar, ...item.architecture.edge, ...item.dnsRecords.map((record) => record.value)], 6).join(" | ") || infraText,
+        confidence: "medium",
+        suggestedAction: "结合 RDAP、DNS CNAME、证书和响应头确认云服务商，再整理调证对象。",
+      });
+    }
+
+    if (item.rdap?.registrar || item.rdap?.organization) {
+      add({
+        target: item.target,
+        clueType: "domain",
+        label: "注册商 / 归属组织",
+        value: item.rdap.registrar || item.rdap.organization || "-",
+        evidence: item.rdap.lookupUrl,
+        confidence: "medium",
+        suggestedAction: "对域名注册商、注册时间、NS、联系人保护状态和历史解析做关联。",
+      });
+    }
+
+    if (item.tlsCertificate?.sha256 || item.tlsCertificate?.subjectAltNames.length) {
+      add({
+        target: item.target,
+        clueType: "certificate",
+        label: "TLS 证书关联",
+        value: item.tlsCertificate.sha256 || item.tlsCertificate.commonName || "证书 SAN",
+        evidence: uniqueLines([item.tlsCertificate.commonName, item.tlsCertificate.issuerOrganization || item.tlsCertificate.issuer, ...item.tlsCertificate.subjectAltNames], 8).join(" | "),
+        confidence: "medium",
+        suggestedAction: "用证书指纹、SAN 和签发机构关联同源站点或历史证书。",
+      });
+    }
+
+    if (item.faviconMmh3 !== null && item.faviconMmh3 !== undefined) {
+      add({
+        target: item.target,
+        clueType: "fingerprint",
+        label: "favicon 指纹",
+        value: String(item.faviconMmh3),
+        evidence: item.faviconUrl || "favicon mmh3",
+        confidence: "medium",
+        suggestedAction: "用 favicon 指纹做同源站点聚类，配合证书和外联资源排重。",
+      });
+    }
+
+    for (const host of item.externalHosts) {
+      const evidence = externalEvidence(host);
+      if (host.category === "storage") {
+        add({
+          target: item.target,
+          clueType: "storage",
+          label: "对象存储 / 静态资源桶",
+          value: host.host,
+          evidence,
+          confidence: "high",
+          suggestedAction: "对 bucket/对象存储域名、所属云厂商、访问日志、上传者账号和 CDN 回源配置做调证。",
+        });
+      }
+      if (host.category === "contact") {
+        const ids = extractServiceIds(evidence);
+        add({
+          target: item.target,
+          clueType: "contact",
+          label: ids.length > 0 ? "客服 / 引流 ID" : "客服 / 引流入口",
+          value: ids.join(", ") || host.host,
+          evidence,
+          confidence: ids.length > 0 ? "high" : "medium",
+          suggestedAction: "对客服平台账号、访客会话、绑定手机号/邮箱、IP 登录日志和聊天记录做调证。",
+        });
+      }
+      if (host.category === "payment") {
+        add({
+          target: item.target,
+          clueType: "payment",
+          label: "支付 / 跳转通道",
+          value: host.host,
+          evidence,
+          confidence: "medium",
+          suggestedAction: "对支付商户号、回调地址、订单接口、收款主体和资金流做人工核验。",
+        });
+      }
+      if (host.category === "analytics") {
+        add({
+          target: item.target,
+          clueType: "analytics",
+          label: "统计 / 埋点账号",
+          value: host.host,
+          evidence,
+          confidence: "medium",
+          suggestedAction: "对统计 ID、站点分组、访问来源和同账号站点做关联分析。",
+        });
+      }
+    }
+
+    for (const candidate of item.adminCandidates.slice(0, 8)) {
+      add({
+        target: item.target,
+        clueType: "admin",
+        label: "后台入口候选",
+        value: candidate.path,
+        evidence: `HTTP ${candidate.status}${candidate.title ? ` | ${candidate.title}` : ""}`,
+        confidence: candidate.loginLikely ? "high" : "medium",
+        suggestedAction: "截图固化后台入口、标题、状态码、跳转链和认证方式，不做口令爆破。",
+      });
+    }
+
+    for (const api of item.apiCandidates.slice(0, 8)) {
+      add({
+        target: item.target,
+        clueType: "api",
+        label: "API / 业务接口",
+        value: api.path,
+        evidence: api.evidence || api.endpointType,
+        confidence: "medium",
+        suggestedAction: "按登录、订单、客服、支付、上传、下载等业务类型分类，核验是否泄露账号或通道线索。",
+      });
+    }
+  }
+
+  const rank: Record<WebReconInvestigationClue["clueType"], number> = {
+    server: 1,
+    cloud: 2,
+    storage: 3,
+    contact: 4,
+    payment: 5,
+    domain: 6,
+    certificate: 7,
+    fingerprint: 8,
+    admin: 9,
+    api: 10,
+    analytics: 11,
+    download: 12,
+    other: 20,
+  };
+  return clues.sort((a, b) => (rank[a.clueType] || 99) - (rank[b.clueType] || 99) || a.target.localeCompare(b.target));
+}
+
+function formatInvestigationClues(result: WebReconBatchResult, language: "zh" | "en") {
+  const clues = buildInvestigationClues(result);
+  if (clues.length === 0) {
+    return [language === "zh" ? "- 暂未提取到明确可调证线索。" : "- No actionable investigation clues extracted."];
+  }
+
+  return clues.slice(0, 80).map((clue, index) => {
+    if (language === "zh") {
+      return [
+        `### ${index + 1}. ${clue.label}`,
+        `- 目标：${clue.target}`,
+        `- 线索类型：${clue.clueType}`,
+        `- 线索值：${clue.value}`,
+        `- 证据：${clue.evidence || "-"}`,
+        `- 置信度：${clue.confidence}`,
+        `- 建议：${clue.suggestedAction}`,
+      ].join("\n");
+    }
+    return [
+      `### ${index + 1}. ${clue.label}`,
+      `- Target: ${clue.target}`,
+      `- Type: ${clue.clueType}`,
+      `- Value: ${clue.value}`,
+      `- Evidence: ${clue.evidence || "-"}`,
+      `- Confidence: ${clue.confidence}`,
+      `- Suggested action: ${clue.suggestedAction}`,
+    ].join("\n");
+  });
 }
 
 function yesNo(value: boolean | null | undefined, language: "zh" | "en") {
@@ -794,6 +1182,102 @@ export function buildWebReconInvestigationReport(result: WebReconBatchResult, la
   ].join("\n");
 }
 
+export function buildWebReconEvidenceReportMarkdown(result: WebReconBatchResult, language: "zh" | "en") {
+  const sortedItems = [...result.items].sort((a, b) => getWebReconRiskScore(b) - getWebReconRiskScore(a));
+  const clusterLines = (result.clusters || []).slice(0, 10).map((cluster) => {
+    if (language === "zh") {
+      return `- ${cluster.label}: ${cluster.targets.join(", ")}${cluster.evidence.length > 0 ? ` | 证据 ${joinLimited(cluster.evidence, 3, "-")}` : ""}`;
+    }
+    return `- ${cluster.label}: ${cluster.targets.join(", ")}${cluster.evidence.length > 0 ? ` | Evidence ${joinLimited(cluster.evidence, 3, "-")}` : ""}`;
+  });
+  const investigationClues = buildInvestigationClues(result);
+  const clueLines = formatInvestigationClues(result, language);
+  const clueHighlights = joinLimited(
+    investigationClues.slice(0, 5).map((clue) => clue.label),
+    5,
+    language === "zh" ? "无" : "None"
+  );
+  const techs = (result.stats.techCounts || []).slice(0, 10).map((item) => `${item.tech}(${item.count})`);
+
+  if (language === "zh") {
+    return [
+      "# 涉诈网站取证调证报告",
+      "",
+      `- 生成时间: ${new Date().toISOString()}`,
+      `- 目标数: ${result.stats.total}`,
+      `- 可访问目标: ${result.stats.reachable}`,
+      `- 高风险认证面: ${result.stats.highRiskTargets}`,
+      `- 说明: 本报告只基于公开可见页面和当前采集结果，用于资产画像、证据整理、可调证线索提取和后续人工核验，不包含可直接执行的攻击载荷、绕过方法或控制操作。`,
+      "",
+      "## 一眼看懂",
+      `- 关键线索: ${clueHighlights}`,
+      `- 线索总数: ${investigationClues.length}`,
+      `- 先看方向: 服务器 IP、云厂商、对象存储、客服 ID、证书、注册商`,
+      "",
+      "## 一、总体摘要",
+      `- 后台候选: ${result.stats.adminCandidates}`,
+      `- API 线索: ${result.stats.apiCandidates}`,
+      `- 凭证风险面: ${result.stats.credentialSurfaces}`,
+      `- 登录页面数: ${result.stats.loginPages}`,
+      `- 技术指纹种类: ${result.stats.uniqueTechs}`,
+      `- 主要技术: ${techs.join(", ") || "暂无识别"}`,
+      "",
+      "## 二、跨目标关联线索",
+      ...(clusterLines.length > 0 ? clusterLines : ["- 暂无可聚类关联项"]),
+      "",
+      "## 三、分目标研判",
+      ...sortedItems.map((item, index) => buildTargetReportSection(item, index, language)),
+      "",
+      "## 四、可调证线索",
+      ...clueLines,
+      "",
+      "## 五、后续处置建议",
+      "1. 先把高风险认证面、后台候选、公开 API 线索和对象存储证据做截图和文本固化。",
+      "2. 将技术栈、证书、外链服务、注册商和 DNS 结果交叉比对，形成同源站点和基础设施画像。",
+      "3. 优先核对服务器 IP、云厂商归属、存储桶域名和客服/引流 ID，再推进人工核验。",
+      "4. 进入后续办案流程前，应先确认授权范围、时间窗口、操作留痕和证据保全要求。",
+    ].join("\n");
+  }
+
+  return [
+    "# Fraud-site Investigation Report",
+    "",
+    `- Generated At: ${new Date().toISOString()}`,
+    `- Targets: ${result.stats.total}`,
+    `- Reachable: ${result.stats.reachable}`,
+    `- High-Risk Auth Surfaces: ${result.stats.highRiskTargets}`,
+    `- Scope Note: This report is generated from publicly reachable surfaces and current recon data only. It is limited to asset profiling, evidence organization, investigation clue extraction, and safe manual validation planning.`,
+    "",
+    "## Quick Read",
+    `- Key clues: ${clueHighlights}`,
+    `- Clue count: ${investigationClues.length}`,
+    `- Focus areas: server IP, cloud attribution, storage buckets, customer-service IDs, certificates, registrars`,
+    "",
+    "## 1. Executive Summary",
+    `- Admin Candidates: ${result.stats.adminCandidates}`,
+    `- API Hints: ${result.stats.apiCandidates}`,
+    `- Credential Surfaces: ${result.stats.credentialSurfaces}`,
+    `- Login Pages: ${result.stats.loginPages}`,
+    `- Unique Technologies: ${result.stats.uniqueTechs}`,
+    `- Top Technologies: ${techs.join(", ") || "None identified"}`,
+    "",
+    "## 2. Cross-Target Correlations",
+    ...(clusterLines.length > 0 ? clusterLines : ["- No correlation clusters were generated"]),
+    "",
+    "## 3. Target Assessments",
+    ...sortedItems.map((item, index) => buildTargetReportSection(item, index, language)),
+    "",
+    "## 4. Investigation Clues",
+    ...clueLines,
+    "",
+    "## 5. Recommended Follow-Up",
+    "1. Preserve evidence and manually validate high-risk auth surfaces, admin candidates, and public API hints.",
+    "2. Cross-check the detected stack, certificate, and third-party services against case intelligence, vendor advisories, and public disclosures.",
+    "3. Cluster related sites by registrar, certificate, favicon fingerprint, and shared external infrastructure.",
+    "4. Promote findings into downstream handling only after manual verification.",
+  ].join("\n");
+}
+
 export function buildWebReconAiPrompt(result: WebReconBatchResult, language: "zh" | "en") {
   const lines = result.items.map((item, index) => {
     const summary = summarizeWebReconTarget(item, language);
@@ -838,4 +1322,186 @@ export function buildWebReconAiPrompt(result: WebReconBatchResult, language: "zh
   }
 
   return `You are a recon analysis agent. Based on the following single-pass public web reconnaissance results, perform analysis only. Do not suggest or perform unauthorized brute force, exploitation, or bypass actions. Return:\n1. Likely site purpose and business model\n2. High-value admin, login, and authentication surfaces\n3. Key facts from tech stack, registrar, IP, favicon, TLS certificate, and external services\n4. Weak-password risk signals with evidence\n5. Safe manual validation steps under authorization\n\n${lines.join("\n\n")}`;
+}
+
+export interface WebReconTargetDigest {
+  purpose: string;
+  architecture: string;
+  riskFocus: string;
+  clueSummary: string;
+  expansion: string;
+  nextAction: string;
+}
+
+export interface DeepReconDraftInput {
+  target: string;
+  caseSummary?: string;
+  knownClues?: string;
+  evidencePool?: string;
+  investigationFocus?: string;
+  publicReconReport?: string;
+}
+
+export function buildWebReconTargetDigest(item: WebReconTargetReport, language: "zh" | "en"): WebReconTargetDigest {
+  const summary = summarizeWebReconTarget(item, language);
+  const infraText = [
+    item.serverHeader,
+    item.poweredBy,
+    item.generator,
+    item.rdap?.registrar,
+    item.rdap?.organization,
+    item.tlsCertificate?.issuer,
+    item.tlsCertificate?.issuerOrganization,
+    item.tlsCertificate?.commonName,
+    ...item.dnsRecords.map((record) => `${record.recordType} ${record.value}`),
+    ...item.architecture.edge,
+    ...item.architecture.server,
+    ...item.architecture.runtime,
+    ...item.architecture.frontend,
+    ...item.architecture.cms,
+    ...item.architecture.integrations,
+    ...item.externalHosts.map((host) => `${host.host} ${host.category} ${host.evidence || ""}`),
+  ].filter(Boolean).join(" | ");
+  const provider = classifyProviderFromText(infraText);
+  const contactClues = item.externalHosts
+    .filter((host) => host.category === "contact")
+    .flatMap((host) => extractServiceIds(host.evidence || host.host));
+  const architectureHints = uniqueLines([
+    ...item.architecture.frontend,
+    ...item.architecture.server,
+    ...item.architecture.runtime,
+    ...item.architecture.cms,
+    ...item.architecture.edge,
+    item.serverHeader ? `Server ${item.serverHeader}` : "",
+    item.poweredBy ? `Powered ${item.poweredBy}` : "",
+    provider,
+  ], 8);
+  const riskHints = uniqueLines([
+    item.adminCandidates.length > 0 ? (language === "zh" ? "存在后台入口候选" : "Admin-entry candidates detected") : "",
+    item.forms.some((form) => form.hasPassword || form.loginLikely) ? (language === "zh" ? "存在登录/认证表单" : "Login or auth forms detected") : "",
+    item.apiCandidates.length > 0 ? (language === "zh" ? "存在接口与业务 API 线索" : "API and business endpoints detected") : "",
+    item.credentialSignals.length > 0 ? (language === "zh" ? "存在弱口令或认证薄弱信号" : "Credential-risk signals detected") : "",
+    item.pathHints.length > 0 ? (language === "zh" ? "存在路径/目录暴露线索" : "Route and directory exposure hints detected") : "",
+    item.artifactFindings.length > 0 ? (language === "zh" ? "存在公开文件/静态产物线索" : "Public artifacts or static assets detected") : "",
+  ], 4);
+  const clueHints = uniqueLines([
+    item.resolvedIps.length > 0 ? `${language === "zh" ? "服务器 IP" : "Server IP"}: ${item.resolvedIps.join(", ")}` : "",
+    provider ? `${language === "zh" ? "云/CDN 线索" : "Cloud/CDN"}: ${provider}` : "",
+    item.rdap?.registrar ? `${language === "zh" ? "注册商" : "Registrar"}: ${item.rdap.registrar}` : "",
+    item.tlsCertificate?.commonName ? `${language === "zh" ? "证书 CN" : "Certificate CN"}: ${item.tlsCertificate.commonName}` : "",
+    item.faviconMmh3 !== null && item.faviconMmh3 !== undefined ? `favicon: ${item.faviconMmh3}` : "",
+    ...contactClues,
+    ...item.externalHosts
+      .filter((host) => host.category === "storage" || host.category === "payment" || host.category === "analytics")
+      .slice(0, 3)
+      .map((host) => `${host.category}: ${host.host}`),
+  ], 6);
+  const expansionHints = uniqueLines([
+    item.tlsCertificate?.subjectAltNames.length ? (language === "zh" ? "可沿证书 SAN 扩展同源域名" : "Expand same-source domains via certificate SAN") : "",
+    item.faviconMmh3 !== null && item.faviconMmh3 !== undefined ? (language === "zh" ? "可沿 favicon 指纹聚类同源站点" : "Cluster related sites via favicon fingerprint") : "",
+    item.externalHosts.length > 0 ? (language === "zh" ? "可沿外联资源、客服、对象存储和支付域名继续拓线" : "Pivot via external services, contact widgets, storage, and payment hosts") : "",
+    item.rdap?.registrar ? (language === "zh" ? "可结合注册商与历史解析做域名关联" : "Correlate domains through registrar and historical DNS") : "",
+  ], 3);
+  const nextActionHints = uniqueLines([
+    item.adminCandidates.length > 0 ? (language === "zh" ? "优先截图固化后台入口、状态码与跳转链" : "Preserve screenshots and redirect chains for admin candidates") : "",
+    item.apiCandidates.length > 0 ? (language === "zh" ? "按登录、订单、客服、支付等业务类型梳理接口" : "Classify API endpoints by login, order, support, and payment workflows") : "",
+    item.externalHosts.some((host) => host.category === "contact") ? (language === "zh" ? "优先核对客服平台账号、站点 ID 和会话线索" : "Prioritize support-platform IDs and session clues") : "",
+    item.externalHosts.some((host) => host.category === "payment") ? (language === "zh" ? "优先核对支付通道、回调域名和收款主体" : "Prioritize payment channels, callback domains, and merchant entities") : "",
+    item.resolvedIps.length > 0 ? (language === "zh" ? "同步固定 IP、云厂商和证书信息，准备调证对象" : "Preserve IP, cloud attribution, and certificate data for follow-up requests") : "",
+  ], 3);
+
+  if (language === "en") {
+    return {
+      purpose: `Likely a ${summary.business} website with page behavior closer to ${summary.kind}.`,
+      architecture: architectureHints.length > 0 ? `Observed stack and deployment hints: ${architectureHints.join(", ")}.` : "Architecture hints remain limited and need more manual verification.",
+      riskFocus: riskHints.length > 0 ? `Primary risk directions: ${riskHints.join("; ")}.` : "No clear high-value direction is visible yet; review dynamic routes and hidden resources next.",
+      clueSummary: clueHints.length > 0 ? `Actionable clues: ${clueHints.join("; ")}.` : "No strong investigation clue was extracted from the current pass.",
+      expansion: expansionHints.length > 0 ? expansionHints.join("; ") + "." : "Use certificate, favicon, registrar, and external-service pivots to expand related sites.",
+      nextAction: nextActionHints.length > 0 ? nextActionHints.join("; ") + "." : "Preserve the current evidence set first, then manually review auth, admin, API, and external-service surfaces.",
+    };
+  }
+
+  return {
+    purpose: `该站点疑似与${summary.business}相关，页面形态更接近${summary.kind}。`,
+    architecture: architectureHints.length > 0 ? `当前可见架构与部署线索为：${architectureHints.join("、")}。` : "当前可见架构线索有限，仍需结合动态访问与历史样本继续核验。",
+    riskFocus: riskHints.length > 0 ? `当前优先关注方向：${riskHints.join("；")}。` : "当前尚未出现明确高价值攻击面，建议继续补充动态页面、接口和静态资源采集。",
+    clueSummary: clueHints.length > 0 ? `已提取的可调证线索包括：${clueHints.join("；")}。` : "本轮尚未提取到强可调证线索，建议补充证书、DNS、客服与支付相关证据。",
+    expansion: expansionHints.length > 0 ? `${expansionHints.join("；")}。` : "建议围绕证书、favicon、注册商和外联服务继续扩展同源站点。",
+    nextAction: nextActionHints.length > 0 ? `${nextActionHints.join("；")}。` : "建议先固化当前证据，再对后台、认证、接口和外联服务做人工核验。",
+  };
+}
+
+export function buildDeepReconSystemPrompt(language: "zh" | "en") {
+  if (language === "en") {
+    return `You are the dedicated Deep Recon Agent for suspicious website investigations. Focus on lawful intelligence analysis, structured clue extraction, and investigation planning. You may use search_web, fetch_webpage, web_recon_batch, and analyze_html_artifacts when they materially improve evidence quality.\n\nAlways return concise, structured findings. Prefer these sections when relevant:\n## Key Findings\n## Database and Leak Clues\n## Suspect Correlations\n## Backend and Control Analysis\n## Actionable Investigation Clues\n## Next Investigation Steps\n\nDo not output exploit payloads, brute-force steps, WAF-bypass payloads, privilege-escalation commands, persistence steps, or site-control procedures.`;
+  }
+  return `你是“深度远勘智能体”，专用于涉诈网站案件的深度研判、线索提取与办案支撑。你的重点不是炫技，而是帮助侦查人员快速获得结构化、高价值、可调证、可继续研判的结论。必要时可以调用 search_web、fetch_webpage、web_recon_batch、analyze_html_artifacts 来补充公开信息证据。\n\n请优先输出简洁、结构化结论，尽量按照以下分区组织：\n## 重点发现\n## 数据库与泄露线索\n## 嫌疑人关联信息\n## 后台与站点控制研判\n## 可调证信息\n## 后续侦查建议\n\n严禁输出可直接执行的恶意 Payload、口令爆破步骤、WAF 绕过载荷、提权命令、权限维持方法或站点控制操作。`;
+}
+
+export function buildDeepReconKickoffPrompt(input: DeepReconDraftInput, language: "zh" | "en") {
+  if (language === "en") {
+    return [
+      "Start a deep reconnaissance assessment for the following target and case context.",
+      `Target: ${input.target || "-"}`,
+      `Case Summary: ${input.caseSummary || "-"}`,
+      `Known Clues: ${input.knownClues || "-"}`,
+      `Evidence Pool: ${input.evidencePool || "-"}`,
+      `Investigation Focus: ${input.investigationFocus || "-"}`,
+      "",
+      "Deliver a concise, investigation-oriented assessment. Emphasize database/leak clues, suspect correlations, backend-control logic, actionable evidence, and what to verify next.",
+      input.publicReconReport ? `\nPublic Recon Context:\n${input.publicReconReport}` : "",
+    ].join("\n");
+  }
+
+  return [
+    "请对以下目标开展一轮深度远勘研判。",
+    `目标站点：${input.target || "-"}`,
+    `案件说明：${input.caseSummary || "-"}`,
+    `已知线索：${input.knownClues || "-"}`,
+    `补充证据：${input.evidencePool || "-"}`,
+    `侦查重点：${input.investigationFocus || "-"}`,
+    "",
+    "请输出一份简洁、结论导向的深度研判结果，重点关注数据库/泄露信息线索、嫌疑人关联信息、后台与站点控制研判、可调证信息，以及下一步侦查建议。",
+    input.publicReconReport ? `\n公网远勘上下文：\n${input.publicReconReport}` : "",
+  ].join("\n");
+}
+
+export function buildDeepReconReportMarkdown(input: DeepReconDraftInput, analysis: string, language: "zh" | "en") {
+  if (language === "en") {
+    return [
+      "# Deep Recon Investigation Report",
+      "",
+      `- Generated At: ${new Date().toISOString()}`,
+      `- Target: ${input.target || "-"}`,
+      `- Case Summary: ${input.caseSummary || "-"}`,
+      `- Investigation Focus: ${input.investigationFocus || "-"}`,
+      "",
+      "## Known Clues",
+      input.knownClues || "-",
+      "",
+      "## Evidence Pool",
+      input.evidencePool || "-",
+      "",
+      "## Analysis",
+      analysis || "-",
+    ].join("\n");
+  }
+
+  return [
+    "# 深度远勘研判报告",
+    "",
+    `- 生成时间：${new Date().toISOString()}`,
+    `- 目标站点：${input.target || "-"}`,
+    `- 案件说明：${input.caseSummary || "-"}`,
+    `- 侦查重点：${input.investigationFocus || "-"}`,
+    "",
+    "## 已知线索",
+    input.knownClues || "-",
+    "",
+    "## 补充证据",
+    input.evidencePool || "-",
+    "",
+    "## 研判结果",
+    analysis || "-",
+  ].join("\n");
 }

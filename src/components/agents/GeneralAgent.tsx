@@ -24,6 +24,8 @@ import {
   resolveSlashCommandInput,
 } from "./WorkbenchWidgets";
 
+const PENDING_GENERAL_AGENT_INPUT_KEY = "fuxi.agent-general.pending-input";
+
 interface GeneralAgentProps {
   language: Language;
   aiSettings: AISettings;
@@ -630,6 +632,20 @@ export default function GeneralAgent({
     window.addEventListener("fuxi-scope-context-action", handler as EventListener);
     return () => window.removeEventListener("fuxi-scope-context-action", handler as EventListener);
   }, [handleSend]);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    const pendingInput = localStorage.getItem(PENDING_GENERAL_AGENT_INPUT_KEY)?.trim();
+    if (!pendingInput) {
+      return;
+    }
+
+    localStorage.removeItem(PENDING_GENERAL_AGENT_INPUT_KEY);
+    void handleSend(pendingInput);
+  }, [handleSend, loading]);
 
   return (
     <div className="h-full grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">

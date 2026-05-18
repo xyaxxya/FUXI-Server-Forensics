@@ -1521,7 +1521,11 @@ export default function Dashboard({
       </div>
 
       <div className={`relative flex h-full flex-1 flex-col overflow-hidden rounded-[30px] p-4 md:p-6 ${!isPentest ? 'hidden' : ''}`}>
-        <PentestPanel language={language} />
+        <PentestPanel
+          language={language}
+          aiSettings={aiSettings}
+          onAiSettingsChange={onAiSettingsChange}
+        />
       </div>
 
       {/* Main Dashboard Metrics View */}

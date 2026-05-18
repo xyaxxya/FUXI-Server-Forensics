@@ -317,28 +317,36 @@ fn online_validate_license(license_content: &str, machine_code: &str) -> Result<
     if should_skip_online_check() {
         return Ok(());
     }
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let resp = client
-        .post(LICENSE_ONLINE_CHECK_URL)
-        .json(&OnlineCheckRequest {
-            license_content: license_content.to_string(),
-            machine_code: machine_code.to_string(),
-        })
-        .send();
-    let Ok(resp) = resp else {
-        return Ok(());
-    };
-    let payload = resp.json::<OnlineCheckResponse>();
-    let Ok(payload) = payload else {
-        return Ok(());
-    };
-    if payload.valid {
-        return Ok(());
-    }
-    Err(payload.reason)
+
+    let license_content = license_content.to_string();
+    let machine_code = machine_code.to_string();
+
+    std::thread::spawn(move || {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let resp = client
+            .post(LICENSE_ONLINE_CHECK_URL)
+            .json(&OnlineCheckRequest {
+                license_content,
+                machine_code,
+            })
+            .send();
+        let Ok(resp) = resp else {
+            return Ok(());
+        };
+        let payload = resp.json::<OnlineCheckResponse>();
+        let Ok(payload) = payload else {
+            return Ok(());
+        };
+        if payload.valid {
+            return Ok(());
+        }
+        Err(payload.reason)
+    })
+    .join()
+    .map_err(|_| "License online validation thread panicked".to_string())?
 }
 
 pub fn verify_local_license() -> Result<LicenseInfo, String> {
